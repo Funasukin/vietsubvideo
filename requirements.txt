@@ -1,0 +1,26 @@
+# Phase 0/1 — loi pipeline
+python-dotenv
+yt-dlp
+edge-tts
+anthropic
+pydub
+audioop-lts  # pydub can audioop, da bi go khoi Python 3.13+
+
+# Phase 2 — Telegram bot
+aiogram
+
+# Dashboard web local
+fastapi
+uvicorn
+
+# Phase 1/S3 — transcript
+faster-whisper
+rapidocr_onnxruntime
+
+# Phase 3 — upload
+# google-api-python-client
+# google-auth-oauthlib
+
+# Phase 4 — nang cao
+# demucs
+# pyannote.audio

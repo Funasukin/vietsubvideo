@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowApp — Bảng điều khiển</title>
+<style>
+  :root {
+    --bg: #0f1419; --card: #1a2129; --border: #2a3441;
+    --text: #e6edf3; --dim: #8b98a5; --accent: #4da3ff;
+    --ok: #3fb950; --warn: #d29922; --err: #f85149;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body { background: var(--bg); color: var(--text);
+         font: 14px/1.5 'Segoe UI', system-ui, sans-serif; padding: 24px; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { color: var(--dim); margin-bottom: 20px; }
+  form { display: flex; gap: 8px; margin-bottom: 24px; max-width: 760px; }
+  input[type=url] { flex: 1; background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+  button { background: var(--accent); color: #04121f; border: 0; border-radius: 8px;
+    padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
+  button:hover { filter: brightness(1.1); }
+  button.ghost { background: transparent; color: var(--accent);
+    border: 1px solid var(--accent); padding: 6px 12px; font-size: 13px; }
+  select, input[type=range] { background: var(--card); color: var(--text);
+    border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+  .card { background: var(--card); border: 1px solid var(--border);
+          border-radius: 12px; padding: 16px; }
+  .card h3 { font-size: 13px; color: var(--dim); font-weight: 500;
+             word-break: break-all; margin-bottom: 2px; }
+  .jobid { font-size: 12px; color: var(--dim); opacity: .7; margin-bottom: 10px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px;
+           font-size: 12px; font-weight: 600; margin-bottom: 10px; }
+  .badge.run  { background: #1c3a5e; color: var(--accent); }
+  .badge.done { background: #1d3528; color: var(--ok); }
+  .badge.fail { background: #4a1d1d; color: var(--err); }
+  .badge.wait { background: #2a3441; color: var(--dim); }
+  ul.stages { list-style: none; margin: 8px 0; }
+  ul.stages li { padding: 2px 0; color: var(--dim); }
+  ul.stages li.ok::before   { content: "✓ "; color: var(--ok); }
+  ul.stages li.cur::before  { content: "⏳ "; }
+  ul.stages li.cur { color: var(--text); }
+  ul.stages li.todo::before { content: "○ "; opacity: .4; }
+  ul.stages li.bad::before  { content: "✗ "; color: var(--err); }
+  .err { color: var(--err); font-size: 12px; margin: 8px 0; word-break: break-all; }
+  .meta { color: var(--dim); font-size: 12px; margin: 8px 0; }
+  video, img.preview { width: 100%; border-radius: 8px; margin-top: 10px; background: #000; }
+  .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
+  a { color: var(--accent); font-size: 13px; }
+  details { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 10px; }
+  summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  .opts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+          margin: 10px 0; font-size: 13px; color: var(--dim); }
+  .pct { color: var(--text); min-width: 38px; display: inline-block; }
+</style>
+</head>
+<body>
+  <h1>🎬 FlowApp</h1>
+  <div class="sub">Tải → dịch → lồng tiếng → phụ đề, tự động toàn bộ</div>
+
+  <form id="f">
+    <input type="url" id="url" placeholder="Dán link video (YouTube / Bilibili / Douyin...)" required>
+    <button>＋ Thêm job</button>
+  </form>
+
+  <div class="grid" id="jobs"></div>
+
+<script>
+const STAGES = [
+  ["downloading",  "Tải video"],
+  ["extracting",   "Tách audio"],
+  ["transcribing", "Transcript (OCR/Whisper)"],
+  ["translating",  "Dịch tiếng Việt"],
+  ["tts",          "Đọc giọng (TTS)"],
+  ["bgm",          "Xử lý nhạc nền"],
+  ["mixing",       "Mix audio"],
+  ["rendering",    "Render video"],
+  ["metadata",     "Metadata"],
+];
+let lastJson = {};
+
+function badge(j) {
+  if (j.stage === "done")   return '<span class="badge done">✅ Hoàn thành</span>';
+  if (j.stage === "failed") return '<span class="badge fail">⚠️ Lỗi</span>';
+  if (j.running)            return '<span class="badge run">▶ Đang chạy</span>';
+  if (j.queued)             return '<span class="badge wait">⏸ Trong hàng đợi</span>';
+  return '<span class="badge wait">' + j.stage + '</span>';
+}
+
+function stageList(j) {
+  const done = new Set(j.completed_stages);
+  return '<ul class="stages">' + STAGES.map(([key, label]) => {
+    let cls = "todo", extra = "";
+    if (done.has(key)) cls = "ok";
+    else if (j.stage === key) cls = j.error ? "bad" : "cur";
+    if (key === "tts" && j.seg_total && !done.has("tts"))
+      extra = ` (${j.tts_done}/${j.seg_total})`;
+    return `<li class="${cls}">${label}${extra}</li>`;
+  }).join("") + "</ul>";
+}
+
+const FONTS = ["Arial", "Tahoma", "Verdana", "Segoe UI", "Calibri", "Times New Roman"];
+
+function settingsPanel(j) {
+  const r = j.render || {};
+  const s = r.style || {};
+  const sm = r.subtitle_mode || "soft", cv = r.cover || "none";
+  const ct = Math.round((r.cover_top ?? 0.78) * 100);
+  const font = s.font || "Arial", size = s.size || 18;
+  const color = s.color || "#FFFFFF", oColor = s.outline_color || "#000000";
+  const outline = s.outline ?? 2, marginV = s.margin_v ?? 16;
+  const back = s.back ? "checked" : "", backColor = s.back_color || "#000000";
+  const backOp = Math.round((s.back_opacity ?? 0.6) * 100);
+  return `<details><summary>🎨 Chỉnh phụ đề / vùng che sub gốc</summary>
+    <div class="opts">
+      Phụ đề:
+      <select id="sm-${j.id}">
+        <option value="soft" ${sm === "soft" ? "selected" : ""}>Track bật/tắt</option>
+        <option value="burn" ${sm === "burn" ? "selected" : ""}>Vẽ cứng</option>
+        <option value="none" ${sm === "none" ? "selected" : ""}>Không</option>
+      </select>
+      Che sub gốc:
+      <select id="cv-${j.id}">
+        <option value="none"  ${cv === "none" ? "selected" : ""}>Không che</option>
+        <option value="blur"  ${cv === "blur" ? "selected" : ""}>Làm mờ</option>
+        <option value="black" ${cv === "black" ? "selected" : ""}>Dải đen</option>
+      </select>
+      Vùng che từ:
+      <input type="range" id="ct-${j.id}" min="60" max="95" value="${ct}"
+             oninput="document.getElementById('pct-${j.id}').textContent = this.value + '%'">
+      <span class="pct" id="pct-${j.id}">${ct}%</span>
+    </div>
+    <div class="opts">
+      Font:
+      <select id="ft-${j.id}">${FONTS.map(f =>
+        `<option ${f === font ? "selected" : ""}>${f}</option>`).join("")}</select>
+      Cỡ: <input type="number" id="fs-${j.id}" min="10" max="40" value="${size}" style="width:56px">
+      Màu chữ: <input type="color" id="fc-${j.id}" value="${color}">
+      Màu viền: <input type="color" id="oc-${j.id}" value="${oColor}">
+      Viền: <input type="number" id="ow-${j.id}" min="0" max="4" value="${outline}" style="width:48px">
+    </div>
+    <div class="opts">
+      <label><input type="checkbox" id="bk-${j.id}" ${back}> Hộp nền</label>
+      Màu nền: <input type="color" id="bc-${j.id}" value="${backColor}">
+      Độ đậm: <input type="range" id="bo-${j.id}" min="0" max="100" value="${backOp}"
+             oninput="document.getElementById('bop-${j.id}').textContent = this.value + '%'">
+      <span class="pct" id="bop-${j.id}">${backOp}%</span>
+      Cách đáy: <input type="number" id="mv-${j.id}" min="0" max="80" value="${marginV}" style="width:56px">
+    </div>
+    <div class="row">
+      <button class="ghost" onclick="previewJob('${j.id}')">👁 Xem thử (2 giây)</button>
+      <button class="ghost" onclick="rerenderJob('${j.id}')">↻ Render lại với cài đặt này</button>
+      <span class="meta">kiểu chữ chỉ áp dụng khi phụ đề "Vẽ cứng"</span>
+    </div>
+    <img class="preview" id="pv-${j.id}" style="display:none">
+  </details>`;
+}
+
+function cardHtml(j) {
+  let html = `<h3>${j.url}</h3><div class="jobid">${j.id}</div>`;
+  html += badge(j) + stageList(j);
+  if (j.error) html += `<div class="err">${j.error}</div>`;
+  if (j.seg_total) html += `<div class="meta">${j.seg_total} câu thoại`
+      + (j.overflow !== undefined ? ` · ${j.overflow} cảnh báo timing` : "") + `</div>`;
+  if (j.has_final)
+    html += `<video controls preload="none" src="/api/jobs/${j.id}/video?v=${j.created_at}"></video>`;
+  html += '<div class="row">';
+  if (j.stage !== "done" && !j.queued && !j.running)
+    html += `<button class="ghost" onclick="resumeJob('${j.id}')">↻ Chạy tiếp</button>`;
+  if (j.has_srt) html += `<a href="/api/jobs/${j.id}/srt">⬇ sub_vi.srt</a>`;
+  html += '</div>';
+  if (j.has_final || j.completed_stages.includes("downloading"))
+    html += settingsPanel(j);
+  return html;
+}
+
+async function refresh() {
+  let jobs;
+  try { jobs = await (await fetch("/api/jobs")).json(); }
+  catch (e) { return; }
+  const grid = document.getElementById("jobs");
+  const seen = new Set();
+  for (const j of jobs) {
+    seen.add("card-" + j.id);
+    let card = document.getElementById("card-" + j.id);
+    if (!card) {
+      card = document.createElement("div");
+      card.className = "card";
+      card.id = "card-" + j.id;
+      grid.appendChild(card);
+      grid.prepend(card);
+    }
+    const json = JSON.stringify(j);
+    // không vẽ lại khi nội dung không đổi hoặc đang mở panel chỉnh
+    if (lastJson[j.id] === json) continue;
+    if (card.querySelector("details[open]")) continue;
+    card.innerHTML = cardHtml(j);
+    lastJson[j.id] = json;
+  }
+  for (const card of [...grid.children])
+    if (!seen.has(card.id)) card.remove();
+}
+
+document.getElementById("f").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const url = document.getElementById("url").value.trim();
+  if (!url) return;
+  await fetch("/api/jobs", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify({url}) });
+  document.getElementById("url").value = "";
+  refresh();
+});
+
+function readOpts(id) {
+  const g = (p) => document.getElementById(p + "-" + id);
+  return {
+    subtitle_mode: g("sm").value,
+    cover: g("cv").value,
+    cover_top: parseInt(g("ct").value) / 100,
+    style: {
+      font: g("ft").value,
+      size: parseInt(g("fs").value),
+      color: g("fc").value,
+      outline_color: g("oc").value,
+      outline: parseInt(g("ow").value),
+      back: g("bk").checked,
+      back_color: g("bc").value,
+      back_opacity: parseInt(g("bo").value) / 100,
+      margin_v: parseInt(g("mv").value),
+    },
+  };
+}
+
+async function previewJob(id) {
+  const img = document.getElementById("pv-" + id);
+  img.style.display = "block";
+  img.style.opacity = 0.4;
+  const res = await fetch(`/api/jobs/${id}/preview`, { method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(readOpts(id)) });
+  if (res.ok) img.src = URL.createObjectURL(await res.blob());
+  img.style.opacity = 1;
+}
+
+async function rerenderJob(id) {
+  const o = readOpts(id);
+  await fetch(`/api/jobs/${id}/rerender`, { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(o) });
+  document.querySelector(`#card-${id} details`)?.removeAttribute("open");
+  delete lastJson[id];
+  refresh();
+}
+
+async function resumeJob(id) {
+  await fetch(`/api/jobs/${id}/resume`, { method: "POST" });
+  refresh();
+}
+
+refresh();
+setInterval(refresh, 3000);
+</script>
+</body>
+</html>
