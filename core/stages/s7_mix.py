@@ -3,16 +3,26 @@
 Mỗi segment TTS đặt vào đúng timestamp gốc. Nếu audio TTS dài hơn slot
 (khoảng trống đến câu tiếp theo) thì tăng tốc bằng ffmpeg atempo, tối đa
 MAX_SPEEDUP; vượt nữa thì chấp nhận tràn và ghi cảnh báo vào mix_report.json.
+
+Cộng trực tiếp trên mảng numpy (pydub.overlay copy cả track mỗi lần gọi —
+quá chậm với video dài). pydub chỉ còn dùng decode/resample file TTS nhỏ.
 """
 from __future__ import annotations
 
 import json
 
+import numpy as np
 from pydub import AudioSegment
 
 import config
-from core import ffmpeg
+from core import audio_np, ffmpeg
 from core.job import Job
+
+
+def _load_voice(path, rate: int) -> np.ndarray:
+    """Decode mp3/wav TTS → mảng int16 (n, 2) cùng sample rate với nền."""
+    seg = AudioSegment.from_file(path).set_frame_rate(rate).set_channels(2)
+    return np.array(seg.get_array_of_samples(), dtype=np.int16).reshape(-1, 2)
 
 
 def run(job: Job) -> None:
@@ -22,35 +32,39 @@ def run(job: Job) -> None:
 
     data = json.loads((job.dir / "transcript_vi.json").read_text(encoding="utf-8"))
     segments = [s for s in data["segments"] if s["text_vi"].strip()]
-    bed = AudioSegment.from_wav(job.dir / "ducked.wav")
-    total_ms = len(bed)
+    bed, rate = audio_np.read_wav(job.dir / "ducked.wav")
+    total = len(bed)
 
     warnings = []
     for i, seg in enumerate(segments):
         mp3 = job.dir / "tts" / f"seg_{seg['id']:04d}.mp3"
-        voice = AudioSegment.from_file(mp3)
+        voice = _load_voice(mp3, rate)
 
-        start_ms = int(seg["start"] * 1000)
-        next_start_ms = (int(segments[i + 1]["start"] * 1000)
-                         if i + 1 < len(segments) else total_ms)
-        slot_ms = max(300, next_start_ms - start_ms)
+        start = int(seg["start"] * rate)
+        next_start = (int(segments[i + 1]["start"] * rate)
+                      if i + 1 < len(segments) else total)
+        slot = max(int(0.3 * rate), next_start - start)
 
-        if len(voice) > slot_ms:
-            factor = min(config.MAX_SPEEDUP, len(voice) / slot_ms)
+        if len(voice) > slot:
+            factor = min(config.MAX_SPEEDUP, len(voice) / slot)
             sped = job.dir / "tts" / f"seg_{seg['id']:04d}_sped.wav"
             if not sped.exists():
                 ffmpeg.run("-i", str(mp3), "-filter:a", f"atempo={factor:.4f}", str(sped))
-            voice = AudioSegment.from_wav(sped)
-            if len(voice) > slot_ms:
+            voice = _load_voice(sped, rate)
+            if len(voice) > slot:
                 warnings.append({
                     "id": seg["id"],
-                    "overflow_ms": len(voice) - slot_ms,
+                    "overflow_ms": int((len(voice) - slot) * 1000 / rate),
                     "text_vi": seg["text_vi"],
                 })
 
-        bed = bed.overlay(voice, position=start_ms)
+        end = min(total, start + len(voice))
+        if end <= start:
+            continue
+        mixed = bed[start:end].astype(np.int32) + voice[: end - start].astype(np.int32)
+        bed[start:end] = np.clip(mixed, -32768, 32767).astype(np.int16)
 
-    bed.export(out_path, format="wav")
+    audio_np.write_wav(out_path, bed, rate)
     (job.dir / "mix_report.json").write_text(
         json.dumps({"segments": len(segments), "overflow_warnings": warnings},
                    ensure_ascii=False, indent=2),

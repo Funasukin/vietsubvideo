@@ -36,7 +36,8 @@ def _normalize(text: str) -> str:
 
 def _frame_lines(engine, img_path: Path) -> list[tuple[float, str]]:
     """OCR 1 frame → list (x_trái, text) các dòng đạt ngưỡng tin cậy."""
-    result, _ = engine(str(img_path))
+    # use_cls=False: phụ đề luôn nằm ngang, bỏ bước phân loại góc chữ cho nhanh
+    result, _ = engine(str(img_path), use_cls=False)
     if not result:
         return []
     lines = []
@@ -45,6 +46,27 @@ def _frame_lines(engine, img_path: Path) -> list[tuple[float, str]]:
             continue
         lines.append((min(p[0] for p in box), text.strip()))
     return sorted(lines)
+
+
+# ---- OCR song song: worker process (Windows spawn cần hàm module-level) ----
+_worker_engine = None
+
+
+def _init_worker() -> None:
+    global _worker_engine
+    from rapidocr_onnxruntime import RapidOCR
+    # onnxruntime hầu như không scale theo luồng với model này (đo thực tế:
+    # 16 luồng chỉ nhanh hơn 2 luồng ~13%) → mỗi worker 2 luồng, nhiều worker
+    _worker_engine = RapidOCR(intra_op_num_threads=2)
+
+
+def _ocr_one(path: str) -> list[str]:
+    return [text for _, text in _frame_lines(_worker_engine, Path(path))]
+
+
+# Ghi chú: đã thử dedup frame trùng (so pixel thô lẫn mặt nạ pixel sáng) —
+# thí nghiệm trên dữ liệu thật cho thấy mọi ngưỡng đều gây sai văn bản
+# (nền video động sau phụ đề phá tín hiệu so sánh) nên không dùng.
 
 
 def _join_lines(texts: list[str], blacklist: set[str]) -> str:
@@ -58,8 +80,6 @@ def _join_lines(texts: list[str], blacklist: set[str]) -> str:
 
 def extract(video: Path, work_dir: Path) -> list[dict]:
     """OCR video → list segment. work_dir dùng chứa frame tạm (tự dọn khi xong)."""
-    from rapidocr_onnxruntime import RapidOCR
-
     frames_dir = work_dir / "ocr_frames"
     if frames_dir.exists():
         shutil.rmtree(frames_dir)
@@ -76,14 +96,21 @@ def extract(video: Path, work_dir: Path) -> list[dict]:
         str(frames_dir / "%06d.jpg"),
     )
 
-    engine = RapidOCR()
     step = 1.0 / config.OCR_FPS
+    frame_paths = sorted(frames_dir.glob("*.jpg"))
 
-    # Pha 1: OCR toàn bộ frame, gom dòng thô
+    # Pha 1: OCR song song
+    print(f"  OCR: {len(frame_paths)} frame, {config.OCR_WORKERS} worker")
+    from concurrent.futures import ProcessPoolExecutor
+    with ProcessPoolExecutor(max_workers=config.OCR_WORKERS,
+                             initializer=_init_worker) as pool:
+        all_lines = list(pool.map(_ocr_one, [str(p) for p in frame_paths],
+                                  chunksize=8))
+
     frames: list[tuple[float, list[str]]] = []
-    for frame in sorted(frames_dir.glob("*.jpg")):
+    for frame, lines in zip(frame_paths, all_lines):
         t = (int(frame.stem) - 0.5) * step
-        frames.append((t, [text for _, text in _frame_lines(engine, frame)]))
+        frames.append((t, lines))
 
     (work_dir / "ocr_raw.json").write_text(
         json.dumps([{"t": round(t, 3), "lines": lines} for t, lines in frames],

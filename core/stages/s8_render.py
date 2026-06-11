@@ -134,16 +134,17 @@ def run(job: Job) -> None:
         sub_filter = f"subtitles=sub_vi.srt:force_style='{build_style(r.get('style'))}'"
         vf = cover_filter(cover, top, sub_filter)
         # chạy với cwd=job.dir để né escape đường dẫn Windows trong filter
-        ffmpeg.run(
-            "-i", str(source), "-i", str(dubbed),
-            "-map", "0:v:0", "-map", "1:a:0",
-            "-vf", vf,
-            "-c:v", "libx264", "-preset", "fast", "-crf", "20",
-            "-c:a", "aac", "-b:a", "192k",
-            "-shortest",
-            "final.mp4",
-            cwd=job.dir,
-        )
+        def encode(*codec_args: str) -> None:
+            ffmpeg.run("-i", str(source), "-i", str(dubbed),
+                       "-map", "0:v:0", "-map", "1:a:0", "-vf", vf,
+                       *codec_args, "-c:a", "aac", "-b:a", "192k",
+                       "-shortest", "final.mp4", cwd=job.dir)
+
+        try:
+            # Intel QuickSync: nhanh gấp nhiều lần x264 trên CPU
+            encode("-c:v", "h264_qsv", "-global_quality", "23")
+        except RuntimeError:
+            encode("-c:v", "libx264", "-preset", "fast", "-crf", "20")
     else:  # none
         ffmpeg.run(
             "-i", str(source), "-i", str(dubbed),

@@ -28,6 +28,7 @@ WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "")    # rỗng = tự nhận d
 OCR_FPS = 2.0          # số frame lấy mẫu mỗi giây
 OCR_CROP_TOP = 0.70    # vùng quét: từ 70% chiều cao xuống đáy
 OCR_MIN_CONF = 0.55    # bỏ kết quả OCR dưới ngưỡng tin cậy này
+OCR_WORKERS = int(os.getenv("OCR_WORKERS", "6"))  # số tiến trình OCR song song (mỗi cái 2 luồng)
 
 # TTS (S5)
 TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")

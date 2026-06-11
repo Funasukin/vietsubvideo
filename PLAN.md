@@ -150,9 +150,15 @@ data/jobs/20260610_153000_abc123/
   - `core/ocr_subs.py`: OCR 2 pha — blacklist dòng xuất hiện ≥15% số frame (watermark đứng yên) ngay từ nguồn; lưu `ocr_raw.json` để đổi bộ lọc không cần OCR lại.
   - `s4_translate.py`: tự phát hiện câu dịch sót ký tự Trung → retry tối đa 2 lần (`fix_leaks`); glossary Tây Du Ký (Wukong → Ngộ Không...).
   - `s5_tts.py`: timeout 90s/request + concurrency 2 (chống treo khi Microsoft throttle video dài).
-  - Script tiện ích trong `data/`: `refix_job.py` (áp lại bộ lọc segment), `fix_leak_job.py` (dịch lại câu sót chữ Hán) — đều resume không làm lại từ đầu.
+  - Script tiện ích trong `scripts/`: `refix_job.py` (áp lại bộ lọc segment), `fix_leak_job.py` (dịch lại câu sót chữ Hán), `rerender.py`, `check_api.py` — đều resume không làm lại từ đầu.
+- [x] **Phase 1.7 — gói tối ưu tốc độ** *(2026-06-11)*:
+  - OCR song song 6 tiến trình × 2 luồng onnxruntime (`OCR_WORKERS` trong .env) — nhanh ~2.6x cùng điều kiện máy. Đã thử dedup frame trùng (pixel thô + mặt nạ sáng): thí nghiệm đối chiếu OCR thật cho thấy mọi ngưỡng đều gây sai văn bản → loại bỏ, không đánh đổi chất lượng.
+  - S6 duck + S7 mix viết lại bằng numpy (`core/audio_np.py`) — thao tác PCM trực tiếp thay vì pydub copy cả track; kết quả mix giống hệt.
+  - S8 burn dùng Intel QuickSync (`h264_qsv`, ~7x realtime) với fallback tự động về libx264.
+  - Đo thực tế tập 12.7 phút: duck + mix + render burn+blur = **135 giây** (trước: 15–20 phút).
+  - Lưu ý vận hành: tốc độ máy dao động 4–5 lần theo nhiệt/app khác đang chạy (2 server dev của user); đã tắt sleep khi cắm điện (`powercfg /change standby-timeout-ac 0`) vì máy sleep từng giết tiến trình nền 2 lần.
 - [ ] **Tối ưu còn lại (không chặn Phase 2):**
-  - OCR chậm ~4x thời lượng video trên CPU → giảm OCR_FPS, bỏ frame trùng (so hash), hoặc GPU
+  - OCR vẫn là nút cổ chai cho video dài (~1.5–2h cho video 1 tiếng tùy tải máy) → cân nhắc GPU (onnxruntime-directml) hoặc máy bàn
   - Nếu chất lượng dịch cần cao hơn nữa → `CLAUDE_MODEL=claude-sonnet-4-6` trong .env
 
 ### Phase 2 — Telegram bot + worker (1 tuần)
