@@ -21,6 +21,10 @@ TRANSLATE_BATCH_OVERLAP = 3  # segment cuối batch trước gửi kèm làm con
 # Vòng review sau dịch: đọc lại toàn bộ, sửa tên riêng/xưng hô lệch giữa các batch
 REVIEW_TRANSLATION = os.getenv("REVIEW_TRANSLATION", "1").lower() not in ("0", "false")
 
+# Metadata/thumbnail (S9): title là mặt tiền kênh, chỉ 1 call/job (~$0.02)
+# nên mặc định dùng model tốt hơn model dịch
+METADATA_MODEL = os.getenv("METADATA_MODEL", "claude-sonnet-4-6")
+
 # Transcript (S3)
 TRANSCRIPT_SOURCE = os.getenv("TRANSCRIPT_SOURCE", "auto")  # auto | ocr | whisper
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")     # tiny/base/small/medium/large-v3

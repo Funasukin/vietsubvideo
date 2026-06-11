@@ -267,14 +267,19 @@ function cardHtml(j) {
   let html = `<h3>${j.url}</h3><div class="jobid">${j.id}</div>`;
   html += badge(j) + stageList(j);
   if (j.error) html += `<div class="err">${j.error}</div>`;
+  if (j.yt_title) html += `<div class="meta">📺 ${j.yt_title}</div>`;
   if (j.seg_total) html += `<div class="meta">${j.seg_total} câu thoại`
       + (j.overflow !== undefined ? ` · ${j.overflow} cảnh báo timing` : "") + `</div>`;
+  if (j.has_thumb)
+    html += `<img class="preview" src="/api/jobs/${j.id}/thumb?v=${Date.now() % 1e7}" alt="thumbnail">`;
   if (j.has_final)
     html += `<video controls preload="none" src="/api/jobs/${j.id}/video?v=${j.created_at}"></video>`;
   html += '<div class="row">';
   if (j.stage !== "done" && !j.queued && !j.running)
     html += `<button class="ghost" onclick="resumeJob('${j.id}')">↻ Chạy tiếp</button>`;
   if (j.has_srt) html += `<a href="/api/jobs/${j.id}/srt">⬇ sub_vi.srt</a>`;
+  if (j.seg_total && (j.stage === "done" || j.completed_stages.includes("translating")))
+    html += `<button class="ghost" id="thumb-${j.id}" onclick="regenThumb('${j.id}')">🖼 ${j.has_thumb ? "Thumbnail mới" : "Tạo thumbnail"}</button>`;
   html += `<button class="ghost" onclick="openJob('${j.id}')">📂 Mở thư mục</button>`;
   if (!j.queued && !j.running)
     html += `<button class="danger" onclick="deleteJob('${j.id}')">🗑 Xóa</button>`;
@@ -366,6 +371,14 @@ async function resumeJob(id) {
 
 async function openJob(id) {
   await fetch(`/api/jobs/${id}/open`, { method: "POST" });
+}
+
+async function regenThumb(id) {
+  const btn = document.getElementById("thumb-" + id);
+  btn.disabled = true;
+  btn.textContent = "⏳ Đang tạo (~30s)...";
+  try { await fetch(`/api/jobs/${id}/thumbnail`, { method: "POST" }); }
+  finally { delete lastJson[id]; refresh(); }
 }
 
 async function deleteJob(id) {

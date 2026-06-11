@@ -81,6 +81,14 @@ def _job_summary(job_dir: Path) -> dict | None:
     state["tts_done"] = tts_done
     state["has_final"] = (job_dir / "final.mp4").exists()
     state["has_srt"] = (job_dir / "sub_vi.srt").exists()
+    state["has_thumb"] = (job_dir / "thumbnail.jpg").exists()
+    meta_p = job_dir / "metadata.json"
+    if meta_p.exists():
+        try:
+            state["yt_title"] = json.loads(
+                meta_p.read_text(encoding="utf-8")).get("title")
+        except (json.JSONDecodeError, OSError):
+            pass
     state["queued"] = state["id"] in list(_pending.queue)
     state["running"] = state["id"] == _running_id
 
@@ -180,6 +188,32 @@ def preview(job_id: str, opts: RenderOptions) -> FileResponse:
                "preview.png", cwd=job.dir)
     return FileResponse(job.dir / "preview.png", media_type="image/png",
                         headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/jobs/{job_id}/thumb")
+def job_thumb(job_id: str) -> FileResponse:
+    path = config.JOBS_DIR / job_id / "thumbnail.jpg"
+    if not path.exists():
+        raise HTTPException(404, "Chưa có thumbnail")
+    return FileResponse(path, media_type="image/jpeg",
+                        headers={"Cache-Control": "no-store"})
+
+
+@app.post("/api/jobs/{job_id}/thumbnail")
+def regen_thumbnail(job_id: str) -> dict:
+    """Tạo lại metadata + thumbnail (đồng bộ, ~30 giây)."""
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    if not (job.dir / "transcript_vi.json").exists():
+        raise HTTPException(409, "Job chưa dịch xong — chưa tạo được metadata")
+
+    from core.stages import s9_metadata
+    (job.dir / "thumbnail.jpg").unlink(missing_ok=True)
+    (job.dir / "metadata.json").unlink(missing_ok=True)
+    s9_metadata.run(job)
+    return _job_summary(job.dir)
 
 
 @app.get("/api/jobs/{job_id}/video")
