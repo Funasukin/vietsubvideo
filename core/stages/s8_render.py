@@ -94,14 +94,16 @@ def build_style(style: dict | None) -> str:
 
 
 def cover_filter(cover: str, top: float, sub_filter: str) -> str:
-    """Chuỗi -vf: che vùng sub gốc (blur/black) rồi vẽ phụ đề lên trên."""
+    """Chuỗi -vf: che vùng sub gốc (blur/black) rồi vẽ phụ đề lên trên.
+    sub_filter = "null" khi mode cover_only (không vẽ sub Việt vào hình)."""
+    _append = "" if sub_filter == "null" else f",{sub_filter}"
     if cover == "blur":
         return (f"split[a][b];"
                 f"[b]crop=iw:ih*{1 - top:.3f}:0:ih*{top:.3f},boxblur=14:2[blur];"
-                f"[a][blur]overlay=0:H*{top:.3f},{sub_filter}")
+                f"[a][blur]overlay=0:H*{top:.3f}{_append}")
     if cover == "black":
         return (f"drawbox=x=0:y=ih*{top:.3f}:w=iw:h=ih*{1 - top:.3f}"
-                f":color=black:t=fill,{sub_filter}")
+                f":color=black:t=fill{_append}")
     return sub_filter
 
 
@@ -118,7 +120,7 @@ def run(job: Job) -> None:
     mode = r.get("subtitle_mode", config.SUBTITLE_MODE)
     cover = r.get("cover", config.COVER_SOURCE_SUBS)
     top = float(r.get("cover_top", config.COVER_TOP))
-    if cover != "none":
+    if cover != "none" and mode not in ("burn", "cover_only"):
         mode = "burn"  # che sub gốc = sửa pixel = bắt buộc re-encode
 
     if mode == "soft":
@@ -130,6 +132,19 @@ def run(job: Job) -> None:
             "-shortest",
             str(out_path),
         )
+    elif mode == "cover_only":
+        # Re-encode để che sub gốc, KHÔNG vẽ sub Việt vào hình.
+        # Upload sub_vi.srt lên YouTube Studio để viewer bật/tắt — tránh chồng sub.
+        vf = cover_filter(cover, top, "null")
+        def encode_co(*codec_args: str) -> None:
+            ffmpeg.run("-i", str(source), "-i", str(dubbed),
+                       "-map", "0:v:0", "-map", "1:a:0", "-vf", vf,
+                       *codec_args, "-c:a", "aac", "-b:a", "192k",
+                       "-shortest", "final.mp4", cwd=job.dir)
+        try:
+            encode_co("-c:v", "h264_qsv", "-global_quality", "23")
+        except RuntimeError:
+            encode_co("-c:v", "libx264", "-preset", "fast", "-crf", "20")
     elif mode == "burn":
         sub_filter = f"subtitles=sub_vi.srt:force_style='{build_style(r.get('style'))}'"
         vf = cover_filter(cover, top, sub_filter)

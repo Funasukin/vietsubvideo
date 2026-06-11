@@ -79,7 +79,7 @@ class NewJob(BaseModel):
 
 
 class RenderOptions(BaseModel):
-    subtitle_mode: str = "soft"   # soft | burn | none
+    subtitle_mode: str = "soft"   # soft | cover_only | burn | none
     cover: str = "none"           # none | blur | black
     cover_top: float = 0.78       # che từ tỉ lệ chiều cao này xuống đáy
     style: dict = {}              # font/size/color... — xem DEFAULT_STYLE trong s8_render
