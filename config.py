@@ -58,6 +58,9 @@ SUBTITLE_MODE = os.getenv("SUBTITLE_MODE", "soft")
 COVER_SOURCE_SUBS = os.getenv("COVER_SOURCE_SUBS", "none")
 COVER_TOP = float(os.getenv("COVER_TOP", "0.78"))  # che từ tỉ lệ chiều cao này xuống đáy
 
+# Batch: tối đa số video bung ra từ 1 lần dán playlist/nhiều link
+BATCH_LIMIT = int(os.getenv("BATCH_LIMIT", "50"))
+
 # Upload (Phase 3)
 YT_CLIENT_SECRET_FILE = os.getenv("YT_CLIENT_SECRET_FILE", "secrets/yt_client_secret.json")
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "")

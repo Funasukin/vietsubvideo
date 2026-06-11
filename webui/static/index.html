@@ -93,8 +93,9 @@
 
   <div id="pane-jobs">
     <form class="add" id="f">
-      <input type="url" id="url" placeholder="Dán link video (YouTube / Bilibili / Douyin...)" required>
-      <button>＋ Thêm job</button>
+      <textarea id="url" rows="2" placeholder="Dán link video, NHIỀU link (mỗi dòng một link), hoặc link playlist/kênh — tối đa 50 video/lần"
+        style="flex:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font:inherit;resize:vertical"></textarea>
+      <button id="addbtn">＋ Thêm job</button>
     </form>
     <div class="grid" id="jobs"></div>
   </div>
@@ -316,10 +317,38 @@ async function refresh() {
 
 document.getElementById("f").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const url = document.getElementById("url").value.trim();
-  if (!url) return;
-  await fetch("/api/jobs", { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify({url}) });
+  const text = document.getElementById("url").value.trim();
+  if (!text) return;
+  const btn = document.getElementById("addbtn");
+  const single = !/\s/.test(text) && !/[?&]list=|\/playlist|\/@|\/channel\//.test(text);
+
+  if (single) {
+    await fetch("/api/jobs", { method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({url: text}) });
+  } else {
+    btn.disabled = true;
+    btn.textContent = "⏳ Đang đọc danh sách...";
+    try {
+      const res = await fetch("/api/expand", { method: "POST",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({text}) });
+      if (!res.ok) { alert((await res.json()).detail || "Không đọc được danh sách"); return; }
+      const { entries, new: nNew } = await res.json();
+      const dup = entries.length - nNew;
+      if (!nNew) { alert(`Cả ${entries.length} video đều đã có job — không thêm gì.`); return; }
+      const names = entries.filter(e => !e.duplicate).slice(0, 10)
+        .map(e => "• " + e.title).join("\n");
+      if (!confirm(`Tìm thấy ${entries.length} video` +
+          (dup ? ` (${dup} trùng job cũ, bỏ qua)` : "") +
+          `.\nThêm ${nNew} video vào hàng đợi?\n\n${names}${nNew > 10 ? "\n..." : ""}`))
+        return;
+      await fetch("/api/jobs/batch", { method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({urls: entries.filter(e => !e.duplicate).map(e => e.url)}) });
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "＋ Thêm job";
+    }
+  }
   document.getElementById("url").value = "";
   refresh();
 });

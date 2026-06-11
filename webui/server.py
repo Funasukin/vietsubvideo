@@ -53,6 +53,27 @@ def _worker() -> None:
 threading.Thread(target=_worker, daemon=True, name="flowapp-worker").start()
 
 
+def _requeue_pending_on_startup() -> None:
+    """Job 'pending' (chưa chạy lần nào) bị mất queue khi server restart — xếp lại.
+    Job dở dang giữa stage thì để người dùng chủ động bấm Chạy tiếp."""
+    if not config.JOBS_DIR.exists():
+        return
+    for d in sorted(config.JOBS_DIR.iterdir()):
+        sp = d / "state.json"
+        if not sp.exists():
+            continue
+        try:
+            state = json.loads(sp.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if state.get("stage") == "pending" and not state.get("completed_stages"):
+            _pending.put(state["id"])
+            print(f"Re-queue job pending: {state['id']}")
+
+
+_requeue_pending_on_startup()
+
+
 class NewJob(BaseModel):
     url: str
 
@@ -119,6 +140,47 @@ def create_job(body: NewJob) -> dict:
     job = Job.create(url=url)
     _pending.put(job.id)
     return _job_summary(job.dir)
+
+
+class ExpandBody(BaseModel):
+    text: str
+
+
+@app.post("/api/expand")
+def expand(body: ExpandBody) -> dict:
+    """Bung nhiều link / playlist thành danh sách video (không tạo job)."""
+    from core import sources
+    try:
+        entries = sources.expand_text(body.text)
+    except Exception as e:
+        raise HTTPException(400, f"Không đọc được danh sách: {e}")
+    existing = {j["url"] for j in list_jobs()}
+    for e in entries:
+        e["duplicate"] = e["url"] in existing
+    return {"entries": entries,
+            "new": sum(1 for e in entries if not e["duplicate"])}
+
+
+class BatchBody(BaseModel):
+    urls: list[str]
+
+
+@app.post("/api/jobs/batch")
+def create_jobs_batch(body: BatchBody) -> dict:
+    existing = {j["url"] for j in list_jobs()}
+    created, skipped = [], 0
+    for url in body.urls[:config.BATCH_LIMIT]:
+        url = url.strip()
+        if not url:
+            continue
+        if url in existing:
+            skipped += 1
+            continue
+        job = Job.create(url=url)
+        existing.add(url)
+        _pending.put(job.id)
+        created.append(job.id)
+    return {"created": created, "skipped_duplicates": skipped}
 
 
 @app.post("/api/jobs/{job_id}/resume")
