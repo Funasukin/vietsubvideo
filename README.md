@@ -26,9 +26,11 @@ notepad .env
 
 ## Sử dụng
 
-**Dashboard (khuyên dùng):** chạy `webui.bat` → mở http://127.0.0.1:8790
-— dán link, theo dõi tiến độ từng bước, chỉnh phụ đề/vùng che với nút Xem thử,
-xem video thành phẩm ngay trong trình duyệt.
+**Dashboard (khuyên dùng):** chạy `webui.bat` → mở http://127.0.0.1:8790 — 3 tab:
+- **Tổng quan**: sản lượng, chi phí dịch ước tính, dung lượng đĩa
+- **Jobs**: dán link tạo job, theo dõi tiến độ từng bước, chỉnh phụ đề/vùng che
+  với nút Xem thử, xem video thành phẩm, xóa job dọn đĩa
+- **Cấu hình**: đổi model dịch / giọng TTS / nguồn transcript ngay trên giao diện
 
 **Dòng lệnh:**
 ```powershell

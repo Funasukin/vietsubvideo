@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FlowApp — Bảng điều khiển</title>
+<title>FlowApp — Quản lý</title>
 <style>
   :root {
     --bg: #0f1419; --card: #1a2129; --border: #2a3441;
@@ -14,16 +14,22 @@
   body { background: var(--bg); color: var(--text);
          font: 14px/1.5 'Segoe UI', system-ui, sans-serif; padding: 24px; }
   h1 { font-size: 20px; margin-bottom: 4px; }
-  .sub { color: var(--dim); margin-bottom: 20px; }
-  form { display: flex; gap: 8px; margin-bottom: 24px; max-width: 760px; }
-  input[type=url] { flex: 1; background: var(--card); color: var(--text);
+  .sub { color: var(--dim); margin-bottom: 16px; }
+  nav { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+  nav button { background: none; color: var(--dim); border: 0; border-bottom: 2px solid transparent;
+    padding: 8px 18px; font-size: 14px; font-weight: 600; cursor: pointer; border-radius: 0; }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+  form.add { display: flex; gap: 8px; margin-bottom: 24px; max-width: 760px; }
+  input[type=url], input[type=text] { flex: 1; background: var(--card); color: var(--text);
     border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
   button { background: var(--accent); color: #04121f; border: 0; border-radius: 8px;
     padding: 10px 18px; font-weight: 600; cursor: pointer; font-size: 14px; }
   button:hover { filter: brightness(1.1); }
   button.ghost { background: transparent; color: var(--accent);
     border: 1px solid var(--accent); padding: 6px 12px; font-size: 13px; }
-  select, input[type=range] { background: var(--card); color: var(--text);
+  button.danger { background: transparent; color: var(--err);
+    border: 1px solid var(--err); padding: 6px 12px; font-size: 13px; }
+  select, input[type=range], input[type=number] { background: var(--card); color: var(--text);
     border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 13px; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
   .card { background: var(--card); border: 1px solid var(--border);
@@ -54,18 +60,48 @@
   .opts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
           margin: 10px 0; font-size: 13px; color: var(--dim); }
   .pct { color: var(--text); min-width: 38px; display: inline-block; }
+  /* Tổng quan */
+  .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
+  .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+          padding: 16px; }
+  .stat .num { font-size: 26px; font-weight: 700; }
+  .stat .lbl { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .stat.warn .num { color: var(--warn); }
+  /* Cấu hình */
+  .cfg { max-width: 620px; }
+  .cfg .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .cfg label { width: 190px; color: var(--dim); font-size: 13px; }
+  .cfg input, .cfg select { flex: 1; }
+  .note { color: var(--dim); font-size: 12px; margin: 12px 0; }
+  #cfgmsg { color: var(--ok); font-size: 13px; margin-left: 10px; }
 </style>
 </head>
 <body>
   <h1>🎬 FlowApp</h1>
-  <div class="sub">Tải → dịch → lồng tiếng → phụ đề, tự động toàn bộ</div>
+  <div class="sub">Tải → dịch → lồng tiếng 2 giọng → phụ đề, tự động toàn bộ</div>
 
-  <form id="f">
-    <input type="url" id="url" placeholder="Dán link video (YouTube / Bilibili / Douyin...)" required>
-    <button>＋ Thêm job</button>
-  </form>
+  <nav>
+    <button id="tab-over" onclick="showTab('over')">📊 Tổng quan</button>
+    <button id="tab-jobs" class="active" onclick="showTab('jobs')">🎞 Jobs</button>
+    <button id="tab-cfg"  onclick="showTab('cfg')">⚙️ Cấu hình</button>
+  </nav>
 
-  <div class="grid" id="jobs"></div>
+  <div id="pane-over" style="display:none">
+    <div class="stats" id="stats"></div>
+    <div class="note">Chi phí dịch là ước tính theo số câu (~$0.001/câu với Haiku). Số liệu cập nhật mỗi 10 giây.</div>
+  </div>
+
+  <div id="pane-jobs">
+    <form class="add" id="f">
+      <input type="url" id="url" placeholder="Dán link video (YouTube / Bilibili / Douyin...)" required>
+      <button>＋ Thêm job</button>
+    </form>
+    <div class="grid" id="jobs"></div>
+  </div>
+
+  <div id="pane-cfg" style="display:none">
+    <div class="card cfg" id="cfgform"></div>
+  </div>
 
 <script>
 const STAGES = [
@@ -73,14 +109,85 @@ const STAGES = [
   ["extracting",   "Tách audio"],
   ["transcribing", "Transcript (OCR/Whisper)"],
   ["translating",  "Dịch tiếng Việt"],
-  ["tts",          "Đọc giọng (TTS)"],
+  ["tts",          "Đọc giọng (TTS 2 giọng)"],
   ["bgm",          "Xử lý nhạc nền"],
   ["mixing",       "Mix audio"],
   ["rendering",    "Render video"],
   ["metadata",     "Metadata"],
 ];
+const FONTS = ["Arial", "Tahoma", "Verdana", "Segoe UI", "Calibri", "Times New Roman"];
+const CFG_FIELDS = [
+  ["CLAUDE_MODEL", "Model dịch", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"]],
+  ["TTS_VOICE", "Giọng nam (mặc định)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]],
+  ["TTS_VOICE_NU", "Giọng nữ", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]],
+  ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
+  ["TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"]],
+  ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "burn", "none"]],
+  ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
+];
 let lastJson = {};
 
+function showTab(name) {
+  for (const t of ["over", "jobs", "cfg"]) {
+    document.getElementById("pane-" + t).style.display = t === name ? "" : "none";
+    document.getElementById("tab-" + t).classList.toggle("active", t === name);
+  }
+  if (name === "over") refreshStats();
+  if (name === "cfg") loadConfig();
+}
+
+/* ---------- Tổng quan ---------- */
+async function refreshStats() {
+  if (document.getElementById("pane-over").style.display === "none") return;
+  let s;
+  try { s = await (await fetch("/api/stats")).json(); } catch (e) { return; }
+  const lowDisk = s.disk_free_gb < 20;
+  const cards = [
+    [s.jobs_total, "Tổng job"],
+    [s.jobs_done, "Hoàn thành"],
+    [s.jobs_failed, "Lỗi"],
+    [s.jobs_active, "Đang chạy / chờ"],
+    [s.video_minutes + "′", "Phút video đã xử lý"],
+    [s.segments_translated.toLocaleString(), "Câu đã dịch"],
+    ["$" + s.est_cost_usd, "Chi phí dịch (ước tính)"],
+    [s.jobs_size_gb + " GB", "Dung lượng data/jobs"],
+    [s.disk_free_gb + " GB", "Ổ đĩa còn trống", lowDisk],
+  ];
+  document.getElementById("stats").innerHTML = cards.map(([n, l, warn]) =>
+    `<div class="stat${warn ? " warn" : ""}"><div class="num">${n}</div><div class="lbl">${l}</div></div>`
+  ).join("");
+}
+
+/* ---------- Cấu hình ---------- */
+async function loadConfig() {
+  const c = await (await fetch("/api/config")).json();
+  let html = "<h3 style='margin-bottom:14px'>Cấu hình (.env) — áp dụng cho job chạy mới</h3>";
+  for (const [key, label, options] of CFG_FIELDS) {
+    const val = c.values[key] || "";
+    const opts = options.includes(val) ? options : [val, ...options];
+    html += `<div class="frow"><label>${label}</label>
+      <select id="cfg-${key}">${opts.map(o =>
+        `<option ${o === val ? "selected" : ""}>${o}</option>`).join("")}</select></div>`;
+  }
+  html += `<div class="note">API key: ${c.api_key_set
+      ? "✓ đã thiết lập (muốn đổi thì sửa trực tiếp file .env)"
+      : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</div>
+    <div class="row"><button onclick="saveConfig()">💾 Lưu cấu hình</button><span id="cfgmsg"></span></div>`;
+  document.getElementById("cfgform").innerHTML = html;
+}
+
+async function saveConfig() {
+  const body = {};
+  for (const [key] of CFG_FIELDS)
+    body[key] = document.getElementById("cfg-" + key).value;
+  const res = await fetch("/api/config", { method: "POST",
+    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  document.getElementById("cfgmsg").textContent =
+    res.ok ? "✓ Đã lưu — job mới sẽ dùng cấu hình này" : "Lỗi khi lưu";
+  setTimeout(() => document.getElementById("cfgmsg").textContent = "", 4000);
+}
+
+/* ---------- Jobs ---------- */
 function badge(j) {
   if (j.stage === "done")   return '<span class="badge done">✅ Hoàn thành</span>';
   if (j.stage === "failed") return '<span class="badge fail">⚠️ Lỗi</span>';
@@ -100,8 +207,6 @@ function stageList(j) {
     return `<li class="${cls}">${label}${extra}</li>`;
   }).join("") + "</ul>";
 }
-
-const FONTS = ["Arial", "Tahoma", "Verdana", "Segoe UI", "Calibri", "Times New Roman"];
 
 function settingsPanel(j) {
   const r = j.render || {};
@@ -170,6 +275,9 @@ function cardHtml(j) {
   if (j.stage !== "done" && !j.queued && !j.running)
     html += `<button class="ghost" onclick="resumeJob('${j.id}')">↻ Chạy tiếp</button>`;
   if (j.has_srt) html += `<a href="/api/jobs/${j.id}/srt">⬇ sub_vi.srt</a>`;
+  html += `<button class="ghost" onclick="openJob('${j.id}')">📂 Mở thư mục</button>`;
+  if (!j.queued && !j.running)
+    html += `<button class="danger" onclick="deleteJob('${j.id}')">🗑 Xóa</button>`;
   html += '</div>';
   if (j.has_final || j.completed_stages.includes("downloading"))
     html += settingsPanel(j);
@@ -190,10 +298,8 @@ async function refresh() {
       card.className = "card";
       card.id = "card-" + j.id;
       grid.appendChild(card);
-      grid.prepend(card);
     }
     const json = JSON.stringify(j);
-    // không vẽ lại khi nội dung không đổi hoặc đang mở panel chỉnh
     if (lastJson[j.id] === json) continue;
     if (card.querySelector("details[open]")) continue;
     card.innerHTML = cardHtml(j);
@@ -245,9 +351,9 @@ async function previewJob(id) {
 }
 
 async function rerenderJob(id) {
-  const o = readOpts(id);
   await fetch(`/api/jobs/${id}/rerender`, { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify(o) });
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(readOpts(id)) });
   document.querySelector(`#card-${id} details`)?.removeAttribute("open");
   delete lastJson[id];
   refresh();
@@ -258,8 +364,21 @@ async function resumeJob(id) {
   refresh();
 }
 
+async function openJob(id) {
+  await fetch(`/api/jobs/${id}/open`, { method: "POST" });
+}
+
+async function deleteJob(id) {
+  if (!confirm(`Xóa job ${id}?\nToàn bộ video/audio/transcript của job này sẽ bị xóa khỏi ổ đĩa.`)) return;
+  const res = await fetch(`/api/jobs/${id}`, { method: "DELETE" });
+  if (!res.ok) alert((await res.json()).detail || "Không xóa được");
+  delete lastJson[id];
+  refresh();
+}
+
 refresh();
 setInterval(refresh, 3000);
+setInterval(refreshStats, 10000);
 </script>
 </body>
 </html>
