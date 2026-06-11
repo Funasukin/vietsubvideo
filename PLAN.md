@@ -13,7 +13,7 @@
 
 **Ngoài phạm vi (giai đoạn đầu):** lip-sync, lồng tiếng đa nhân vật.
 
-**Bổ sung 2026-06-11 — Dashboard web local** (`webui/`, chạy bằng `webui.bat`, port 8790): theo dõi job theo checklist từng stage, thêm job bằng dán link, resume job dở, xem video + tải .srt ngay trong trình duyệt. Hàng đợi job tuần tự trong server — Phase 2 bot Telegram sẽ dùng chung cơ chế này.
+**Bổ sung 2026-06-11 — Dashboard web local** (`webui/`, chạy bằng `run.bat` — tự bootstrap venv/thư viện/.env lần đầu, port 8790): theo dõi job theo checklist từng stage, thêm job bằng dán link, resume job dở, xem video + tải .srt ngay trong trình duyệt. Hàng đợi job tuần tự trong server — Phase 2 bot Telegram sẽ dùng chung cơ chế này.
 
 ## 2. Nguyên tắc thiết kế
 

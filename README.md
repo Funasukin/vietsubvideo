@@ -13,20 +13,14 @@ Yêu cầu: Python 3.13+ ([python.org](https://python.org)), FFmpeg trong PATH
 ```powershell
 git clone https://github.com/Funasukin/vietsubvideo.git
 cd vietsubvideo
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-
-# cấu hình: copy rồi điền ANTHROPIC_API_KEY (console.anthropic.com)
-copy .env.example .env
-notepad .env
-
-# kiểm tra API key hoạt động
-.venv\Scripts\python scripts\check_api.py
+.\run.bat   # tự tạo venv + cài thư viện + tạo .env (điền ANTHROPIC_API_KEY khi notepad mở ra)
 ```
+
+Lần sau chỉ cần double-click `run.bat`. Kiểm tra API key: `.venv\Scripts\python scripts\check_api.py`
 
 ## Sử dụng
 
-**Dashboard (khuyên dùng):** chạy `webui.bat` → mở http://127.0.0.1:8790 — 3 tab:
+**Dashboard (khuyên dùng):** chạy `run.bat` → mở http://127.0.0.1:8790 — 3 tab:
 - **Tổng quan**: sản lượng, chi phí dịch ước tính, dung lượng đĩa
 - **Jobs**: dán link tạo job, theo dõi tiến độ từng bước, chỉnh phụ đề/vùng che
   với nút Xem thử, xem video thành phẩm, xóa job dọn đĩa
