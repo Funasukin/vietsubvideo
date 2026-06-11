@@ -158,6 +158,7 @@ data/jobs/20260610_153000_abc123/
   - Đo thực tế tập 12.7 phút: duck + mix + render burn+blur = **135 giây** (trước: 15–20 phút).
   - Lưu ý vận hành: tốc độ máy dao động 4–5 lần theo nhiệt/app khác đang chạy (2 server dev của user); đã tắt sleep khi cắm điện (`powercfg /change standby-timeout-ac 0`) vì máy sleep từng giết tiến trình nền 2 lần.
 - [x] **Phase 1.8 — đa giọng nam/nữ** *(2026-06-11)*: Claude gán nhãn `voice: nam/nu` cho từng câu ngay trong lúc dịch (không cần diarization audio); S5 chọn giọng edge-tts theo nhãn (`TTS_VOICE` / `TTS_VOICE_NU` trong .env). Test tập Wukong: 86 nam / 18 nữ, nhãn đúng vai nhân vật.
+- [x] **Phase 1.9 — vòng review dịch tự động** *(2026-06-11)*: sau khi dịch xong, Claude đọc lại toàn bộ bản dịch với vai biên tập viên, chỉ trả về câu cần sửa (tên riêng lệch giữa batch, xưng hô trôi, câu dịch cứng, voice sai). Bật/tắt qua `REVIEW_TRANSLATION` (.env). `scripts/review_job.py <id>` áp dụng cho job cũ. Test Wukong: sửa 8/104 câu, chi phí thêm ~$0.04.
 - [ ] **Tối ưu còn lại (không chặn Phase 2):**
   - OCR vẫn là nút cổ chai cho video dài (~1.5–2h cho video 1 tiếng tùy tải máy) → cân nhắc GPU (onnxruntime-directml) hoặc máy bàn
   - Nếu chất lượng dịch cần cao hơn nữa → `CLAUDE_MODEL=claude-sonnet-4-6` trong .env

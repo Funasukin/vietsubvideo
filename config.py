@@ -18,6 +18,8 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
 TRANSLATE_BATCH_SIZE = 25   # số segment mỗi lần gọi API
 TRANSLATE_BATCH_OVERLAP = 3  # segment cuối batch trước gửi kèm làm context
+# Vòng review sau dịch: đọc lại toàn bộ, sửa tên riêng/xưng hô lệch giữa các batch
+REVIEW_TRANSLATION = os.getenv("REVIEW_TRANSLATION", "1").lower() not in ("0", "false")
 
 # Transcript (S3)
 TRANSCRIPT_SOURCE = os.getenv("TRANSCRIPT_SOURCE", "auto")  # auto | ocr | whisper

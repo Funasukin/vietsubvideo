@@ -84,6 +84,84 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
     return result
 
 
+REVIEW_SYSTEM = """Bạn là biên tập viên bản dịch thuyết minh phim Trung Quốc. Bạn nhận toàn bộ bản dịch của một tập phim (dịch theo từng đoạn nên có thể lệch nhau) và chỉ trả về những segment CẦN SỬA.
+
+Soát 5 lỗi:
+1. Tên riêng/thuật ngữ không nhất quán giữa các câu (cùng một tên gốc mà chỗ dịch "Thạch Hầu Đại Vương" chỗ "Đá Khỉ Đại Vương") → thống nhất toàn bộ theo phương án Hán-Việt chuẩn nhất.
+2. Xưng hô lệch văn phong cổ trang ("bạn/tôi/anh ấy" → "ngươi/ta/hắn") hoặc đổi cách xưng hô giữa cùng một cặp nhân vật.
+3. Câu dịch bám chữ, cứng, không ai nói vậy ("vô sở không năng" → "không gì không làm được").
+4. Còn sót ký tự Trung/Anh (trừ tên cấp bậc E, SSS...).
+5. Nhãn voice sai rõ ràng so với ngữ cảnh (lời rõ ràng của nữ mà gắn "nam"...).
+
+Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa phải thuần Việt, ngắn gọn vì sẽ đọc TTS. Không có gì cần sửa thì trả mảng rỗng."""
+
+REVIEW_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "fixes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "text_vi": {"type": "string"},
+                },
+                "required": ["id", "text_vi"],
+                "additionalProperties": False,
+            },
+        },
+        "voice_fixes": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "integer"},
+                    "voice": {"type": "string", "enum": ["nam", "nu"]},
+                },
+                "required": ["id", "voice"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["fixes", "voice_fixes"],
+    "additionalProperties": False,
+}
+
+
+def review_pass(client: anthropic.Anthropic, segments: list[dict]) -> list[int]:
+    """Đọc lại toàn bộ bản dịch, sửa tại chỗ các câu lệch. Trả về list id đã sửa."""
+    payload = [{"id": s["id"], "zh": s["text"], "vi": s["text_vi"],
+                "voice": s.get("voice", "nam")} for s in segments]
+    resp = client.messages.create(
+        model=config.CLAUDE_MODEL,
+        max_tokens=8000,
+        system=[{"type": "text", "text": REVIEW_SYSTEM,
+                 "cache_control": {"type": "ephemeral"}}],
+        messages=[{"role": "user", "content":
+                   "Soát bản dịch sau:\n" + json.dumps(payload, ensure_ascii=False)}],
+        output_config={"format": {"type": "json_schema", "schema": REVIEW_SCHEMA}},
+    )
+    text = next(b.text for b in resp.content if b.type == "text")
+    result = json.loads(text)
+
+    by_id = {s["id"]: s for s in segments}
+    changed = []
+    for fix in result["fixes"]:
+        seg = by_id.get(fix["id"])
+        # không nhận bản sửa lại đưa ký tự Trung vào
+        if seg and fix["text_vi"].strip() and not _CJK_RE.search(fix["text_vi"]):
+            if seg["text_vi"] != fix["text_vi"]:
+                seg["text_vi"] = fix["text_vi"]
+                changed.append(fix["id"])
+    for vf in result["voice_fixes"]:
+        seg = by_id.get(vf["id"])
+        if seg and seg.get("voice") != vf["voice"]:
+            seg["voice"] = vf["voice"]
+            if vf["id"] not in changed:
+                changed.append(vf["id"])
+    return sorted(changed)
+
+
 def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
               translated: dict[int, dict], attempts: int = 2) -> None:
     """Dịch lại các câu còn sót ký tự Trung (Haiku thỉnh thoảng bỏ sót từ khó)."""
@@ -123,6 +201,11 @@ def run(job: Job) -> None:
     for seg in segments:
         seg["text_vi"] = translated[seg["id"]]["text_vi"]
         seg["voice"] = translated[seg["id"]]["voice"]
+
+    if config.REVIEW_TRANSLATION:
+        changed = review_pass(client, segments)
+        if changed:
+            print(f"  Review: sửa {len(changed)} câu (nhất quán tên/xưng hô): {changed}")
 
     out_path.write_text(
         json.dumps({"language": data.get("language"), "segments": segments},
