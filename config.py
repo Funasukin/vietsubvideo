@@ -30,8 +30,9 @@ OCR_CROP_TOP = 0.70    # vùng quét: từ 70% chiều cao xuống đáy
 OCR_MIN_CONF = 0.55    # bỏ kết quả OCR dưới ngưỡng tin cậy này
 OCR_WORKERS = int(os.getenv("OCR_WORKERS", "6"))  # số tiến trình OCR song song (mỗi cái 2 luồng)
 
-# TTS (S5)
-TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")
+# TTS (S5) — giọng theo nhãn voice do Claude gán khi dịch (nam/nu)
+TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")      # nam + mặc định
+TTS_VOICE_NU = os.getenv("TTS_VOICE_NU", "vi-VN-HoaiMyNeural")  # nữ
 TTS_CONCURRENCY = 2   # 4 luồng dễ bị Microsoft throttle trên video dài
 TTS_TIMEOUT_S = 90    # mỗi lần gọi edge-tts; tránh treo vô hạn khi đứt kết nối
 

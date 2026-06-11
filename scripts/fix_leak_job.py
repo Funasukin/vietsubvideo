@@ -22,16 +22,19 @@ data = json.loads(vi_path.read_text(encoding="utf-8"))
 segments = data["segments"]
 
 by_id = {s["id"]: s for s in segments}
-translated = {s["id"]: s["text_vi"] for s in segments}
-bad_before = [i for i, v in translated.items() if re.search(r"[一-鿿]", v)]
+translated = {s["id"]: {"text_vi": s["text_vi"], "voice": s.get("voice", "nam")}
+              for s in segments}
+bad_before = [i for i, t in translated.items() if re.search(r"[一-鿿]", t["text_vi"])]
 print(f"Câu sót chữ Hán: {bad_before}")
 
 client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
 fix_leaks(client, by_id, translated)
 
-changed = [i for i in bad_before if translated[i] != by_id[i]["text_vi"]]
+changed = [i for i in bad_before
+           if translated[i]["text_vi"] != by_id[i]["text_vi"]]
 for s in segments:
-    s["text_vi"] = translated[s["id"]]
+    s["text_vi"] = translated[s["id"]]["text_vi"]
+    s["voice"] = translated[s["id"]]["voice"]
 vi_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 print(f"Đã dịch lại {len(changed)} câu: {changed}")
 

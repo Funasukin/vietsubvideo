@@ -28,7 +28,8 @@ Quy tắc:
 - Hán-Việt chuẩn kiếm hiệp: 刀 → đao (KHÔNG phải "dao"), 剑 → kiếm, 无赖 → vô lại, 灵气 → linh khí, 突破 → đột phá, 废物 → phế vật, SSS级 → cấp SSS.
 - Giữ nguyên số, tên cấp bậc dạng chữ cái (E, SSS...).
 - Tuyệt đối không để sót ký tự Trung/Anh trong bản dịch (trừ tên cấp bậc).
-- Mỗi segment dịch độc lập đúng theo id, không gộp, không tách."""
+- Mỗi segment dịch độc lập đúng theo id, không gộp, không tách.
+- Mỗi segment xác định người nói qua trường "voice": "nam" hoặc "nu" — suy từ ngữ cảnh (tên nhân vật, xưng hô, nội dung thoại). Lời dẫn chuyện, tiêu đề, credit, hoặc không chắc chắn → "nam"."""
 
 SCHEMA = {
     "type": "object",
@@ -40,8 +41,9 @@ SCHEMA = {
                 "properties": {
                     "id": {"type": "integer"},
                     "text_vi": {"type": "string"},
+                    "voice": {"type": "string", "enum": ["nam", "nu"]},
                 },
-                "required": ["id", "text_vi"],
+                "required": ["id", "text_vi", "voice"],
                 "additionalProperties": False,
             },
         }
@@ -53,7 +55,8 @@ SCHEMA = {
 
 def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
                      context: list[tuple[str, str]],
-                     extra_note: str = "") -> dict[int, str]:
+                     extra_note: str = "") -> dict[int, dict]:
+    """→ {id: {"text_vi": ..., "voice": "nam"|"nu"}}"""
     parts = []
     if context:
         ctx = "\n".join(f"- {src} → {vi}" for src, vi in context)
@@ -71,7 +74,9 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
         output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
     )
     text = next(b.text for b in resp.content if b.type == "text")
-    result = {seg["id"]: seg["text_vi"] for seg in json.loads(text)["segments"]}
+    result = {seg["id"]: {"text_vi": seg["text_vi"],
+                          "voice": seg.get("voice", "nam")}
+              for seg in json.loads(text)["segments"]}
 
     missing = [s["id"] for s in batch if s["id"] not in result]
     if missing:
@@ -80,15 +85,15 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
 
 
 def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
-              translated: dict[int, str], attempts: int = 2) -> None:
+              translated: dict[int, dict], attempts: int = 2) -> None:
     """Dịch lại các câu còn sót ký tự Trung (Haiku thỉnh thoảng bỏ sót từ khó)."""
     for _ in range(attempts):
-        bad_ids = [i for i, vi in translated.items() if _CJK_RE.search(vi)]
+        bad_ids = [i for i, t in translated.items() if _CJK_RE.search(t["text_vi"])]
         if not bad_ids:
             return
         batch = [by_id[i] for i in bad_ids]
         translated.update(_translate_batch(client, batch, [], extra_note=_LEAK_NOTE))
-    remaining = [i for i, vi in translated.items() if _CJK_RE.search(vi)]
+    remaining = [i for i, t in translated.items() if _CJK_RE.search(t["text_vi"])]
     if remaining:
         print(f"  ! Còn {len(remaining)} câu sót ký tự Trung sau retry: {remaining}")
 
@@ -102,7 +107,7 @@ def run(job: Job) -> None:
     segments = data["segments"]
 
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY)
-    translated: dict[int, str] = {}
+    translated: dict[int, dict] = {}
     by_id = {s["id"]: s for s in segments}
 
     size = config.TRANSLATE_BATCH_SIZE
@@ -110,13 +115,14 @@ def run(job: Job) -> None:
         batch = segments[start:start + size]
         # context = N câu cuối đã dịch của batch trước
         prev_ids = sorted(translated)[-config.TRANSLATE_BATCH_OVERLAP:]
-        context = [(by_id[i]["text"], translated[i]) for i in prev_ids]
+        context = [(by_id[i]["text"], translated[i]["text_vi"]) for i in prev_ids]
         translated.update(_translate_batch(client, batch, context))
 
     fix_leaks(client, by_id, translated)
 
     for seg in segments:
-        seg["text_vi"] = translated[seg["id"]]
+        seg["text_vi"] = translated[seg["id"]]["text_vi"]
+        seg["voice"] = translated[seg["id"]]["voice"]
 
     out_path.write_text(
         json.dumps({"language": data.get("language"), "segments": segments},

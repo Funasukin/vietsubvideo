@@ -157,6 +157,7 @@ data/jobs/20260610_153000_abc123/
   - S8 burn dùng Intel QuickSync (`h264_qsv`, ~7x realtime) với fallback tự động về libx264.
   - Đo thực tế tập 12.7 phút: duck + mix + render burn+blur = **135 giây** (trước: 15–20 phút).
   - Lưu ý vận hành: tốc độ máy dao động 4–5 lần theo nhiệt/app khác đang chạy (2 server dev của user); đã tắt sleep khi cắm điện (`powercfg /change standby-timeout-ac 0`) vì máy sleep từng giết tiến trình nền 2 lần.
+- [x] **Phase 1.8 — đa giọng nam/nữ** *(2026-06-11)*: Claude gán nhãn `voice: nam/nu` cho từng câu ngay trong lúc dịch (không cần diarization audio); S5 chọn giọng edge-tts theo nhãn (`TTS_VOICE` / `TTS_VOICE_NU` trong .env). Test tập Wukong: 86 nam / 18 nữ, nhãn đúng vai nhân vật.
 - [ ] **Tối ưu còn lại (không chặn Phase 2):**
   - OCR vẫn là nút cổ chai cho video dài (~1.5–2h cho video 1 tiếng tùy tải máy) → cân nhắc GPU (onnxruntime-directml) hoặc máy bàn
   - Nếu chất lượng dịch cần cao hơn nữa → `CLAUDE_MODEL=claude-sonnet-4-6` trong .env

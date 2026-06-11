@@ -25,11 +25,12 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
     # file 0 byte là tàn dư của lần lỗi trước — không được tính là đã xong
     if out.exists() and out.stat().st_size > 0:
         return  # resume
+    voice = config.TTS_VOICE_NU if seg.get("voice") == "nu" else config.TTS_VOICE
     async with sem:
         for attempt in range(1, RETRIES + 1):
             out.unlink(missing_ok=True)
             try:
-                communicate = edge_tts.Communicate(seg["text_vi"], config.TTS_VOICE)
+                communicate = edge_tts.Communicate(seg["text_vi"], voice)
                 await asyncio.wait_for(
                     communicate.save(str(out)), timeout=config.TTS_TIMEOUT_S
                 )
