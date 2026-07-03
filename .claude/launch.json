@@ -4,7 +4,7 @@
     {
       "name": "flowapp",
       "autoPort": false,
-      "runtimeExecutable": "F:\\MyProject\\vietsubvideo\\.venv\\Scripts\\python.exe",
+      "runtimeExecutable": ".venv\\Scripts\\python.exe",
       "runtimeArgs": ["-m", "uvicorn", "webui.server:app", "--host", "127.0.0.1", "--port", "8790"],
       "port": 8790
     }
