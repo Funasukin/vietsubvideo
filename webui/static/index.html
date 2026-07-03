@@ -326,6 +326,7 @@ const CFG_FIELDS = [
   ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
   ["TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"]],
   ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"]],
+  ["SUB_SPLIT", "Nhịp phụ đề", ["1", "0"]],
   ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
   ["OCR_FPS", "Tốc độ OCR", ["1.0", "1.5", "2.0"]],
   ["AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"]],
@@ -536,6 +537,9 @@ async function loadConfig() {
   html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"],
     {soft: "soft — track bật/tắt (nhanh)", cover_only: "cover_only — chỉ che sub gốc, upload .srt riêng lên YouTube",
      burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
+  html += row("SUB_SPLIT", "Nhịp phụ đề", ["1", "0"],
+    {"1": "Tách theo nhịp sub gốc — câu gộp cho giọng đọc được tách hiển thị như bản gốc",
+     "0": "Hiện cả câu — mỗi câu gộp là một block phụ đề dài"});
 
   html += `<h4>Nhận dạng thoại (transcript)</h4>`;
   html += row("TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"],
@@ -1241,6 +1245,7 @@ function readOpts(id) {
     frame_color2: (g("frmc2") && g("frmc2").value) || "#FFFFFF",
     frame_width: (g("frmw") ? parseFloat(g("frmw").value) : 2) / 100,
     frame_pad: !!(g("frmp") && g("frmp").checked),
+    sub_split: g("sspl") ? g("sspl").value === "1" : true,
     wm_method: (g("wmm") && g("wmm").value) || "none",
     wm_box: g("wmx") ? (() => {
       const x = (+g("wmx").value || 0) / 100, y = (+g("wmy").value || 0) / 100;
@@ -1691,6 +1696,9 @@ function edSettingsPanel(data) {
         <option value="cover_only" ${sm === "cover_only" ? "selected" : ""}>Chỉ che sub gốc (upload .srt riêng lên YouTube)</option>
         <option value="burn" ${sm === "burn" ? "selected" : ""}>Vẽ cứng</option>
         <option value="none" ${sm === "none" ? "selected" : ""}>Không</option></select>
+      Nhịp: <select id="sspl-ed" title="Câu gộp cho giọng đọc có tách lại khi HIỂN THỊ phụ đề không">
+        <option value="1" ${(r.sub_split ?? true) ? "selected" : ""}>Tách theo nhịp sub gốc</option>
+        <option value="0" ${(r.sub_split ?? true) ? "" : "selected"}>Hiện cả câu (gộp)</option></select>
       Che sub gốc: <select id="cv-ed" onchange="toggleCoverSliders('ed')">
         <option value="none" ${cv === "none" ? "selected" : ""}>Không che</option>
         <option value="auto" ${cv === "auto" ? "selected" : ""}>Mờ tự động theo sub</option>

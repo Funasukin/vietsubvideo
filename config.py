@@ -156,6 +156,11 @@ KEEP_BGM = os.getenv("KEEP_BGM", "0").lower() not in ("0", "false", "")
 # Mix (S7): tăng tốc tối đa khi audio dịch dài hơn slot gốc
 MAX_SPEEDUP = 1.4
 
+# Nhịp phụ đề (S8): 1 = câu gộp (cho giọng đọc) được TÁCH hiển thị lại theo đúng
+# mốc thời gian từng dòng sub gốc — nhịp như bản gốc | 0 = hiện cả câu gộp.
+# Giọng đọc không bị ảnh hưởng. Job cũ thiếu dữ liệu mốc → tự về cả câu.
+SUB_SPLIT = os.getenv("SUB_SPLIT", "1").strip()
+
 # Phụ đề tiếng Việt (S8): soft = track bật/tắt được (nhanh) | cover_only = chỉ che
 # sub gốc/khung/logo, KHÔNG in sub Việt (upload sub_vi.srt riêng lên YouTube Studio
 # → viewer bật/tắt, không chồng sub) | burn = vẽ cứng vào hình (re-encode, chậm)

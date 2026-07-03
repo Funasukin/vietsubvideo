@@ -76,6 +76,14 @@ def clean_and_merge(segments: list[dict]) -> list[dict]:
             if (gap <= MERGE_GAP_S
                     and seg["end"] - last["start"] <= MERGE_MAX_DUR_S
                     and joined_len <= MERGE_MAX_CHARS):
+                # Giữ MỐC THỜI GIAN + độ dài chữ của TỪNG dòng gốc bị gộp — S8 dùng
+                # để tách câu Việt hiển thị lại theo đúng nhịp sub gốc (sub_split),
+                # trong khi giọng đọc vẫn hưởng câu gộp liền mạch.
+                if "pieces" not in last:
+                    last["pieces"] = [{"start": last["start"], "end": last["end"],
+                                       "len": len(last["text"])}]
+                last["pieces"].append({"start": seg["start"], "end": seg["end"],
+                                       "len": len(seg["text"])})
                 last["text"] = f"{last['text']} {seg['text']}"
                 last["end"] = seg["end"]
                 continue

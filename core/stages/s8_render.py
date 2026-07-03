@@ -41,7 +41,46 @@ def _wrap(text: str) -> str:
     return "\n".join(lines)
 
 
-def make_srt(job: Job) -> None:
+# tách câu Việt tại dấu câu (ưu tiên) để chia theo nhịp sub gốc
+_CLAUSE_SPLIT = re.compile(r"(?<=[,;:.!?…—])\s+")
+
+
+def _split_text(text: str, weights: list[float]) -> list[str] | None:
+    """Chia text thành len(weights) phần theo tỉ trọng, cắt tại dấu câu khi đủ vế
+    (không đủ thì cắt theo từ). None nếu quá ít từ để chia."""
+    n = len(weights)
+    parts = [p for p in _CLAUSE_SPLIT.split(text) if p.strip()]
+    if len(parts) < n:
+        parts = text.split()
+        if len(parts) < n:
+            return None
+    tot_w = sum(weights) or 1.0
+    tot_len = sum(len(p) + 1 for p in parts)
+    out, ci = [], 0
+    for i in range(n):
+        left_parts = len(parts) - ci
+        if i == n - 1:
+            take = left_parts
+        else:
+            target = tot_len * weights[i] / tot_w
+            take, ln = 0, 0.0
+            # luôn chừa đủ mỗi phần sau ≥1 vế; vượt quá nửa vế kế thì dừng
+            while take < left_parts - (n - 1 - i):
+                nxt = len(parts[ci + take]) + 1
+                if take > 0 and ln + nxt / 2 > target:
+                    break
+                ln += nxt
+                take += 1
+            take = max(1, take)
+        out.append(" ".join(parts[ci:ci + take]))
+        ci += take
+    return out
+
+
+def make_srt(job: Job, split: bool = False) -> None:
+    """split=True: câu nào từng bị GỘP từ nhiều dòng sub gốc thì tách chữ Việt ra
+    hiển thị theo đúng mốc thời gian từng dòng (nhịp như bản gốc). Giọng đọc không
+    đổi — vẫn dùng câu gộp. Job cũ không có dữ liệu pieces → tự về hiện cả câu."""
     srt_path = job.dir / "sub_vi.srt"
     if srt_path.exists():
         return
@@ -49,16 +88,27 @@ def make_srt(job: Job) -> None:
     # bỏ câu rỗng và câu bị "Mute" → câu Mute để hoàn toàn nguyên gốc (không phụ đề Việt)
     segs = [s for s in data["segments"] if s["text_vi"].strip() and not s.get("mute")]
 
+    entries: list[tuple[float, float, str]] = []
+    for seg in segs:
+        pieces = seg.get("pieces") or []
+        if split and len(pieces) > 1:
+            texts = _split_text(seg["text_vi"],
+                                [max(1.0, float(p.get("len", 1))) for p in pieces])
+            if texts:
+                entries += [(p["start"], p["end"], t)
+                            for p, t in zip(pieces, texts) if t.strip()]
+                continue
+        entries.append((seg["start"], seg["end"], seg["text_vi"]))
+
     blocks = []
-    for n, seg in enumerate(segs):
-        start = seg["start"]
-        end = max(seg["end"], start + 1.0)  # hiển thị tối thiểu 1s
-        if n + 1 < len(segs):
-            end = min(end, segs[n + 1]["start"] - 0.05)
+    for n, (start, end, text) in enumerate(entries):
+        end = max(end, start + 1.0)  # hiển thị tối thiểu 1s
+        if n + 1 < len(entries):
+            end = min(end, entries[n + 1][0] - 0.05)
         if end <= start:
             end = start + 0.5
         blocks.append(
-            f"{n + 1}\n{_fmt_ts(start)} --> {_fmt_ts(end)}\n{_wrap(seg['text_vi'])}\n"
+            f"{n + 1}\n{_fmt_ts(start)} --> {_fmt_ts(end)}\n{_wrap(text)}\n"
         )
     srt_path.write_text("\n".join(blocks), encoding="utf-8")
 
@@ -193,11 +243,12 @@ def run(job: Job) -> None:
     if out_path.exists():
         return
 
-    make_srt(job)
+    r = job.render or {}
+    # nhịp phụ đề: 1 = tách theo nhịp sub gốc (mặc định) | 0 = hiện cả câu gộp
+    sub_split = str(r.get("sub_split", config.SUB_SPLIT)).strip().lower() in ("1", "true")
+    make_srt(job, split=sub_split)
     source = job.find_source()
     dubbed = job.dir / "dubbed_audio.wav"
-
-    r = job.render or {}
     mode = r.get("subtitle_mode", config.SUBTITLE_MODE)
     cover = r.get("cover", config.COVER_SOURCE_SUBS)
     top = float(r.get("cover_top", config.COVER_TOP))

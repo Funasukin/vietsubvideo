@@ -37,7 +37,8 @@ from core.job import Job, Stage
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "PROSODY",
-                 "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "OCR_WORKERS", "OCR_FPS",
+                 "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "SUB_SPLIT",
+                 "OCR_WORKERS", "OCR_FPS",
                  "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
                  "MUSIC", "MUSIC_VOL", "LOGO", "LOGO_POS", "LOGO_SCALE", "LOGO_OPACITY",
                  "INTRO", "OUTRO", "MASTER",
@@ -244,6 +245,7 @@ class RenderOptions(BaseModel):
     frame_color2: str = "#FFFFFF" # màu 2 (kiểu "viền 2 màu")
     frame_width: float = 0.02     # độ dày viền = tỉ lệ chiều cao
     frame_pad: bool = False       # True = "khung ngoài": thu video vào trong, khung không che hình
+    sub_split: bool = True        # tách phụ đề hiển thị theo nhịp sub gốc (giọng vẫn câu gộp)
     wm_method: str = "none"       # xóa/che watermark kênh gốc: none|delogo|blur|black|logo
     wm_box: list = []             # vùng watermark [x0,y0,x1,y1] chuẩn hóa 0..1
     crop: list = []               # cắt mép [trái,trên,phải,dưới] tỉ lệ 0..0.2 rồi phóng lại
@@ -616,7 +618,7 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
                   "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
                   "frame_pad": opts.frame_pad,
                   "wm_method": opts.wm_method, "wm_box": opts.wm_box,
-                  "crop": opts.crop}
+                  "crop": opts.crop, "sub_split": opts.sub_split}
     job.pause_before_render = False
     for name in ["final.mp4", "sub_vi.srt", "metadata.json"]:
         (job.dir / name).unlink(missing_ok=True)
