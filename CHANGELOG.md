@@ -6,6 +6,27 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (6) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đại tu UX/UI dashboard (mục 5 kế hoạch review — chỉ giao diện, không đổi API)
+
+- **Theme mới**: nền sâu hơn + gradient nhẹ, card có chiều sâu (gradient + hover
+  nổi), nút có transition/focus-ring, scrollbar tối, nav STICKY mờ nền (cuộn
+  danh sách dài không mất tab), logo chữ gradient, max-width 1560px căn giữa.
+- **Thẻ job gọn hẳn**: danh sách stage DỌC 10 dòng → **dải chấm ngang** (1 chấm
+  = 1 bước; xanh = xong, xanh dương nhấp nháy = đang chạy, ĐỎ = bước lỗi — job
+  failed tự suy bước gãy = bước đầu chưa hoàn thành, kèm nhãn "lỗi ở: …"; rê
+  chuột lên chấm xem tên bước). Title kẹp 2 dòng, job id font mono.
+- **Toast thay alert()**: 31 chỗ alert chặn màn hình → toast góc phải dưới,
+  tự tắt 6s, bấm để đóng, màu theo loại (xanh/đỏ/trung tính) tự nhận diện.
+- **Hộp "Thêm video"**: form + upload + series + glossary + cắt video gom vào
+  1 khối addbox có viền — hết cảm giác rời rạc.
+- **Empty state**: lưới job trống → chỉ dẫn thân thiện thay vì trang trắng.
+- Verify bằng screenshot thật từng tab (Jobs/Cấu hình/Series) + DOM inspect
+  toast/chấm stage; node --check sạch; console sạch.
+
+---
+
 ## 2026-07-04 (5) — Desktop (F:\MyProject\vietsubvideo)
 
 ### PLAN 12 #4 — Shorts tự động (`core/shorts.py`) + note phần chưa làm
