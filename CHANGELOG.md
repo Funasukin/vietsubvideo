@@ -6,6 +6,29 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (7) — Desktop (F:\MyProject\vietsubvideo)
+
+### Trang Cấu hình làm lại: full width + helptext từng tùy chọn + rà default
+
+- **Full width, bố cục 2 cột**: mỗi nhóm cấu hình là 1 CARD gập/mở được (CSS
+  columns masonry — màn hẹp tự về 1 cột). Nhóm chính mở sẵn (Dịch/Transcript/
+  TTS/Thương hiệu), nhóm phụ gập (tự mở nếu tính năng đó đang bật). Nút 💾 Lưu
+  thành thanh DÍNH ĐÁY (cuộn tới đâu cũng lưu được) kèm trạng thái API key.
+- **Helptext chi tiết cho TẤT CẢ ~40 tùy chọn** (class .fhelp dưới từng dòng):
+  mô tả nó làm gì, từng option khác nhau thế nào, khi nào nên chỉnh, đánh đổi
+  (vd subtitle_mode giải thích đủ 4 chế độ + lưu ý tự ép burn; TTS engine nói
+  rõ license kiếm tiền; KEEP_BGM nói rõ cần GPU + chậm thêm ~¼ thời lượng...).
+- **Rà default**: đổi duy nhất `MASTER 0→1` (-14 LUFS chuẩn YouTube — các tập
+  đều tiếng, gần như luôn có lợi; đã flip luôn trong .env máy này vì giá trị 0
+  cũ là do bulk-save chứ không phải chủ ý). Các default khác giữ nguyên có chủ
+  đích (haiku=rẻ, whisper small=an toàn CPU, PROSODY/EMOTION bật, transfer tắt
+  chờ thẩm định...) — nay đều có "(khuyên dùng)" trong label + help giải thích.
+- Verify: 51 fhelp render, 9 section đúng trạng thái gập/mở, không thiếu field
+  nào của saveConfig, engine toggle chạy, 2 cột ở ≥1000px / 1 cột màn hẹp
+  (screenshot cả hai), console sạch.
+
+---
+
 ## 2026-07-04 (6) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đại tu UX/UI dashboard (mục 5 kế hoạch review — chỉ giao diện, không đổi API)

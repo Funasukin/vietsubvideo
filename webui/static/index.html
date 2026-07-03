@@ -162,15 +162,39 @@
   .stat .lbl { color: var(--dim); font-size: 12px; margin-top: 2px; }
   .stat.warn .num { color: var(--warn); }
   /* Cấu hình */
-  .cfg { max-width: 620px; }
-  .cfg .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-  .cfg label { width: 190px; color: var(--dim); font-size: 13px; }
-  .cfg input, .cfg select { flex: 1; }
+  /* Trang Cấu hình: FULL WIDTH — các nhóm là card xếp 2 cột (masonry bằng CSS columns) */
+  #cfgform.card { background: none; border: 0; padding: 0; box-shadow: none; }
+  .cfg .frow { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .cfg label { width: 190px; flex-shrink: 0; color: var(--dim); font-size: 13px; }
+  .cfg input, .cfg select { flex: 1; min-width: 0; }
+  .cfgcols { columns: 2 480px; column-gap: 16px; margin-top: 12px; }
+  details.cfgsec { display: inline-block; width: 100%; break-inside: avoid;
+    background: linear-gradient(180deg, var(--card2), var(--card));
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 12px 16px; margin: 0 0 16px; border-top: 1px solid var(--border); }
+  .cfgsec > summary { cursor: pointer; list-style: none; display: flex;
+    align-items: center; gap: 8px; user-select: none; }
+  .cfgsec > summary::-webkit-details-marker { display: none; }
+  .cfgsec > summary::before { content: "▸"; color: var(--dim); font-size: 12px;
+    transition: transform .15s; }
+  .cfgsec[open] > summary::before { transform: rotate(90deg); }
+  .cfgsec h4 { margin: 0; font-size: 12px; text-transform: uppercase;
+    letter-spacing: .6px; color: var(--accent); border: 0; padding: 0; display: inline; }
+  .cfgsec .secbody { margin-top: 12px; }
+  /* help mô tả chi tiết dưới từng tùy chọn */
+  .fhelp { color: var(--dim); font-size: 11.5px; line-height: 1.6;
+           margin: -4px 0 12px 202px; }
+  .fhelp b, .fhelp code { color: var(--text); font-weight: 600; }
   .note { color: var(--dim); font-size: 12px; margin: 12px 0; }
-  #cfgmsg { color: var(--ok); font-size: 13px; margin-left: 10px; }
-  .cfg h4 { margin: 16px 0 10px; font-size: 12px; text-transform: uppercase;
-            letter-spacing: .6px; color: var(--accent);
-            border-top: 1px solid var(--border); padding-top: 14px; }
+  #cfgmsg { color: var(--ok); font-size: 13px; }
+  /* thanh Lưu dính đáy — cuộn tới đâu cũng lưu được */
+  .cfgfoot { position: sticky; bottom: 12px; display: flex; align-items: center;
+    gap: 12px; margin-top: 4px; padding: 10px 16px;
+    background: color-mix(in srgb, var(--card2) 92%, transparent);
+    backdrop-filter: blur(8px); border: 1px solid var(--border2);
+    border-radius: var(--radius); box-shadow: var(--shadow); z-index: 60; }
+  .cfg h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
+            color: var(--accent); }
   .cfg .hint { color: var(--dim); font-size: 11px; margin: -6px 0 10px 202px; }
   .pending-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
                  margin: 10px 0; padding: 10px 14px; background: var(--card);
@@ -651,189 +675,228 @@ async function loadConfig() {
   VOICE_LIST = v.voices || [];
   const eng = V.TTS_ENGINE || "edge";
 
-  // dựng 1 dòng select; labels (tùy chọn) map giá trị -> chữ hiển thị dễ hiểu
-  const row = (key, label, options, labels, attrs) => {
+  // dựng 1 dòng select; labels map giá trị -> chữ dễ hiểu; help = mô tả chi tiết dưới dòng
+  const row = (key, label, options, labels, attrs, help) => {
     const val = V[key] || "";
     const opts = options.includes(val) ? options : [val, ...options];
     const body = opts.map(o =>
       `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${
         esc(labels && labels[o] != null ? labels[o] : o)}</option>`).join("");
     return `<div class="frow"><label>${esc(label)}</label>
-      <select id="cfg-${key}" ${attrs || ""}>${body}</select></div>`;
+      <select id="cfg-${key}" ${attrs || ""}>${body}</select></div>`
+      + (help ? `<div class="fhelp">${help}</div>` : "");
   };
   // ô nhập chữ tự do (khác select) — dùng cho chữ nhắc / chat id / đường dẫn file
-  const textrow = (key, label, ph) =>
+  const textrow = (key, label, ph, help) =>
     `<div class="frow"><label>${esc(label)}</label>
       <input id="cfg-${key}" type="text" value="${esc(V[key] || "")}" placeholder="${esc(ph || "")}"
-        style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+        style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`
+    + (help ? `<div class="fhelp">${help}</div>` : "");
+  // 1 nhóm cấu hình = 1 card gập/mở được (bố cục 2 cột kiểu masonry)
+  const sec = (title, open, body) =>
+    `<details class="cfgsec"${open ? " open" : ""}><summary><h4>${title}</h4></summary>
+     <div class="secbody">${body}</div></details>`;
 
-  let html = "<h3 style='margin-bottom:4px'>Cấu hình (.env) — áp dụng cho job chạy mới</h3>";
+  // ---- Từng nhóm là 1 card (sec) — bố cục 2 cột, mỗi dòng có help mô tả chi tiết ----
 
-  html += `<h4>Dịch &amp; phụ đề</h4>`;
-  html += row("CLAUDE_MODEL", "Model dịch",
-    ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
-    {"claude-haiku-4-5-20251001": "Haiku 4.5 — rẻ, nhanh", "claude-sonnet-4-6": "Sonnet 4.6 — dịch mượt hơn"});
-  html += row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
-    {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"});
-  html += row("TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"],
-    {vi: "Tiếng Việt (mặc định)", en: "English", zh: "中文 — Tiếng Trung", ja: "日本語 — Tiếng Nhật",
-     ko: "한국어 — Tiếng Hàn", es: "Español — Tây Ban Nha", fr: "Français — Pháp",
-     id: "Bahasa Indonesia", th: "ไทย — Tiếng Thái", pt: "Português — Brazil"});
-  html += `<div class="hint">Nguồn transcript = "auto/whisper" tự nhận diện mọi ngôn ngữ. Chọn "Chung" cho phim/video không phải donghua Trung để dịch tự nhiên (không ép Hán-Việt). Ngôn ngữ lồng tiếng ≠ Tiếng Việt: dịch + đọc bằng giọng edge của ngôn ngữ đó; viXTTS/casting giọng clone tạm không áp dụng (chỉ tiếng Việt).</div>`;
-  html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"],
-    {soft: "soft — track bật/tắt (nhanh)", cover_only: "cover_only — chỉ che sub gốc, upload .srt riêng lên YouTube",
-     burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
-  html += row("SUB_SPLIT", "Nhịp phụ đề", ["1", "0"],
-    {"1": "Tách theo nhịp sub gốc — câu gộp cho giọng đọc được tách hiển thị như bản gốc",
-     "0": "Hiện cả câu — mỗi câu gộp là một block phụ đề dài"});
+  const sDich = row("CLAUDE_MODEL", "Model dịch",
+      ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
+      {"claude-haiku-4-5-20251001": "Haiku 4.5 — rẻ, nhanh", "claude-sonnet-4-6": "Sonnet 4.6 — dịch mượt hơn"},
+      "", "Model Claude dịch thoại. <b>Haiku</b> rẻ (~$0.001/câu), đủ tốt cho thoại thường; <b>Sonnet</b> mượt và giữ văn phong tốt hơn với thoại dày/nhiều thuật ngữ, phí ~10 lần.")
+    + row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
+      {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"},
+      "", "Văn phong bản dịch. <b>Donghua</b>: tên riêng ép Hán-Việt (叶凡→Diệp Phàm), xưng hô cổ trang (ngươi/ta/tại hạ). <b>Chung</b>: xưng hô hiện đại, giữ tên gốc — chọn khi làm vlog/tài liệu/phim không phải cổ trang Trung.")
+    + row("TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"],
+      {vi: "Tiếng Việt (mặc định)", en: "English", zh: "中文 — Tiếng Trung", ja: "日本語 — Tiếng Nhật",
+       ko: "한국어 — Tiếng Hàn", es: "Español — Tây Ban Nha", fr: "Français — Pháp",
+       id: "Bahasa Indonesia", th: "ไทย — Tiếng Thái", pt: "Português — Brazil"},
+      "", "Ngôn ngữ ĐÍCH của bản dịch + giọng đọc + phụ đề + metadata. Khác Tiếng Việt: đọc bằng cặp giọng edge của ngôn ngữ đó; viXTTS/casting clone không áp dụng (ElevenLabs thì vẫn dùng được vì đa ngôn ngữ).")
+    + row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"],
+      {soft: "soft — track bật/tắt (nhanh)", cover_only: "cover_only — chỉ che sub gốc, upload .srt riêng",
+       burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"},
+      "", "Cách gắn phụ đề khi render. <b>soft</b>: track bật/tắt được, render nhanh nhất (không re-encode). <b>cover_only</b>: chỉ che sub gốc, KHÔNG in sub Việt — dành cho kiểu upload file .srt riêng lên YouTube để người xem tự bật. <b>burn</b>: vẽ cứng vào hình (re-encode, chậm, không tắt được). Lưu ý: bật che sub gốc / khung viền / logo sẽ tự ép burn.")
+    + row("SUB_SPLIT", "Nhịp phụ đề", ["1", "0"],
+      {"1": "Tách theo nhịp sub gốc", "0": "Hiện cả câu gộp"},
+      "", "Câu bị GỘP từ nhiều dòng sub gốc (cho giọng đọc liền mạch) được tách hiển thị lại đúng nhịp từng dòng như bản gốc. Tắt nếu muốn phụ đề khớp 1:1 với câu giọng đọc (block dài hơn).");
 
-  html += `<h4>Nhận dạng thoại (transcript)</h4>`;
-  html += row("TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"],
-    {auto: "auto — tự chọn theo độ dài", ocr: "ocr — đọc hardsub có sẵn", whisper: "whisper — nghe tiếng"});
-  html += row("WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]);
-  html += row("OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]);
-  html += row("OCR_FPS", "Tốc độ OCR (frame/giây)", ["1.0", "1.5", "2.0"],
-    {"1.0": "1 fps — nhanh gấp đôi", "1.5": "1.5 fps", "2.0": "2 fps — kỹ nhất (mặc định)"});
-  html += row("AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"],
-    {"0": "Tắt — lỗi thì dừng", "1": "1 lần (mặc định)", "2": "2 lần", "3": "3 lần"});
+  const sTrans = row("TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"],
+      {auto: "auto — tự chọn (khuyên dùng)", ocr: "ocr — đọc hardsub có sẵn", whisper: "whisper — nghe tiếng"},
+      "", "Cách lấy lời thoại gốc. <b>auto</b>: video ≤20 phút thử OCR đọc sub cứng trước (chính xác nhất với donghua), dài hơn hoặc không có sub cứng → Whisper nghe tiếng. Ép <b>ocr</b> khi chắc chắn video có hardsub; <b>whisper</b> khi video không có sub.")
+    + row("WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"], null,
+      "", "Model nghe tiếng khi không có hardsub, to hơn = chính xác hơn + chậm hơn. Máy CPU: <b>small</b> là điểm cân bằng. Máy GPU (đặt WHISPER_DEVICE=cuda trong .env): <b>large-v3</b> chính xác nhất, ~8× realtime trên RTX 3070.")
+    + row("OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"], null,
+      "", "Số tiến trình OCR chạy song song — đặt xấp xỉ số nhân CPU (6 hợp máy 8 nhân). Tăng quá số nhân không nhanh thêm.")
+    + row("OCR_FPS", "Tốc độ OCR (frame/giây)", ["1.0", "1.5", "2.0"],
+      {"1.0": "1 fps — nhanh gấp đôi", "1.5": "1.5 fps", "2.0": "2 fps — kỹ nhất"},
+      "", "Số khung hình quét chữ mỗi giây. 2 fps bắt được cả sub hiện cực ngắn; 1 fps nhanh gấp đôi và vẫn đủ cho sub ≥2 giây (đa số phim). Video dài OCR chậm → giảm xuống 1.")
+    + row("AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"],
+      {"0": "Tắt — lỗi thì dừng", "1": "1 lần (khuyên dùng)", "2": "2 lần", "3": "3 lần"},
+      "", "Job lỗi tự xếp lại cuối hàng chạy tiếp từ checkpoint — cứu được lỗi TẠM THỜI (mạng chập chờn, API quá tải). Lỗi cố định (video hỏng, hết quota) vẫn sẽ lỗi lại rồi dừng hẳn.");
 
-  // Nhóm ít đụng tới → gập lại cho tab Cấu hình gọn (mở nếu đã bật tính năng đó)
-  html += `<details ${V.DIARIZE === "1" ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Nhận diện người nói (diarization)</h4></summary>`;
-  html += row("DIARIZE", "Nhận diện người nói", ["0", "1"],
-    {"0": "Tắt", "1": "Bật — phân cụm giọng thật trong audio (cần pyannote + HF token)"});
-  html += row("DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"],
-    {"0": "0 — tự đoán"});
-  html += `<div class="frow"><label>HuggingFace token</label>
-    <input id="cfg-HF_TOKEN" type="password" autocomplete="off"
-      placeholder="${c.hf_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'hf_... (huggingface.co/settings/tokens)'}"
-      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
-  html += `<div class="hint">Cụm giọng thật → Claude gán nhân vật nhất quán; engine viXTTS còn tự chia mỗi người nói một clip giọng riêng (sửa được trong speakers.json của job). Cần <b>pip install pyannote.audio</b> (khuyến nghị desktop GPU) và chấp nhận điều khoản model <b>pyannote/segmentation-3.0</b> + <b>pyannote/speaker-diarization-3.1</b> trên huggingface.co. ${c.hf_token_set ? "✓ Token đã lưu." : "Chưa lưu token."}</div>`;
+  const sDiar = row("DIARIZE", "Nhận diện người nói", ["0", "1"],
+      {"0": "Tắt", "1": "Bật — phân cụm giọng thật trong audio"},
+      "", "Phân cụm NGƯỜI NÓI thật từ audio (pyannote): Claude gán nhân vật nhất quán hơn, engine viXTTS tự chia mỗi người một giọng riêng (sửa được trong speakers.json của job). Cần: <b>pip install pyannote.audio</b> + HF token + bấm đồng ý điều khoản 2 model <b>pyannote/segmentation-3.0</b> và <b>speaker-diarization-3.1</b> trên huggingface.co. Khuyến nghị máy GPU.")
+    + row("DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"],
+      {"0": "0 — tự đoán"},
+      "", "Biết trước video có mấy người nói thì đặt đúng số đó — phân cụm chính xác hơn hẳn để máy tự đoán.")
+    + `<div class="frow"><label>HuggingFace token</label>
+      <input id="cfg-HF_TOKEN" type="password" autocomplete="off"
+        placeholder="${c.hf_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'hf_... (huggingface.co/settings/tokens)'}"
+        style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>
+      <div class="fhelp">Token cá nhân HuggingFace để tải model pyannote. ${c.hf_token_set ? "✓ Token đã lưu." : "Chưa lưu token."}</div>`;
 
-  html += `</details><h4>Lồng tiếng (TTS)</h4>`;
-  html += row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"],
-    {edge: "edge — nhanh, online (Microsoft) · KHÔNG kiếm tiền được",
-     vixtts: "vixtts — nhân bản giọng, GPU · KHÔNG kiếm tiền được",
-     elevenlabs: "ElevenLabs — trả phí (~$22/th), giống người nhất, đa ngôn ngữ ✓ kiếm tiền",
-     vbee: "VBee — trả phí (VN), giọng đọc truyện chuẩn ✓ kiếm tiền",
-     fpt: "FPT.AI — trả phí (VN), rẻ ✓ kiếm tiền"},
-    'onchange="applyEngineUI()"');
-  html += row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "1"],
-    {"0": "Tắt — hạ nhỏ audio gốc khi có thoại", "1": "Bật — tách giọng Trung bằng demucs (GPU)"});
-  html += row("VOICE_FX", "Xử lý giọng",
-    ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
-    {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
-     rosang: "Rõ / sáng", dienanh: "Điện ảnh", toithieu: "Tối thiểu"});
-  html += `<div class="hint">EQ + nén + chuẩn độ to áp NGAY khi render job mới (khỏi xử lý hậu kỳ lại). Áp cho cả edge &amp; viXTTS.</div>`;
-  html += row("PROSODY", "Tông giọng theo audio gốc", ["1", "0"],
-    {"1": "Bật — đo cao độ/tốc độ/độ to giọng gốc từng câu, chỉnh giọng đọc theo", "0": "Tắt — giọng đọc trung tính"});
-  html += row("EMOTION", "Nhãn cảm xúc khi dịch", ["1", "0"],
-    {"1": "Bật — Claude gắn nhãn (gấp/giận/buồn/thì thầm) → giọng đọc có sắc thái", "0": "Tắt"});
-  html += row("PROSODY_TRANSFER", "Chuyển ngữ điệu gốc (thử nghiệm)", ["0", "1"],
-    {"0": "Tắt (mặc định)", "1": "Bật — ép dáng đường lên-xuống giọng của câu gốc lên giọng đọc (PSOLA)"});
-  html += `<div class="hint">Hai tầng bổ trợ nhau: <b>tông giọng</b> đo từ audio gốc (khách quan), <b>nhãn cảm xúc</b> Claude suy từ lời thoại (bắt sắc thái audio không thấy). Giọng edge: cộng chỉnh rate/pitch/volume; viXTTS: nhãn chọn clip mẫu hợp cảm xúc trong voices/ (giận→nhanh, buồn→chậm; casting nhân vật vẫn thắng). Đo bảo thủ — mơ hồ thì giữ trung tính.</div>`;
-
-  // Bộ giọng edge-tts (chỉ dùng khi engine = edge)
-  html += `<div id="edge-voices">
-    <div class="hint">Dùng khi engine = edge.</div>`;
-  html += row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]);
-  html += row("TTS_VOICE_NU", "Giọng nữ (edge-tts)", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]);
-  html += `</div>`;
-
-  // Thư viện + casting viXTTS (chỉ dùng khi engine = vixtts)
+  // Bộ giọng edge (chỉ hiện khi engine = edge)
   const vopt = (sel) => `<option value="">(giọng mặc định model)</option>` + VOICE_LIST.map(x =>
     `<option value="${esc(x.file)}" ${x.file === sel ? "selected" : ""}>${esc(x.name)}</option>`).join("");
-  html += `<div id="vixtts-voices">
-    <div class="hint">Dùng khi engine = vixtts. Mỗi clip trong <code>voices/</code> = một giọng nhân bản.</div>
-    <div class="frow"><label>Giọng nam (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NAM">${vopt(v.nam)}</select></div>
-    <div class="frow"><label>Giọng nữ (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NU">${vopt(v.nu)}</select></div>
-    <div class="vlist">${VOICE_LIST.length
-        ? VOICE_LIST.map((x, i) => `<div class="vrow"><span>${esc(x.name)}</span>
-            <button class="ghost" type="button" onclick="playVoice(${i})">🔊 Nghe</button></div>`).join("")
-        : '<span class="meta">Chưa có giọng nào trong voices/ — thả clip 6–10s (.wav/.mp3) vào rồi bấm Tải lại.</span>'}</div>
-    <div class="row">
-      <button class="ghost" type="button" onclick="stopVoice()">⏹ Ngừng đọc</button>
-      <button class="ghost" type="button" onclick="openVoices()">📂 Mở thư mục voices</button>
-      <button class="ghost" type="button" onclick="reloadConfig()">↻ Tải lại</button></div>
-  </div>`;
-
-  // PLAN 11 C/D — engine TRẢ PHÍ (an toàn bản quyền để kiếm tiền). Key = bí mật:
-  // input password, chỉ gửi khi nhập; server không bao giờ trả key về.
   const keyInput = (id, isSet, ph) =>
     `<input id="cfg-${id}" type="password" autocomplete="off"
       placeholder="${isSet ? '•••• đã đặt (để trống = giữ nguyên)' : esc(ph)}"
-      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit">`;
-  html += `<div id="elevenlabs-voices">
-    <div class="frow"><label>API key ElevenLabs</label>${keyInput("ELEVENLABS_API_KEY", c.elevenlabs_key_set, "xi-api-key từ elevenlabs.io")}</div>`;
-  html += textrow("ELEVENLABS_VOICE_NAM", "Voice ID nam", "vd pNInz6obpgDQGcFmaJgB (Adam)");
-  html += textrow("ELEVENLABS_VOICE_NU", "Voice ID nữ", "vd 21m00Tcm4TlvDq8ikWAM (Rachel)");
-  html += `<div class="hint">~$22/tháng (gói Creator ≈ 7–8 tập/tháng), giọng giống người nhất, đọc được đa ngôn ngữ (dùng cho mọi Ngôn ngữ lồng tiếng). Lấy voice id ở elevenlabs.io → Voices. ${c.elevenlabs_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div></div>`;
-  html += `<div id="vbee-voices">
-    <div class="frow"><label>VBee token</label>${keyInput("VBEE_TOKEN", c.vbee_token_set, "Bearer token từ vbee.vn/console")}</div>`;
-  html += textrow("VBEE_APP_ID", "VBee App ID", "app id trong console VBee");
-  html += textrow("VBEE_VOICE_NAM", "Voice code nam", "vd hn_male_manhdung_news_48k-fhg");
-  html += textrow("VBEE_VOICE_NU", "Voice code nữ", "vd hn_female_ngochuyen_full_48k-fhg");
-  html += `<div class="hint">Dịch vụ VN chuyên giọng đọc truyện/thuyết minh (chỉ tiếng Việt). Đăng ký vbee.vn → console lấy token + app id; voice code xem danh sách giọng của VBee. ${c.vbee_token_set ? "✓ Token đã lưu." : "Chưa có token."}</div></div>`;
-  html += `<div id="fpt-voices">
-    <div class="frow"><label>API key FPT.AI</label>${keyInput("FPT_TTS_API_KEY", c.fpt_key_set, "api-key từ fpt.ai (TTS)")}</div>`;
-  html += textrow("FPT_VOICE_NAM", "Giọng nam", "leminh | minhquang | thanhtung");
-  html += textrow("FPT_VOICE_NU", "Giọng nữ", "banmai | thuminh | myan | giahuy...");
-  html += `<div class="hint">Rẻ nhất nhóm trả phí (chỉ tiếng Việt). Lấy key ở fpt.ai → Text to Speech. ${c.fpt_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div></div>`;
+      style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit">`;
 
-  html += `<h4>Thương hiệu / xuất bản (áp cho job mới)</h4>
-    <div class="hint">Đặt file vào thư mục <code>music/</code> · <code>logo/</code> · <code>clips/</code> (cạnh app) → chọn ở đây.</div>`;
+  const sTts = row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"],
+      {edge: "edge — miễn phí, online (Microsoft) · KHÔNG kiếm tiền được",
+       vixtts: "vixtts — nhân bản giọng, GPU · KHÔNG kiếm tiền được",
+       elevenlabs: "ElevenLabs — trả phí (~$22/th), giống người nhất ✓ kiếm tiền",
+       vbee: "VBee — trả phí (VN), giọng đọc truyện chuẩn ✓ kiếm tiền",
+       fpt: "FPT.AI — trả phí (VN), rẻ ✓ kiếm tiền"},
+      'onchange="applyEngineUI()"',
+      "Bộ máy đọc giọng. <b>edge/vixtts miễn phí nhưng license KHÔNG cho dùng trong video bật kiếm tiền</b>; 3 engine trả phí license thương mại rõ ràng — chọn engine nào thì khối cấu hình key của nó hiện bên dưới. Câu đã cast giọng nhân vật (Series) luôn đọc bằng viXTTS clone bất kể engine.")
+    + row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "1"],
+      {"0": "Tắt — hạ nhỏ audio gốc khi có thoại", "1": "Bật — tách giọng gốc bằng demucs (GPU)"},
+      "", "Bật: tách hẳn giọng nói gốc ra khỏi nhạc/hiệu ứng (demucs, cần GPU + chậm thêm ~¼ thời lượng) → nền giữ trọn vẹn, đo tông giọng cũng chính xác hơn. Tắt: chỉ hạ nhỏ toàn bộ audio gốc lúc có thoại — nhanh, không cần GPU.")
+    + row("VOICE_FX", "Xử lý giọng",
+      ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
+      {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
+       rosang: "Rõ / sáng", dienanh: "Điện ảnh", toithieu: "Tối thiểu"},
+      "", "EQ + nén + chuẩn độ to cho giọng đọc, áp ngay khi render. <b>Cân bằng</b> là khởi đầu tốt; <b>Điện ảnh</b> dày và kịch tính; <b>Rõ/sáng</b> cho giọng bị tối. Áp cho mọi engine.")
+    + row("PROSODY", "Tông giọng theo audio gốc", ["1", "0"],
+      {"1": "Bật (khuyên dùng)", "0": "Tắt — giọng đọc trung tính"},
+      "", "Đo cao độ / tốc độ / độ to từng câu GỐC so với mức nền của người nói → chỉnh giọng đọc theo (câu quát → đọc dồn cao giọng, câu trầm → chậm lại). Đo bảo thủ: mơ hồ (nhạc nền lấn) thì giữ trung tính.")
+    + row("EMOTION", "Nhãn cảm xúc khi dịch", ["1", "0"],
+      {"1": "Bật (khuyên dùng)", "0": "Tắt"},
+      "", "Claude gắn nhãn cảm xúc từng câu (gấp/giận/buồn/thì thầm) ngay khi dịch → giọng edge chỉnh thêm nhịp/cao độ/âm lượng, viXTTS chọn clip mẫu hợp cảm xúc. Bổ trợ cho «Tông giọng»: bắt được sắc thái audio không lộ (mỉa mai, đe dọa nói nhỏ...).")
+    + row("PROSODY_TRANSFER", "Chuyển ngữ điệu gốc", ["0", "1"],
+      {"0": "Tắt (mặc định — thử nghiệm)", "1": "Bật — ép dáng ngữ điệu gốc lên giọng đọc"},
+      "", "Thử nghiệm: ép cả DÁNG đường lên-xuống giọng của câu gốc lên giọng đọc (Praat PSOLA) — câu gốc lên giọng cuối câu thì bản đọc cũng vậy. Bật rồi chạy thử 1 job để nghe thẩm định; đổi lại chỉ những câu bị ảnh hưởng phải đọc lại.")
+    + `<div id="edge-voices">`
+    + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
+      "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu).")
+    + row("TTS_VOICE_NU", "Giọng nữ (edge-tts)", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"], null,
+      "", "Giọng đọc các câu gắn nhãn NỮ khi engine = edge.")
+    + `</div>`
+    + `<div id="vixtts-voices">
+      <div class="frow"><label>Giọng nam (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NAM">${vopt(v.nam)}</select></div>
+      <div class="frow"><label>Giọng nữ (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NU">${vopt(v.nu)}</select></div>
+      <div class="fhelp">Mỗi clip 6–10 giây trong thư mục <code>voices/</code> = một giọng nhân bản. Nghe thử bên dưới rồi chọn giọng mặc định nam/nữ.</div>
+      <div class="vlist">${VOICE_LIST.length
+          ? VOICE_LIST.map((x, i) => `<div class="vrow"><span>${esc(x.name)}</span>
+              <button class="ghost" type="button" onclick="playVoice(${i})">🔊 Nghe</button></div>`).join("")
+          : '<span class="meta">Chưa có giọng nào trong voices/ — thả clip 6–10s (.wav/.mp3) vào rồi bấm Tải lại.</span>'}</div>
+      <div class="row">
+        <button class="ghost" type="button" onclick="stopVoice()">⏹ Ngừng đọc</button>
+        <button class="ghost" type="button" onclick="openVoices()">📂 Mở thư mục voices</button>
+        <button class="ghost" type="button" onclick="reloadConfig()">↻ Tải lại</button></div>
+    </div>`
+    + `<div id="elevenlabs-voices">
+      <div class="frow"><label>API key ElevenLabs</label>${keyInput("ELEVENLABS_API_KEY", c.elevenlabs_key_set, "xi-api-key từ elevenlabs.io")}</div>
+      <div class="fhelp">~$22/tháng (gói Creator ≈ 7–8 tập). Giống người nhất, đọc được đa ngôn ngữ. ${c.elevenlabs_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div>`
+    + textrow("ELEVENLABS_VOICE_NAM", "Voice ID nam", "vd pNInz6obpgDQGcFmaJgB (Adam)",
+      "Voice ID lấy ở elevenlabs.io → Voices (mặc định sẵn Adam).")
+    + textrow("ELEVENLABS_VOICE_NU", "Voice ID nữ", "vd 21m00Tcm4TlvDq8ikWAM (Rachel)",
+      "Mặc định sẵn Rachel — đổi voice id bất kỳ trong tài khoản của bạn.")
+    + `</div>`
+    + `<div id="vbee-voices">
+      <div class="frow"><label>VBee token</label>${keyInput("VBEE_TOKEN", c.vbee_token_set, "Bearer token từ vbee.vn/console")}</div>
+      <div class="fhelp">Dịch vụ VN chuyên giọng đọc truyện/thuyết minh (chỉ tiếng Việt). ${c.vbee_token_set ? "✓ Token đã lưu." : "Chưa có token."}</div>`
+    + textrow("VBEE_APP_ID", "VBee App ID", "app id trong console VBee", "Lấy trong console vbee.vn cùng chỗ với token.")
+    + textrow("VBEE_VOICE_NAM", "Voice code nam", "vd hn_male_manhdung_news_48k-fhg", "Mã giọng nam — xem danh sách giọng trong tài liệu VBee.")
+    + textrow("VBEE_VOICE_NU", "Voice code nữ", "vd hn_female_ngochuyen_full_48k-fhg", "Mã giọng nữ VBee.")
+    + `</div>`
+    + `<div id="fpt-voices">
+      <div class="frow"><label>API key FPT.AI</label>${keyInput("FPT_TTS_API_KEY", c.fpt_key_set, "api-key từ fpt.ai (TTS)")}</div>
+      <div class="fhelp">Rẻ nhất nhóm trả phí (chỉ tiếng Việt). Lấy key ở fpt.ai → Text to Speech. ${c.fpt_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div>`
+    + textrow("FPT_VOICE_NAM", "Giọng nam", "leminh | minhquang | thanhtung", "Các giọng nam FPT: leminh, minhquang, thanhtung.")
+    + textrow("FPT_VOICE_NU", "Giọng nữ", "banmai | thuminh | myan | giahuy...", "Các giọng nữ FPT: banmai, thuminh, myan, ngoclam, lannhi...")
+    + `</div>`;
+
   const noneL = {none: "— Không —"};
   const musicOpts = ["none", ...(c.music_files || [])];
   const logoOpts = ["none", ...(c.logo_files || [])];
   const clipOpts = ["none", ...(c.clip_files || [])];
-  html += row("MUSIC", "Nhạc nền (.mp3/.wav)", musicOpts, noneL);
-  html += row("MUSIC_VOL", "Âm lượng nhạc", ["0.08", "0.12", "0.15", "0.20", "0.30"],
-    {"0.08": "8%", "0.12": "12%", "0.15": "15%", "0.20": "20%", "0.30": "30%"});
-  html += row("LOGO", "Logo watermark (.png)", logoOpts, noneL);
-  html += row("LOGO_POS", "Vị trí logo", ["tl", "tr", "bl", "br"],
-    {tl: "Trên-trái", tr: "Trên-phải", bl: "Dưới-trái", br: "Dưới-phải"});
-  html += row("LOGO_SCALE", "Cỡ logo", ["0.08", "0.12", "0.16", "0.20"],
-    {"0.08": "Nhỏ (8%)", "0.12": "Vừa (12%)", "0.16": "Lớn (16%)", "0.20": "Rất lớn (20%)"});
-  html += row("LOGO_OPACITY", "Độ mờ logo", ["0.5", "0.7", "0.85", "1.0"],
-    {"0.5": "50%", "0.7": "70%", "0.85": "85%", "1.0": "100% (đặc)"});
-  html += row("INTRO", "Clip Intro (đầu video)", clipOpts, noneL);
-  html += row("OUTRO", "Clip Outro (cuối video)", clipOpts, noneL);
-  html += row("MASTER", "Master độ to (LUFS)", ["0", "1"],
-    {"0": "Tắt", "1": "Bật — chuẩn -14 LUFS cho YouTube"});
-  html += `<div class="hint">Logo / khung / intro-outro sẽ ép render lại video (chậm hơn, như "vẽ cứng"). Nhạc nền tự hạ nhỏ khi có thoại.</div>`;
+  const sBrand = row("MUSIC", "Nhạc nền (.mp3/.wav)", musicOpts, noneL,
+      "", "Nhạc nền phủ toàn video, TỰ HẠ NHỎ khi có thoại (ducking). Thả file vào thư mục <code>music/</code> cạnh app rồi chọn ở đây. Nhớ dùng nhạc royalty-free.")
+    + row("MUSIC_VOL", "Âm lượng nhạc", ["0.08", "0.12", "0.15", "0.20", "0.30"],
+      {"0.08": "8%", "0.12": "12%", "0.15": "15% (khuyên dùng)", "0.20": "20%", "0.30": "30%"},
+      "", "Âm lượng nhạc nền so với giọng đọc — 12–15% là mức nghe nền dễ chịu, trên 20% dễ lấn thoại.")
+    + row("LOGO", "Logo watermark (.png)", logoOpts, noneL,
+      "", "Logo kênh đóng ở góc video (PNG nền trong suốt, thả vào <code>logo/</code>). Bật logo sẽ ép render burn (chậm hơn chút).")
+    + row("LOGO_POS", "Vị trí logo", ["tl", "tr", "bl", "br"],
+      {tl: "Trên-trái", tr: "Trên-phải", bl: "Dưới-trái", br: "Dưới-phải"},
+      "", "Góc đặt logo. Mẹo: nếu video nguồn có watermark của kênh gốc, dùng tính năng che watermark trong editor rồi đặt logo mình đè đúng góc đó.")
+    + row("LOGO_SCALE", "Cỡ logo", ["0.08", "0.12", "0.16", "0.20"],
+      {"0.08": "Nhỏ (8%)", "0.12": "Vừa (12%)", "0.16": "Lớn (16%)", "0.20": "Rất lớn (20%)"},
+      "", "Bề rộng logo theo % bề rộng video.")
+    + row("LOGO_OPACITY", "Độ mờ logo", ["0.5", "0.7", "0.85", "1.0"],
+      {"0.5": "50%", "0.7": "70%", "0.85": "85% (khuyên dùng)", "1.0": "100% (đặc)"},
+      "", "85% đủ rõ nhận diện mà không che nội dung.")
+    + row("INTRO", "Clip Intro (đầu video)", clipOpts, noneL,
+      "", "Clip chào đầu video — tự ghép + khớp kích thước/fps với video chính. Thả vào <code>clips/</code>.")
+    + row("OUTRO", "Clip Outro (cuối video)", clipOpts, noneL,
+      "", "Clip kết video (kêu gọi đăng ký, giới thiệu tập sau...).")
+    + row("MASTER", "Master độ to (LUFS)", ["1", "0"],
+      {"1": "Bật — chuẩn -14 LUFS YouTube (khuyên dùng)", "0": "Tắt"},
+      "", "Chuẩn hóa độ to CẢ video về -14 LUFS đúng chuẩn YouTube → các tập đều tiếng như nhau, không tập to tập nhỏ. Nên bật khi đăng YouTube.");
 
-  html += `<details><summary style="cursor:pointer"><h4 style="display:inline">Shorts tự động</h4></summary>`;
-  html += row("SHORTS_COUNT", "Số short mỗi lần", ["1", "2", "3", "4", "5"]);
-  html += row("SHORTS_LEN", "Độ dài mục tiêu", ["30", "45", "60"],
-    {"30": "30 giây", "45": "45 giây (mặc định)", "60": "60 giây (trần Shorts)"});
-  html += row("SHORTS_STYLE", "Khung hình", ["vertical", "original"],
-    {vertical: "Dọc 9:16 — video thu giữa, nền tự phóng to làm mờ", original: "Giữ nguyên khung gốc"});
-  html += `<div class="hint">Nút 🎬 Tạo Shorts (menu 📤 của job đã render) cắt các đoạn CAO TRÀO — chấm điểm bằng nhãn cảm xúc + tông giọng đo audio + mật độ thoại, mép cắt bám mép câu. Clip ra ở thư mục <code>shorts/</code> của job kèm caption gợi ý.</div>`;
-  html += `</details><details ${V.DENOISE === "1" || V.SUBSCRIBE === "on" ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Khử ồn &amp; Nhắc Đăng ký</h4></summary>`;
-  html += row("DENOISE", "Khử ồn trước Whisper", ["0", "1"],
-    {"0": "Tắt", "1": "Bật — lọc ồn cho ASR nghe rõ (nguồn ồn/nhạc to)"});
-  html += row("SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"],
-    {off: "Tắt", on: "Bật — hiện banner vài giây đầu video (ép render burn)"});
-  html += textrow("SUBSCRIBE_TEXT", "Chữ nhắc", "Nhớ Like & Đăng ký kênh nhé!");
+  const sShorts = row("SHORTS_COUNT", "Số short mỗi lần", ["1", "2", "3", "4", "5"], null,
+      "", "Số clip Shorts cắt ra mỗi lần bấm 🎬 Tạo Shorts (menu 📤 của job đã render).")
+    + row("SHORTS_LEN", "Độ dài mục tiêu", ["30", "45", "60"],
+      {"30": "30 giây", "45": "45 giây (khuyên dùng)", "60": "60 giây (trần Shorts)"},
+      "", "Độ dài mỗi short. Máy tự chọn các đoạn CAO TRÀO: chấm điểm bằng nhãn cảm xúc + tông giọng + mật độ thoại, mép cắt bám mép câu.")
+    + row("SHORTS_STYLE", "Khung hình", ["vertical", "original"],
+      {vertical: "Dọc 9:16 — chuẩn Shorts (khuyên dùng)", original: "Giữ nguyên khung gốc"},
+      "", "Dọc 9:16: video thu vào giữa, nền là chính nó phóng to làm mờ (kiểu Shorts phổ biến). Clip ra ở thư mục <code>shorts/</code> của job kèm caption gợi ý #Shorts.");
 
-  html += `</details><details ${c.youtube_ready ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Đăng YouTube</h4></summary>`;
-  html += textrow("YOUTUBE_CLIENT_SECRETS", "File OAuth client (.json)", "vd D:\\keys\\client_secret.json");
-  html += row("YOUTUBE_PRIVACY", "Quyền riêng tư khi đăng", ["private", "unlisted", "public"],
-    {private: "Riêng tư (an toàn nhất)", unlisted: "Không công khai (chỉ ai có link)", public: "Công khai"});
-  html += `<div class="hint">Đăng thẳng cần bạn tạo OAuth client ở Google Cloud (bật YouTube Data API v3) rồi trỏ file .json vào đây. ${c.youtube_ready ? "✓ Sẵn sàng đăng thẳng." : "Chưa đủ điều kiện đăng thẳng — vẫn dùng được nút 📦 Gói đăng (kéo-thả)."}</div>`;
+  const sMisc = row("DENOISE", "Khử ồn trước Whisper", ["0", "1"],
+      {"0": "Tắt", "1": "Bật — lọc ồn cho ASR nghe rõ"},
+      "", "Lọc ồn bản audio đưa vào Whisper (KHÔNG đụng audio của video final). Bật khi video nguồn ồn/nhạc to làm nghe sai lời; nguồn sạch thì để tắt.")
+    + row("SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"],
+      {off: "Tắt", on: "Bật — banner vài giây đầu video"},
+      "", "Hiện banner nhắc Like/Đăng ký trong ~6 giây đầu video (ép render burn).")
+    + textrow("SUBSCRIBE_TEXT", "Chữ nhắc", "Nhớ Like & Đăng ký kênh nhé!",
+      "Nội dung chữ trên banner.");
 
-  html += `</details><details ${c.telegram_token_set ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Thông báo Telegram</h4></summary>`;
-  html += textrow("TELEGRAM_CHAT_ID", "Chat ID", "vd 123456789");
-  html += `<div class="frow"><label>Bot token</label>
-    <input id="cfg-TELEGRAM_BOT_TOKEN" type="password" autocomplete="off"
-      placeholder="${c.telegram_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'dán bot token của bạn'}"
-      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
-  html += `<div class="hint">Tạo bot với @BotFather để lấy token; lấy chat id (vd nhắn bot rồi mở api.telegram.org/bot&lt;token&gt;/getUpdates). ${c.telegram_token_set ? "✓ Token đã lưu." : "Chưa lưu token."} Báo khi job xong/lỗi.</div>`;
+  const sYt = textrow("YOUTUBE_CLIENT_SECRETS", "File OAuth client (.json)", "vd D:\\keys\\client_secret.json",
+      "Đường dẫn file OAuth client bạn tạo ở Google Cloud (bật YouTube Data API v3). "
+      + (c.youtube_ready ? "✓ Sẵn sàng đăng thẳng." : "Chưa đủ điều kiện đăng thẳng — vẫn dùng được 📦 Gói đăng kéo-thả."))
+    + row("YOUTUBE_PRIVACY", "Quyền riêng tư khi đăng", ["private", "unlisted", "public"],
+      {private: "Riêng tư (an toàn nhất)", unlisted: "Không công khai (chỉ ai có link)", public: "Công khai"},
+      "", "Trạng thái video khi đăng thẳng bằng nút ▶ Đăng YouTube. Để <b>Riêng tư</b> rồi tự công khai sau khi duyệt là an toàn nhất.");
 
-  html += `</details>`;
-  html += `<div class="note">API key: ${c.api_key_set
-      ? "✓ đã thiết lập (muốn đổi thì sửa trực tiếp file .env)"
-      : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</div>
-    <div class="row"><button onclick="saveConfig()">💾 Lưu cấu hình</button><span id="cfgmsg"></span></div>`;
+  const sTele = textrow("TELEGRAM_CHAT_ID", "Chat ID", "vd 123456789",
+      "ID cuộc trò chuyện nhận thông báo — nhắn bot của bạn 1 tin rồi mở api.telegram.org/bot&lt;token&gt;/getUpdates để thấy chat id.")
+    + `<div class="frow"><label>Bot token</label>
+      <input id="cfg-TELEGRAM_BOT_TOKEN" type="password" autocomplete="off"
+        placeholder="${c.telegram_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'dán bot token của bạn'}"
+        style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>
+      <div class="fhelp">Tạo bot với @BotFather để lấy token. ${c.telegram_token_set ? "✓ Token đã lưu." : "Chưa lưu token."} Báo khi job xong/lỗi (kèm thông báo desktop 🔔 ở đầu trang).</div>`;
+
+  let html = `<h3 style="margin-bottom:2px">⚙️ Cấu hình <span class="meta" style="font-weight:400">(.env) — áp dụng cho job chạy mới; bấm tiêu đề nhóm để gập/mở</span></h3>`;
+  html += `<div class="cfgcols">`;
+  html += sec("Dịch &amp; phụ đề", true, sDich);
+  html += sec("Nhận dạng thoại (transcript)", true, sTrans);
+  html += sec("Lồng tiếng (TTS)", true, sTts);
+  html += sec("Thương hiệu / xuất bản", true, sBrand);
+  html += sec("Nhận diện người nói (diarization)", V.DIARIZE === "1", sDiar);
+  html += sec("Shorts tự động", false, sShorts);
+  html += sec("Khử ồn &amp; Nhắc Đăng ký", V.DENOISE === "1" || V.SUBSCRIBE === "on", sMisc);
+  html += sec("Đăng YouTube", !!c.youtube_ready, sYt);
+  html += sec("Thông báo Telegram", !!c.telegram_token_set, sTele);
+  html += `</div>`;
+  html += `<div class="cfgfoot"><button onclick="saveConfig()">💾 Lưu cấu hình</button>
+    <span id="cfgmsg"></span>
+    <span class="meta" style="margin-left:auto">API key Claude: ${c.api_key_set
+      ? "✓ đã thiết lập (đổi thì sửa file .env)"
+      : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</span></div>`;
   document.getElementById("cfgform").innerHTML = html;
   applyEngineUI();
   cfgDirty = false;   // vừa nạp từ .env = sạch, chưa có thay đổi
