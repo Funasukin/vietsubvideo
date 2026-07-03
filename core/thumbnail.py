@@ -90,9 +90,9 @@ def _score(path: Path) -> float:
 
 def _claude_pick(client: anthropic.Anthropic, frames: list[Path], summary: str) -> Path:
     content = [{"type": "text", "text":
-                f"Phim donghua, tóm tắt: {summary}\n"
-                f"Chọn 1 frame làm thumbnail YouTube bắt mắt nhất (nhân vật rõ, "
-                f"biểu cảm/hành động kịch tính, không phải cảnh trống). "
+                f"Tóm tắt video: {summary}\n"
+                f"Chọn 1 frame làm thumbnail YouTube bắt mắt nhất (chủ thể/nhân vật rõ, "
+                f"biểu cảm/hành động/khoảnh khắc thu hút, không phải cảnh trống hay mờ). "
                 f"Trả về best = số thứ tự frame (1-{len(frames)})."}]
     for i, p in enumerate(frames, 1):
         img = Image.open(p)

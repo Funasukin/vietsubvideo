@@ -1,0 +1,14 @@
+Khung PNG trong thư mục này
+===========================
+TỰ TẠO bằng ffmpeg (license: của bạn, tự do dùng):
+  gold_classic.png, silver_classic.png, neon_modern.png, film_strip.png, corner_ornament.png
+
+PUBLIC DOMAIN (Wikimedia Commons — không cần ghi công, dùng thương mại tự do),
+nguồn: bộ minh hoạ sách "A Day with the Poets / pastoral" (cổ điển, hoa văn):
+  vintage_pastoral_floral.png   https://commons.wikimedia.org/wiki/File:Day-a-pastoral-p08-onlyframe.png
+  vintage_pastoral_ornate.png   https://commons.wikimedia.org/wiki/File:Day-a-pastoral-p10-onlyframe.png
+  vintage_pastoral_corners.png  https://commons.wikimedia.org/wiki/File:Day-a-pastoral-p30-frameonly.png
+
+(Đã bỏ vài khung public-domain dạng DỌC vì kéo giãn xấu trên video 16:9 — có thể tự tải thêm
+ từ Wikimedia Commons nếu làm video dọc.)
+Khung mới: thả file .png nền giữa trong suốt (nên ~16:9) vào thư mục này → tự hiện trong dropdown.

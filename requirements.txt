@@ -1,5 +1,6 @@
 # Phase 0/1 — loi pipeline
 python-dotenv
+truststore  # tin kho chung chi OS — sua loi SSL khi may co AV/proxy chan HTTPS
 yt-dlp
 edge-tts
 anthropic
@@ -12,14 +13,32 @@ aiogram
 # Dashboard web local
 fastapi
 uvicorn
+python-multipart  # FastAPI can goi nay de nhan upload file (UploadFile/Form)
+bilibili-api-python  # nguon "phim AI hot" — Bilibili search/ranking (core/trending.py)
+APScheduler  # quet bang phim hot 1 lan/ngay (scheduler trong server)
 
 # Phase 1/S3 — transcript
 faster-whisper
 rapidocr_onnxruntime
+# GPU Whisper (TUY CHON, can NVIDIA + driver CUDA 12+): cai 2 goi duoi roi dat
+# WHISPER_DEVICE=cuda trong .env. KHONG bat buoc — mac dinh chay CPU.
+#   pip install nvidia-cublas-cu12 nvidia-cudnn-cu12
 
-# Phase 3 — upload
-# google-api-python-client
-# google-auth-oauthlib
+# Font tuy bien (doc ten ho font tu file .ttf/.otf cho dropdown)
+fonttools
+
+# #1 Đăng YouTube (OAuth) — cần cho nút "Đăng thẳng YouTube"
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+
+# viXTTS — long tieng NHAN BAN giong, chay GPU (TUY CHON, cai tay vi nang ~5GB):
+#   pip install torch torchaudio --index-url https://download.pytorch.org/whl/cu128
+#   pip install coqui-tts "transformers>=4.57,<5" torchcodec
+# transformers PHAI <5 (5.x bo isin_mps_friendly -> coqui-tts vo). torchcodec can
+# FFmpeg SHARED major 4-7 (vd ffmpeg-7.1-full_build-shared) -> dat FFMPEG_SHARED_BIN.
+# Model: tu dong tai capleaf/viXTTS vao models/viXTTS khi chay lan dau.
+# Giu nhac/SFX (tach giong goc) — TUY CHON, GPU: pip install demucs  (dat KEEP_BGM=1)
 
 # Phase 4 — nang cao
 # demucs

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import Callable
 
+from core import progress
 from core.job import PIPELINE_STAGES, Job, Stage
 from core.stages import (
     s1_download,
@@ -44,6 +45,11 @@ def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
         if stage.value in job.completed_stages:
             continue
 
+        if stage == Stage.RENDERING and job.pause_before_render:
+            job.stage = Stage.PAUSED
+            job.save()
+            return job
+
         job.stage = stage
         job.error = None
         job.save()
@@ -56,6 +62,7 @@ def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
             job.error = f"{stage.value}: {e}"
             job.stage = Stage.FAILED
             job.save()
+            progress.clear(job.dir)   # bỏ tiến độ dở của stage lỗi (khỏi treo thanh cũ)
             raise
 
         job.completed_stages.append(stage.value)
@@ -63,4 +70,5 @@ def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
 
     job.stage = Stage.DONE
     job.save()
+    progress.clear(job.dir)           # xong hẳn → dọn file tiến độ trong-stage
     return job

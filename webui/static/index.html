@@ -50,6 +50,21 @@
   ul.stages li.cur { color: var(--text); }
   ul.stages li.todo::before { content: "○ "; opacity: .4; }
   ul.stages li.bad::before  { content: "✗ "; color: var(--err); }
+  /* Thanh tiến độ job (thẻ job + editor) */
+  .prog { margin: 8px 0; }
+  .prog-lbl { font-size: 12px; color: var(--accent); margin-bottom: 4px; }
+  .bar { height: 8px; background: var(--border); border-radius: 5px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent);
+                border-radius: 5px; transition: width .5s ease; }
+  .bar.indet > span { width: 30%; animation: indet 1.25s ease-in-out infinite; }
+  @keyframes indet { 0% { margin-left: -30%; } 100% { margin-left: 100%; } }
+  .ed-prog { padding: 0 6px; }
+  .ed-prog:empty { display: none; }
+  table.trend { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 10px; }
+  table.trend th, table.trend td { border-bottom: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  table.trend th { color: var(--dim); font-weight: 600; white-space: nowrap; }
+  table.trend td a { color: var(--accent); }
+  table.trend tr:hover td { background: rgba(77,163,255,.06); }
   .err { color: var(--err); font-size: 12px; margin: 8px 0; word-break: break-all; }
   .meta { color: var(--dim); font-size: 12px; margin: 8px 0; }
   video, img.preview { width: 100%; border-radius: 8px; margin-top: 10px; background: #000; }
@@ -60,6 +75,13 @@
   .opts { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
           margin: 10px 0; font-size: 13px; color: var(--dim); }
   .pct { color: var(--text); min-width: 38px; display: inline-block; }
+  .font-prev { margin: 8px 0 4px; padding: 8px 12px; background: #0d1117;
+               border: 1px solid var(--border); border-radius: 6px;
+               font-size: 22px; line-height: 1.3; color: #fff; min-height: 30px; }
+  .vlist { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+  .vrow { display: flex; align-items: center; justify-content: space-between;
+          gap: 10px; padding: 6px 10px; background: var(--card);
+          border: 1px solid var(--border); border-radius: 6px; font-size: 13px; }
   /* Tổng quan */
   .stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 14px; }
   .stat { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
@@ -74,15 +96,87 @@
   .cfg input, .cfg select { flex: 1; }
   .note { color: var(--dim); font-size: 12px; margin: 12px 0; }
   #cfgmsg { color: var(--ok); font-size: 13px; margin-left: 10px; }
+  .cfg h4 { margin: 16px 0 10px; font-size: 12px; text-transform: uppercase;
+            letter-spacing: .6px; color: var(--accent);
+            border-top: 1px solid var(--border); padding-top: 14px; }
+  .cfg .hint { color: var(--dim); font-size: 11px; margin: -6px 0 10px 202px; }
+  .pending-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+                 margin: 10px 0; padding: 10px 14px; background: var(--card);
+                 border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; }
+  .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000;
+                   display: flex; align-items: center; justify-content: center; }
+  .modal-box { background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+               padding: 20px 24px; max-width: 440px; box-shadow: 0 10px 40px rgba(0,0,0,.5); }
+  .modal-box h3 { margin: 0 0 8px; }
+  .modal-box p { color: var(--dim); font-size: 14px; line-height: 1.6; margin: 0 0 16px; }
+  /* Editor lời thoại */
+  .ed-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .ed-bulkvoice { max-width: 200px; }
+  .ed-split { display: flex; gap: 16px; align-items: flex-start; }
+  .ed-left { flex: 0 0 46%; position: sticky; top: 12px; }
+  .ed-left video { width: 100%; border-radius: 10px; background: #000; }
+  .ed-now { margin-top: 8px; padding: 8px 10px; background: var(--card);
+            border: 1px solid var(--border); border-radius: 8px; min-height: 20px;
+            font-size: 14px; color: var(--text); }
+  .ed-list { flex: 1; max-height: 78vh; overflow-y: auto; display: flex;
+             flex-direction: column; gap: 6px; padding-right: 4px; }
+  .ed-row { display: grid; grid-template-columns: 64px 1fr auto; gap: 8px;
+            align-items: start; padding: 8px; border: 1px solid var(--border);
+            border-radius: 8px; background: var(--card); cursor: pointer; }
+  .ed-row textarea, .ed-row select, .ed-row button { cursor: auto; }
+  .ed-row.cur { border-color: var(--accent, #4a9eff); background: #1a2740; }
+  .ed-row.dirty { border-left: 3px solid var(--warn, #e0a800); }
+  .ed-row.muted { background: #161616; }
+  .ed-row.muted .ed-mid { opacity: .4; }
+  .ed-row.muted .ed-zh { text-decoration: line-through; }
+  .ed-row.muted .ed-voice, .ed-row.muted .ed-preview { display: none; }
+  .ed-t { font-size: 11px; color: var(--dim); cursor: pointer; user-select: none;
+          padding-top: 4px; }
+  .ed-t:hover { color: var(--text); text-decoration: underline; }
+  .ed-mid { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ed-zh { font-size: 12px; color: var(--dim); line-height: 1.4; }
+  .ed-vi { width: 100%; box-sizing: border-box; resize: vertical; min-height: 34px;
+           field-sizing: content;  /* tự cao theo nội dung, khỏi đo bằng JS */
+           background: #0d1117; color: var(--text); border: 1px solid var(--border);
+           border-radius: 6px; padding: 6px 8px; font: inherit; font-size: 13px; }
+  .ed-ctl { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+  .ed-ctl select, .ed-ctl button { font-size: 12px; }
+  .ed-btns { display: flex; gap: 4px; }   /* nút Mute + Nghe thử cùng 1 hàng */
+  .ed-btns button { flex: 1; }
+  /* Khung video + lớp phủ xem trước (sub Việt + băng che mờ) */
+  .ed-vwrap { position: relative; line-height: 0; border-radius: 10px;
+              overflow: hidden; background: #000; }
+  .ed-vwrap video { width: 100%; display: block; border-radius: 0; }
+  .ed-cover-ov { position: absolute; display: none; pointer-events: none; }
+  .ed-sub-ov { position: absolute; left: 0; right: 0; bottom: 8%; display: none;
+               text-align: center; pointer-events: none; line-height: 1.2; }
+  .ed-sub-ov span { display: inline; padding: 1px 6px; font-weight: 700;
+                    box-decoration-break: clone; -webkit-box-decoration-break: clone; }
+  .ed-frame-ov { position: absolute; inset: 0; display: none; pointer-events: none;
+                 box-sizing: border-box; background-size: 100% 100%; background-repeat: no-repeat; }
+  .ed-player { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .ed-player #edseek { flex: 1; min-width: 60px; }
+  .ed-player #edvol { flex: 0 0 84px; }
+  .ed-player button { padding: 4px 9px; }
+  .ed-player #edtime { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  /* Toàn màn hình gồm cả thanh điều khiển (không mất nút khi fullscreen) */
+  #ed-stage:fullscreen { display: flex; flex-direction: column; justify-content: center; background: #000; }
+  #ed-stage:fullscreen .ed-vwrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
+  #ed-stage:fullscreen video { height: 100%; max-height: 100%; object-fit: contain; }
+  #ed-stage:fullscreen .ed-player { padding: 10px 18px; }
+  .ed-settings { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+  .ed-settings summary { cursor: pointer; color: var(--accent); font-size: 13px; }
 </style>
 </head>
 <body>
-  <h1>🎬 FlowApp</h1>
-  <div class="sub">Tải → dịch → lồng tiếng 2 giọng → phụ đề, tự động toàn bộ</div>
+  <h1>🎬 FlowApp <button id="notifbtn" type="button" class="ghost" style="font-size:12px;vertical-align:middle" onclick="enableNotif()">🔔 Bật thông báo</button></h1>
+  <div class="sub">Tải → dịch → lồng tiếng + phụ đề tiếng Việt cho video mọi thể loại &amp; ngôn ngữ, tự động toàn bộ</div>
 
   <nav>
     <button id="tab-over" onclick="showTab('over')">📊 Tổng quan</button>
     <button id="tab-jobs" class="active" onclick="showTab('jobs')">🎞 Jobs</button>
+    <button id="tab-trend" onclick="showTab('trend')">📊 Phim hot</button>
+    <button id="tab-series" onclick="showTab('series')">📚 Series</button>
     <button id="tab-cfg"  onclick="showTab('cfg')">⚙️ Cấu hình</button>
   </nav>
 
@@ -96,12 +190,108 @@
       <textarea id="url" rows="2" placeholder="Dán link video, NHIỀU link (mỗi dòng một link), hoặc link playlist/kênh — tối đa 50 video/lần"
         style="flex:1;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 14px;font:inherit;resize:vertical"></textarea>
       <button id="addbtn">＋ Thêm job</button>
+      <button id="dupbtn" type="button" class="ghost" onclick="checkDup()">🔎 Kiểm tra đã có bản Việt?</button>
+      <label style="font-size:13px;color:var(--dim);white-space:nowrap;cursor:pointer">
+        <input type="checkbox" id="pbr" checked> Dừng trước render để xem thử
+      </label>
     </form>
+    <div class="row" style="margin-top:8px">
+      <input type="file" id="upfile" accept=".mp4,.mkv,.webm,.mov,.flv,video/*"
+             style="flex:1;min-width:220px;color:var(--text);font-size:13px">
+      <button id="upbtn" type="button" onclick="uploadVideo()">📁 Upload video từ máy</button>
+      <span class="meta">Xử lý y như link · dùng chung tùy chọn "Dừng trước render" + glossary · mp4/mkv/webm/mov/flv</span>
+    </div>
+    <div id="upprogress" class="ed-prog" style="margin:4px 0"></div>
+    <div class="row" style="margin-top:8px;align-items:center">
+      <label style="font-size:13px;color:var(--dim);white-space:nowrap">📚 Series (tùy chọn)</label>
+      <input id="series" list="series-list" autocomplete="off"
+             placeholder="Tên phim bộ / kênh nhiều tập — dùng chung glossary + giọng nhân vật (áp cho job thêm mới & upload)"
+             style="flex:1;min-width:220px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px">
+      <datalist id="series-list"></datalist>
+      <button class="ghost" type="button" onclick="showTab('series')">⚙️ Quản lý series</button>
+    </div>
+    <details style="margin:8px 0">
+      <summary style="cursor:pointer;color:var(--dim);font-size:13px">📒 Bảng tên riêng (glossary) — dịch tên/thuật ngữ nhất quán (chủ yếu cho nội dung tiếng Trung)</summary>
+      <textarea id="gloss" rows="4" placeholder="Mỗi dòng: 中文=Hán-Việt   (vd: 唐三=Đường Tam)&#10;Áp dụng cho job THÊM MỚI: nạp vào Whisper (nghe đúng tên gốc) + Claude (dịch đúng & nhất quán). Claude cũng tự trích thêm tên từ thoại."
+        style="width:100%;box-sizing:border-box;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;margin-top:6px;resize:vertical"></textarea>
+      <div class="row" style="margin-top:4px">
+        <button class="ghost" type="button" onclick="saveGlossDefault()">💾 Lưu làm mặc định</button>
+        <span class="meta">Lưu để các lần sau tự điền lại (theo bộ bạn hay làm).</span>
+        <span class="meta" id="glossmsg" style="color:var(--ok)"></span>
+      </div>
+    </details>
+    <details style="margin:8px 0">
+      <summary style="cursor:pointer;color:var(--dim);font-size:13px">✂️ Cắt video dài thành nhiều phần (mỗi phần 1 job)</summary>
+      <div class="card" style="background:var(--bg);margin-top:6px;font-size:13px">
+        <div class="row" style="margin-bottom:6px">
+          <input id="sp-url" placeholder="Dán link video dài (để trống nếu chọn file bên dưới)"
+            style="flex:1;min-width:200px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px">
+        </div>
+        <div class="row" style="margin-bottom:6px">
+          <input type="file" id="sp-file" accept=".mp4,.mkv,.webm,.mov,.flv,video/*" style="flex:1;min-width:200px;color:var(--text);font-size:13px">
+        </div>
+        <div class="row" style="margin-bottom:6px;align-items:center">
+          <label style="color:var(--dim)">Cách cắt</label>
+          <select id="sp-mode" onchange="spMode()" style="background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px">
+            <option value="parts">Chia đều N phần</option>
+            <option value="cuts">Cắt tại mốc thời gian mình chọn</option>
+          </select>
+          <span id="sp-parts-wrap"><label style="color:var(--dim)">Số phần</label>
+            <input id="sp-parts" type="number" min="2" max="50" value="3" style="width:70px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></span>
+          <span id="sp-cuts-wrap" style="display:none;flex:1">
+            <input id="sp-cuts" placeholder="Mốc cắt, vd: 10:00, 25:30, 40:15" style="width:100%;box-sizing:border-box;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit;font-size:13px"></span>
+        </div>
+        <div class="row">
+          <button type="button" onclick="splitVideo()">✂️ Cắt &amp; tạo job</button>
+          <span class="meta">Dùng chung tùy chọn "Dừng trước render" + glossary + Series ở trên. Các phần sẽ hiện dần trong danh sách.</span>
+          <span class="meta" id="sp-msg" style="color:var(--ok)"></span>
+        </div>
+      </div>
+    </details>
+    <div id="dupresult" class="card" style="display:none;margin:10px 0;font-size:13px;line-height:1.7"></div>
+    <div id="pending-bar" class="pending-bar" style="display:none"></div>
     <div class="grid" id="jobs"></div>
   </div>
 
   <div id="pane-cfg" style="display:none">
     <div class="card cfg" id="cfgform"></div>
+  </div>
+
+  <div id="pane-series" style="display:none">
+    <div class="card" id="seriesview"></div>
+  </div>
+
+  <div id="pane-trend" style="display:none">
+    <div class="row" style="align-items:center">
+      <button id="trendscanbtn" onclick="scanTrending()">🔄 Quét ngay</button>
+      <span class="meta" id="trendmeta"></span>
+    </div>
+    <div class="note">Phim/video AI đang hot trên Bilibili (quét theo từ khoá AI). Cột "YouTube" cho biết đã có ai làm/reup chưa (khớp gần đúng theo tựa) — bật khi đặt <code>YOUTUBE_API_KEY</code> trong .env. Tự quét 1 lần/ngày.</div>
+    <div id="trendtable"></div>
+  </div>
+
+  <div id="pane-edit" style="display:none"></div>
+
+  <div id="cfg-modal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <h3>Chưa lưu cấu hình</h3>
+      <p>Bạn có thay đổi trong tab Cấu hình chưa được lưu. Rời tab bây giờ sẽ mất các thay đổi đó.</p>
+      <div class="row">
+        <button onclick="cfgModalSave()">💾 Lưu rồi rời</button>
+        <button class="ghost" onclick="cfgModalDiscard()">Rời, bỏ thay đổi</button>
+        <button class="ghost" onclick="cfgModalCancel()">Ở lại</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="qc-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQc()">
+    <div class="modal-box" style="max-width:760px;max-height:82vh;overflow:auto;text-align:left">
+      <div class="row" style="justify-content:space-between">
+        <h3 style="margin:0">🔍 Soát lỗi (QC)</h3>
+        <button class="ghost" onclick="closeQc()">✕ Đóng</button>
+      </div>
+      <div id="qc-body">Đang tải…</div>
+    </div>
   </div>
 
 <script>
@@ -117,24 +307,161 @@ const STAGES = [
   ["metadata",     "Metadata"],
 ];
 const FONTS = ["Arial", "Tahoma", "Verdana", "Segoe UI", "Calibri", "Times New Roman"];
+let FONT_LIST = FONTS.map(n => ({ name: n, file: null }));  // nạp lại từ /api/fonts
 const CFG_FIELDS = [
   ["CLAUDE_MODEL", "Model dịch", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"]],
+  ["CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"]],
+  ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"]],
+  ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
+  ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
   ["TTS_VOICE", "Giọng nam (mặc định)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]],
   ["TTS_VOICE_NU", "Giọng nữ", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]],
   ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
   ["TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"]],
-  ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"]],
+  ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "burn", "none"]],
   ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
+  ["OCR_FPS", "Tốc độ OCR", ["1.0", "1.5", "2.0"]],
+  ["AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"]],
+  ["MUSIC", "Nhạc nền", []], ["MUSIC_VOL", "Âm lượng nhạc", []],
+  ["LOGO", "Logo", []], ["LOGO_POS", "Vị trí logo", []],
+  ["LOGO_SCALE", "Cỡ logo", []], ["LOGO_OPACITY", "Độ mờ logo", []],
+  ["INTRO", "Intro", []], ["OUTRO", "Outro", []], ["MASTER", "Master độ to", []],
+  ["DENOISE", "Khử ồn trước Whisper", ["0", "1"]],
+  ["SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"]],
+  ["SUBSCRIBE_TEXT", "Chữ nhắc", []],
+  ["TELEGRAM_CHAT_ID", "Telegram Chat ID", []],
+  ["YOUTUBE_CLIENT_SECRETS", "YouTube OAuth client (.json)", []],
+  ["YOUTUBE_PRIVACY", "Quyền riêng tư khi đăng", ["private", "unlisted", "public"]],
 ];
+// Tùy chọn "Xử lý giọng" (hậu kỳ) — dùng chung cho dropdown trong editor
+const FX_OPTS = [["off", "Tắt (giữ nguyên)"], ["canbang", "Cân bằng"], ["amday", "Ấm / dày"],
+  ["rosang", "Rõ / sáng"], ["dienanh", "Điện ảnh"], ["toithieu", "Tối thiểu"]];
+function fxOptionsHtml(sel) {
+  return FX_OPTS.map(([v, l]) => `<option value="${v}" ${sel === v ? "selected" : ""}>${l}</option>`).join("");
+}
 let lastJson = {};
 
+// Chống XSS: mọi chuỗi từ YouTube (tiêu đề/kênh) hay Claude đều phải escape
+// trước khi nhét vào innerHTML — uploader có thể đặt tên video chứa HTML/script.
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c =>
+    ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+}
+function safeUrl(u) {
+  try {
+    const p = new URL(u);
+    return (p.protocol === "http:" || p.protocol === "https:") ? u : "#";
+  } catch { return "#"; }
+}
+
+/* ---------- Font tùy biến ---------- */
+function cssEsc(s) {
+  // bo ky tu dieu khien (U+0000..U+001F) lam vo @font-face; escape quote va backslash
+  var t = "";
+  for (var i = 0; i < s.length; i++) {
+    if (s.charCodeAt(i) >= 32) t += s[i];
+  }
+  return t.replace(/["\\]/g, "\\$&");
+}
+
+async function loadFonts() {
+  try {
+    const r = await (await fetch("/api/fonts")).json();
+    if (r.fonts && r.fonts.length) FONT_LIST = r.fonts;
+  } catch (e) { return; }
+  // @font-face cho font tùy biến — trình duyệt chỉ tải khi preview thật sự dùng
+  const css = FONT_LIST.filter(f => f.file).map(f =>
+    `@font-face{font-family:"${cssEsc(f.name)}";`
+    + `src:url("/api/fonts/file/${encodeURIComponent(f.file)}");font-display:swap;}`
+  ).join("\n");
+  let st = document.getElementById("customfonts");
+  if (!st) { st = document.createElement("style"); st.id = "customfonts"; document.head.appendChild(st); }
+  st.textContent = css;
+}
+
+function fontOptions(sel) {
+  return FONT_LIST.map(f =>
+    `<option ${f.name === sel ? "selected" : ""}>${esc(f.name)}</option>`).join("");
+}
+
+function updateFontPreview(id) {
+  const fp = document.getElementById("fp-" + id);
+  if (!fp) return;
+  fp.style.fontFamily = '"' + document.getElementById("ft-" + id).value + '"';
+  const c = document.getElementById("fc-" + id);
+  if (c) fp.style.color = c.value;
+}
+
+/* ---------- Glossary (bảng tên riêng) ---------- */
+async function loadGlossDefault() {
+  try {
+    const r = await (await fetch("/api/glossary-default")).json();
+    const el = document.getElementById("gloss");
+    if (el && r.glossary && !el.value) el.value = r.glossary;
+  } catch (e) {}
+}
+async function saveGlossDefault() {
+  const g = document.getElementById("gloss").value;
+  const msg = document.getElementById("glossmsg");
+  try {
+    const r = await fetch("/api/glossary-default", { method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({glossary: g}) });
+    msg.textContent = r.ok ? "✓ Đã lưu mặc định" : "Lỗi lưu";
+  } catch (e) { msg.textContent = "Lỗi: " + e; }
+  setTimeout(() => { msg.textContent = ""; }, 4000);
+}
+
+let cfgDirty = false;
+let _pendingTab = null;
+function markCfgDirty() { cfgDirty = true; }
+
 function showTab(name) {
-  for (const t of ["over", "jobs", "cfg"]) {
+  // Rời tab Cấu hình khi còn thay đổi chưa lưu → nhắc bằng popup trước khi chuyển.
+  const leavingCfg = document.getElementById("tab-cfg").classList.contains("active") && name !== "cfg";
+  if (leavingCfg && cfgDirty) {
+    _pendingTab = name;
+    document.getElementById("cfg-modal").style.display = "flex";
+    return;
+  }
+  _doShowTab(name);
+}
+
+function _doShowTab(name) {
+  const pe = document.getElementById("pane-edit");
+  if (pe && pe.style.display !== "none") {  // đang mở editor → đóng sạch
+    _teardownEditorMedia();
+    pe.style.display = "none"; pe.innerHTML = "";
+    // xoá luôn state editor: tránh refresh() tự mở lại editor (render-watch) khi đã sang tab khác
+    edJobId = null; edSegs = []; edDirty = new Set(); edRenderWatch = null;
+  }
+  for (const t of ["over", "jobs", "cfg", "trend", "series"]) {
     document.getElementById("pane-" + t).style.display = t === name ? "" : "none";
     document.getElementById("tab-" + t).classList.toggle("active", t === name);
   }
   if (name === "over") refreshStats();
   if (name === "cfg") loadConfig();
+  if (name === "trend") renderTrending();
+  if (name === "series") loadSeriesTab();
+}
+
+function _leavePendingTab() {
+  document.getElementById("cfg-modal").style.display = "none";
+  const t = _pendingTab; _pendingTab = null;
+  if (t) _doShowTab(t);
+}
+async function cfgModalSave() {
+  const ok = await saveConfig();   // saveConfig đặt cfgDirty=false khi lưu thành công
+  if (!ok) {  // lưu lỗi → đóng popup, ở lại tab Cấu hình để xem báo lỗi
+    document.getElementById("cfg-modal").style.display = "none";
+    _pendingTab = null;
+    return;
+  }
+  _leavePendingTab();
+}
+function cfgModalDiscard() { cfgDirty = false; _leavePendingTab(); }
+function cfgModalCancel() {
+  _pendingTab = null;
+  document.getElementById("cfg-modal").style.display = "none";
 }
 
 /* ---------- Tổng quan ---------- */
@@ -162,38 +489,271 @@ async function refreshStats() {
 /* ---------- Cấu hình ---------- */
 async function loadConfig() {
   const c = await (await fetch("/api/config")).json();
-  let html = "<h3 style='margin-bottom:14px'>Cấu hình (.env) — áp dụng cho job chạy mới</h3>";
-  for (const [key, label, options] of CFG_FIELDS) {
-    const val = c.values[key] || "";
+  const V = c.values || {};
+  // KEEP_BGM về từ config có thể là "False"/"True" (bool) — chuẩn hoá về "0"/"1"
+  // để khớp option, khỏi lòi thêm dòng "False" vào dropdown.
+  V.KEEP_BGM = (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
+  V.DENOISE = (V.DENOISE === "1" || /^true$/i.test(V.DENOISE || "")) ? "1" : "0";
+  let v = { voices: [], nam: "", nu: "" };
+  try { v = await (await fetch("/api/voices")).json(); } catch (e) {}
+  VOICE_LIST = v.voices || [];
+  const eng = V.TTS_ENGINE || "edge";
+
+  // dựng 1 dòng select; labels (tùy chọn) map giá trị -> chữ hiển thị dễ hiểu
+  const row = (key, label, options, labels, attrs) => {
+    const val = V[key] || "";
     const opts = options.includes(val) ? options : [val, ...options];
-    html += `<div class="frow"><label>${label}</label>
-      <select id="cfg-${key}">${opts.map(o =>
-        `<option ${o === val ? "selected" : ""}>${o}</option>`).join("")}</select></div>`;
-  }
+    const body = opts.map(o =>
+      `<option value="${esc(o)}" ${o === val ? "selected" : ""}>${
+        esc(labels && labels[o] != null ? labels[o] : o)}</option>`).join("");
+    return `<div class="frow"><label>${esc(label)}</label>
+      <select id="cfg-${key}" ${attrs || ""}>${body}</select></div>`;
+  };
+  // ô nhập chữ tự do (khác select) — dùng cho chữ nhắc / chat id / đường dẫn file
+  const textrow = (key, label, ph) =>
+    `<div class="frow"><label>${esc(label)}</label>
+      <input id="cfg-${key}" type="text" value="${esc(V[key] || "")}" placeholder="${esc(ph || "")}"
+        style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+
+  let html = "<h3 style='margin-bottom:4px'>Cấu hình (.env) — áp dụng cho job chạy mới</h3>";
+
+  html += `<h4>Dịch &amp; phụ đề</h4>`;
+  html += row("CLAUDE_MODEL", "Model dịch",
+    ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
+    {"claude-haiku-4-5-20251001": "Haiku 4.5 — rẻ, nhanh", "claude-sonnet-4-6": "Sonnet 4.6 — dịch mượt hơn"});
+  html += row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
+    {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"});
+  html += `<div class="hint">Nguồn transcript = "auto/whisper" tự nhận diện mọi ngôn ngữ. Chọn "Chung" cho phim/video không phải donghua Trung để dịch tự nhiên (không ép Hán-Việt).</div>`;
+  html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "burn", "none"],
+    {soft: "soft — track bật/tắt (nhanh)", burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
+
+  html += `<h4>Nhận dạng thoại (transcript)</h4>`;
+  html += row("TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"],
+    {auto: "auto — tự chọn theo độ dài", ocr: "ocr — đọc hardsub có sẵn", whisper: "whisper — nghe tiếng"});
+  html += row("WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]);
+  html += row("OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]);
+  html += row("OCR_FPS", "Tốc độ OCR (frame/giây)", ["1.0", "1.5", "2.0"],
+    {"1.0": "1 fps — nhanh gấp đôi", "1.5": "1.5 fps", "2.0": "2 fps — kỹ nhất (mặc định)"});
+  html += row("AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"],
+    {"0": "Tắt — lỗi thì dừng", "1": "1 lần (mặc định)", "2": "2 lần", "3": "3 lần"});
+
+  html += `<h4>Lồng tiếng (TTS)</h4>`;
+  html += row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"],
+    {edge: "edge — nhanh, online (Microsoft)", vixtts: "vixtts — nhân bản giọng, chạy GPU"},
+    'onchange="applyEngineUI()"');
+  html += row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "1"],
+    {"0": "Tắt — hạ nhỏ audio gốc khi có thoại", "1": "Bật — tách giọng Trung bằng demucs (GPU)"});
+  html += row("VOICE_FX", "Xử lý giọng",
+    ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
+    {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
+     rosang: "Rõ / sáng", dienanh: "Điện ảnh", toithieu: "Tối thiểu"});
+  html += `<div class="hint">EQ + nén + chuẩn độ to áp NGAY khi render job mới (khỏi xử lý hậu kỳ lại). Áp cho cả edge &amp; viXTTS.</div>`;
+
+  // Bộ giọng edge-tts (chỉ dùng khi engine = edge)
+  html += `<div id="edge-voices">
+    <div class="hint">Dùng khi engine = edge.</div>`;
+  html += row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]);
+  html += row("TTS_VOICE_NU", "Giọng nữ (edge-tts)", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]);
+  html += `</div>`;
+
+  // Thư viện + casting viXTTS (chỉ dùng khi engine = vixtts)
+  const vopt = (sel) => `<option value="">(giọng mặc định model)</option>` + VOICE_LIST.map(x =>
+    `<option value="${esc(x.file)}" ${x.file === sel ? "selected" : ""}>${esc(x.name)}</option>`).join("");
+  html += `<div id="vixtts-voices">
+    <div class="hint">Dùng khi engine = vixtts. Mỗi clip trong <code>voices/</code> = một giọng nhân bản.</div>
+    <div class="frow"><label>Giọng nam (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NAM">${vopt(v.nam)}</select></div>
+    <div class="frow"><label>Giọng nữ (viXTTS)</label><select id="cfg-VIXTTS_VOICE_NU">${vopt(v.nu)}</select></div>
+    <div class="vlist">${VOICE_LIST.length
+        ? VOICE_LIST.map((x, i) => `<div class="vrow"><span>${esc(x.name)}</span>
+            <button class="ghost" type="button" onclick="playVoice(${i})">🔊 Nghe</button></div>`).join("")
+        : '<span class="meta">Chưa có giọng nào trong voices/ — thả clip 6–10s (.wav/.mp3) vào rồi bấm Tải lại.</span>'}</div>
+    <div class="row">
+      <button class="ghost" type="button" onclick="stopVoice()">⏹ Ngừng đọc</button>
+      <button class="ghost" type="button" onclick="openVoices()">📂 Mở thư mục voices</button>
+      <button class="ghost" type="button" onclick="reloadConfig()">↻ Tải lại</button></div>
+  </div>`;
+
+  html += `<h4>Thương hiệu / xuất bản (áp cho job mới)</h4>
+    <div class="hint">Đặt file vào thư mục <code>music/</code> · <code>logo/</code> · <code>clips/</code> (cạnh app) → chọn ở đây.</div>`;
+  const noneL = {none: "— Không —"};
+  const musicOpts = ["none", ...(c.music_files || [])];
+  const logoOpts = ["none", ...(c.logo_files || [])];
+  const clipOpts = ["none", ...(c.clip_files || [])];
+  html += row("MUSIC", "Nhạc nền (.mp3/.wav)", musicOpts, noneL);
+  html += row("MUSIC_VOL", "Âm lượng nhạc", ["0.08", "0.12", "0.15", "0.20", "0.30"],
+    {"0.08": "8%", "0.12": "12%", "0.15": "15%", "0.20": "20%", "0.30": "30%"});
+  html += row("LOGO", "Logo watermark (.png)", logoOpts, noneL);
+  html += row("LOGO_POS", "Vị trí logo", ["tl", "tr", "bl", "br"],
+    {tl: "Trên-trái", tr: "Trên-phải", bl: "Dưới-trái", br: "Dưới-phải"});
+  html += row("LOGO_SCALE", "Cỡ logo", ["0.08", "0.12", "0.16", "0.20"],
+    {"0.08": "Nhỏ (8%)", "0.12": "Vừa (12%)", "0.16": "Lớn (16%)", "0.20": "Rất lớn (20%)"});
+  html += row("LOGO_OPACITY", "Độ mờ logo", ["0.5", "0.7", "0.85", "1.0"],
+    {"0.5": "50%", "0.7": "70%", "0.85": "85%", "1.0": "100% (đặc)"});
+  html += row("INTRO", "Clip Intro (đầu video)", clipOpts, noneL);
+  html += row("OUTRO", "Clip Outro (cuối video)", clipOpts, noneL);
+  html += row("MASTER", "Master độ to (LUFS)", ["0", "1"],
+    {"0": "Tắt", "1": "Bật — chuẩn -14 LUFS cho YouTube"});
+  html += `<div class="hint">Logo / khung / intro-outro sẽ ép render lại video (chậm hơn, như "vẽ cứng"). Nhạc nền tự hạ nhỏ khi có thoại.</div>`;
+
+  html += `<h4>Khử ồn &amp; Nhắc Đăng ký</h4>`;
+  html += row("DENOISE", "Khử ồn trước Whisper", ["0", "1"],
+    {"0": "Tắt", "1": "Bật — lọc ồn cho ASR nghe rõ (nguồn ồn/nhạc to)"});
+  html += row("SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"],
+    {off: "Tắt", on: "Bật — hiện banner vài giây đầu video (ép render burn)"});
+  html += textrow("SUBSCRIBE_TEXT", "Chữ nhắc", "Nhớ Like & Đăng ký kênh nhé!");
+
+  html += `<h4>Đăng YouTube</h4>`;
+  html += textrow("YOUTUBE_CLIENT_SECRETS", "File OAuth client (.json)", "vd D:\\keys\\client_secret.json");
+  html += row("YOUTUBE_PRIVACY", "Quyền riêng tư khi đăng", ["private", "unlisted", "public"],
+    {private: "Riêng tư (an toàn nhất)", unlisted: "Không công khai (chỉ ai có link)", public: "Công khai"});
+  html += `<div class="hint">Đăng thẳng cần bạn tạo OAuth client ở Google Cloud (bật YouTube Data API v3) rồi trỏ file .json vào đây. ${c.youtube_ready ? "✓ Sẵn sàng đăng thẳng." : "Chưa đủ điều kiện đăng thẳng — vẫn dùng được nút 📦 Gói đăng (kéo-thả)."}</div>`;
+
+  html += `<h4>Thông báo Telegram</h4>`;
+  html += textrow("TELEGRAM_CHAT_ID", "Chat ID", "vd 123456789");
+  html += `<div class="frow"><label>Bot token</label>
+    <input id="cfg-TELEGRAM_BOT_TOKEN" type="password" autocomplete="off"
+      placeholder="${c.telegram_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'dán bot token của bạn'}"
+      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+  html += `<div class="hint">Tạo bot với @BotFather để lấy token; lấy chat id (vd nhắn bot rồi mở api.telegram.org/bot&lt;token&gt;/getUpdates). ${c.telegram_token_set ? "✓ Token đã lưu." : "Chưa lưu token."} Báo khi job xong/lỗi.</div>`;
+
   html += `<div class="note">API key: ${c.api_key_set
       ? "✓ đã thiết lập (muốn đổi thì sửa trực tiếp file .env)"
       : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</div>
     <div class="row"><button onclick="saveConfig()">💾 Lưu cấu hình</button><span id="cfgmsg"></span></div>`;
   document.getElementById("cfgform").innerHTML = html;
+  applyEngineUI();
+  cfgDirty = false;   // vừa nạp từ .env = sạch, chưa có thay đổi
+}
+
+// Nút "↻ Tải lại" nạp lại form từ .env → sẽ mất thay đổi chưa lưu; hỏi trước.
+function reloadConfig() {
+  if (cfgDirty && !confirm("Bỏ thay đổi cấu hình chưa lưu và tải lại?")) return;
+  loadConfig();
+}
+
+let VOICE_LIST = [];
+let _vaudio = null;
+function playVoice(i) {
+  const x = VOICE_LIST[i];
+  if (!x) return;
+  stopVoice();
+  _vaudio = new Audio("/api/voices/file/" + encodeURIComponent(x.file));
+  _vaudio.play();
+}
+function stopVoice() {
+  if (_vaudio) { _vaudio.pause(); _vaudio.currentTime = 0; _vaudio = null; }
+}
+function openVoices() { fetch("/api/voices/open", { method: "POST" }); }
+
+// Chỉ hiện bộ giọng của engine đang chọn — gọn gàng, đỡ nhầm 2 bộ nam/nữ.
+function applyEngineUI() {
+  const sel = document.getElementById("cfg-TTS_ENGINE");
+  const eng = sel ? sel.value : "edge";
+  const edge = document.getElementById("edge-voices");
+  const vix = document.getElementById("vixtts-voices");
+  if (edge) edge.style.display = eng === "edge" ? "" : "none";
+  if (vix) vix.style.display = eng === "vixtts" ? "" : "none";
 }
 
 async function saveConfig() {
   const body = {};
   for (const [key] of CFG_FIELDS)
     body[key] = document.getElementById("cfg-" + key).value;
-  const res = await fetch("/api/config", { method: "POST",
-    headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  for (const key of ["VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU"]) {
+    const el = document.getElementById("cfg-" + key);
+    if (el) body[key] = el.value;
+  }
+  // bot token là bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
+  const tok = document.getElementById("cfg-TELEGRAM_BOT_TOKEN");
+  if (tok && tok.value.trim()) body.TELEGRAM_BOT_TOKEN = tok.value.trim();
+  let ok = false;
+  try {
+    const res = await fetch("/api/config", { method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    ok = res.ok;
+  } catch (e) { ok = false; }   // server tắt/mất kết nối → fetch ném lỗi, đừng để treo
+  if (ok) cfgDirty = false;
   document.getElementById("cfgmsg").textContent =
-    res.ok ? "✓ Đã lưu — job mới sẽ dùng cấu hình này" : "Lỗi khi lưu";
+    ok ? "✓ Đã lưu — job mới sẽ dùng cấu hình này" : "Lỗi khi lưu (kiểm tra server còn chạy không)";
   setTimeout(() => document.getElementById("cfgmsg").textContent = "", 4000);
+  return ok;
 }
 
 /* ---------- Jobs ---------- */
+// Tên thân thiện cho từng stage trong pipeline (khớp key stage server trả về)
+const STAGE_LABEL = {
+  downloading: "Đang tải video", extracting: "Đang tách âm thanh",
+  transcribing: "Đang nhận dạng thoại", translating: "Đang dịch sang tiếng Việt",
+  tts: "Đang đọc lồng tiếng", bgm: "Đang xử lý nhạc nền", mixing: "Đang trộn lồng tiếng",
+  rendering: "Đang render video", metadata: "Đang tạo metadata", uploading: "Đang đăng tải",
+};
+// Thanh tiến độ cho 1 job đang chạy/chờ. TTS có số câu → thanh chính xác (%); các stage
+// khác chưa có % chi tiết → thanh chạy vô định (animate) cho biết đang xử lý.
+// base = số câu ĐÃ có sẵn mp3 khi bắt đầu lần đọc lại này (chỉ dùng cho editor render-watch):
+// re-render chỉ đọc lại câu đã đổi → trừ base để thanh đi từ 0% theo SỐ CÂU PHẢI ĐỌC LẠI,
+// không nhảy ngay lên ~95% (các câu không đổi vẫn còn mp3). base=0 ở thẻ job → giữ nguyên.
+function jobProgressHTML(j, base = 0) {
+  if (!j) return "";
+  if (j.queued && !j.running)
+    return '<div class="prog"><div class="prog-lbl">⏳ Trong hàng đợi — chờ job phía trước xong…</div>'
+         + '<div class="bar indet"><span></span></div></div>';
+  if (!j.running) return "";
+  let lbl = STAGE_LABEL[j.stage] || j.stage || "Đang xử lý";
+  let pct = null;
+  if (j.stage === "tts" && j.seg_total) {
+    const total = j.seg_total - base, done = j.tts_done - base;
+    if (total > 0) {   // có câu phải đọc lại → thanh chính xác theo phần còn lại
+      pct = Math.max(0, Math.min(100, Math.round(done / total * 100)));
+      lbl += ` — ${Math.max(0, done)}/${total} câu`;
+    }   // total<=0 (chỉ đổi cài đặt, không đổi câu) → để indeterminate
+  } else if (j.prog_total) {   // OCR/Whisper/dịch: tiến độ trong-stage
+    pct = Math.max(0, Math.min(100, Math.round(j.prog_done / j.prog_total * 100)));
+    lbl += ` — ${j.prog_done}/${j.prog_total}`;
+  }
+  const bar = pct === null
+    ? '<div class="bar indet"><span></span></div>'
+    : `<div class="bar"><span style="width:${pct}%"></span></div>`;
+  return `<div class="prog"><div class="prog-lbl">▶ ${esc(lbl)}${pct !== null ? ` · ${pct}%` : ""}</div>${bar}</div>`;
+}
+
+// #11 Thông báo desktop khi job chuyển sang Xong / Lỗi (so với lần refresh trước).
+const _prevStage = {};
+function notifyJob(j) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  const done = j.stage === "done";
+  const title = done ? "✅ Job hoàn thành" : "⚠️ Job lỗi";
+  const name = j.yt_title || j.url || j.id;
+  const body = name + (!done && j.error ? "\n" + j.error : "");
+  try { new Notification(title, { body, tag: j.id, requireInteraction: !done }); } catch (e) {}
+}
+function checkJobNotifications(jobs) {
+  for (const j of jobs) {
+    const prev = _prevStage[j.id];
+    if (prev && prev !== j.stage && (j.stage === "done" || j.stage === "failed")) notifyJob(j);
+    _prevStage[j.id] = j.stage;
+  }
+}
+function _notifBtnLabel() {
+  const b = document.getElementById("notifbtn");
+  if (!b) return;
+  const ok = ("Notification" in window) && Notification.permission === "granted";
+  b.textContent = ok ? "🔔 Đã bật thông báo" : "🔔 Bật thông báo";
+}
+function enableNotif() {
+  if (!("Notification" in window)) { alert("Trình duyệt không hỗ trợ thông báo."); return; }
+  Notification.requestPermission().then(p => {
+    _notifBtnLabel();
+    if (p !== "granted") alert("Thông báo đang bị chặn — bật lại trong cài đặt trình duyệt cho trang này.");
+  });
+}
+
 function badge(j) {
   if (j.stage === "done")   return '<span class="badge done">✅ Hoàn thành</span>';
   if (j.stage === "failed") return '<span class="badge fail">⚠️ Lỗi</span>';
+  if (j.stage === "paused") return '<span class="badge wait">⏸ Chờ xem thử trước render</span>';
   if (j.running)            return '<span class="badge run">▶ Đang chạy</span>';
   if (j.queued)             return '<span class="badge wait">⏸ Trong hàng đợi</span>';
+  if (j.stage === "pending") return '<span class="badge wait">🕒 Chờ chạy</span>';
   return '<span class="badge wait">' + j.stage + '</span>';
 }
 
@@ -209,68 +769,14 @@ function stageList(j) {
   }).join("") + "</ul>";
 }
 
-function settingsPanel(j) {
-  const r = j.render || {};
-  const s = r.style || {};
-  const sm = r.subtitle_mode || "soft", cv = r.cover || "none";
-  const ct = Math.round((r.cover_top ?? 0.78) * 100);
-  const font = s.font || "Arial", size = s.size || 18;
-  const color = s.color || "#FFFFFF", oColor = s.outline_color || "#000000";
-  const outline = s.outline ?? 2, marginV = s.margin_v ?? 16;
-  const back = s.back ? "checked" : "", backColor = s.back_color || "#000000";
-  const backOp = Math.round((s.back_opacity ?? 0.6) * 100);
-  return `<details><summary>🎨 Chỉnh phụ đề / vùng che sub gốc</summary>
-    <div class="opts">
-      Phụ đề:
-      <select id="sm-${j.id}" onchange="updateSubHint('${j.id}', this.value)">
-        <option value="soft" ${sm === "soft" ? "selected" : ""}>Track bật/tắt</option>
-        <option value="cover_only" ${sm === "cover_only" ? "selected" : ""}>Che sub gốc + upload .srt YouTube</option>
-        <option value="burn" ${sm === "burn" ? "selected" : ""}>Vẽ cứng</option>
-        <option value="none" ${sm === "none" ? "selected" : ""}>Không</option>
-      </select>
-      <span id="sm-hint-${j.id}" class="meta" style="display:block;margin-top:4px">${sm === "cover_only" ? "⚠ Cần upload sub_vi.srt lên YouTube Studio thủ công" : ""}</span>
-      Che sub gốc:
-      <select id="cv-${j.id}">
-        <option value="none"  ${cv === "none" ? "selected" : ""}>Không che</option>
-        <option value="blur"  ${cv === "blur" ? "selected" : ""}>Làm mờ</option>
-        <option value="black" ${cv === "black" ? "selected" : ""}>Dải đen</option>
-      </select>
-      Vùng che từ:
-      <input type="range" id="ct-${j.id}" min="60" max="95" value="${ct}"
-             oninput="document.getElementById('pct-${j.id}').textContent = this.value + '%'">
-      <span class="pct" id="pct-${j.id}">${ct}%</span>
-    </div>
-    <div class="opts">
-      Font:
-      <select id="ft-${j.id}">${FONTS.map(f =>
-        `<option ${f === font ? "selected" : ""}>${f}</option>`).join("")}</select>
-      Cỡ: <input type="number" id="fs-${j.id}" min="10" max="40" value="${size}" style="width:56px">
-      Màu chữ: <input type="color" id="fc-${j.id}" value="${color}">
-      Màu viền: <input type="color" id="oc-${j.id}" value="${oColor}">
-      Viền: <input type="number" id="ow-${j.id}" min="0" max="4" value="${outline}" style="width:48px">
-    </div>
-    <div class="opts">
-      <label><input type="checkbox" id="bk-${j.id}" ${back}> Hộp nền</label>
-      Màu nền: <input type="color" id="bc-${j.id}" value="${backColor}">
-      Độ đậm: <input type="range" id="bo-${j.id}" min="0" max="100" value="${backOp}"
-             oninput="document.getElementById('bop-${j.id}').textContent = this.value + '%'">
-      <span class="pct" id="bop-${j.id}">${backOp}%</span>
-      Cách đáy: <input type="number" id="mv-${j.id}" min="0" max="80" value="${marginV}" style="width:56px">
-    </div>
-    <div class="row">
-      <button class="ghost" onclick="previewJob('${j.id}')">👁 Xem thử (2 giây)</button>
-      <button class="ghost" onclick="rerenderJob('${j.id}')">↻ Render lại với cài đặt này</button>
-      <span class="meta">kiểu chữ chỉ áp dụng khi phụ đề "Vẽ cứng"</span>
-    </div>
-    <img class="preview" id="pv-${j.id}" style="display:none">
-  </details>`;
-}
-
 function cardHtml(j) {
-  let html = `<h3>${j.url}</h3><div class="jobid">${j.id}</div>`;
+  // j.url do người dùng dán, j.yt_title/j.error chứa dữ liệu từ YouTube → escape
+  let html = `<h3>${esc(j.url)}</h3><div class="jobid">${esc(j.id)}</div>`;
   html += badge(j) + stageList(j);
-  if (j.error) html += `<div class="err">${j.error}</div>`;
-  if (j.yt_title) html += `<div class="meta">📺 ${j.yt_title}</div>`;
+  if (j.running || j.queued) html += jobProgressHTML(j);
+  if (j.error) html += `<div class="err">${esc(j.error)}</div>`;
+  if (j.series) html += `<div class="meta">📚 ${esc(j.series)}</div>`;
+  if (j.yt_title) html += `<div class="meta">📺 ${esc(j.yt_title)}</div>`;
   if (j.seg_total) html += `<div class="meta">${j.seg_total} câu thoại`
       + (j.overflow !== undefined ? ` · ${j.overflow} cảnh báo timing` : "") + `</div>`;
   if (j.has_thumb)
@@ -278,24 +784,41 @@ function cardHtml(j) {
   if (j.has_final)
     html += `<video controls preload="none" src="/api/jobs/${j.id}/video?v=${j.created_at}"></video>`;
   html += '<div class="row">';
-  if (j.stage !== "done" && !j.queued && !j.running)
-    html += `<button class="ghost" onclick="resumeJob('${j.id}')">↻ Chạy tiếp</button>`;
+  if (j.stage !== "done" && !j.queued && !j.running) {
+    // chưa chạy lần nào (pending, chưa có stage hoàn thành) → nút ▶ Chạy nổi bật;
+    // còn lại (dở dang / lỗi) → ↻ Chạy tiếp. Cả hai dùng chung endpoint resume.
+    const fresh = j.stage === "pending" && !(j.completed_stages && j.completed_stages.length);
+    html += fresh
+      ? `<button onclick="resumeJob('${j.id}')">▶ Chạy</button>`
+      : `<button class="ghost" onclick="resumeJob('${j.id}')">↻ Chạy tiếp</button>`;
+  }
   if (j.has_srt) html += `<a href="/api/jobs/${j.id}/srt">⬇ sub_vi.srt</a>`;
+  if (j.seg_total && !j.queued && !j.running)
+    html += `<button class="ghost" onclick="openEditor('${j.id}')">✏️ Sửa lời thoại</button>`;
   if (j.seg_total && (j.stage === "done" || j.completed_stages.includes("translating")))
     html += `<button class="ghost" id="thumb-${j.id}" onclick="regenThumb('${j.id}')">🖼 ${j.has_thumb ? "Thumbnail mới" : "Tạo thumbnail"}</button>`;
+  if (j.seg_total && !j.queued && !j.running)   // #13 soát lỗi dịch + timing
+    html += `<button class="ghost" onclick="qcJob('${j.id}')">🔍 QC</button>`;
+  if (j.has_final) {   // #1 đăng YouTube: gói kéo-thả + đăng thẳng OAuth
+    html += `<button class="ghost" onclick="makePackage('${j.id}')">📦 Gói đăng</button>`;
+    html += `<button class="ghost" onclick="uploadYT('${j.id}')">▶ Đăng YouTube</button>`;
+  }
   html += `<button class="ghost" onclick="openJob('${j.id}')">📂 Mở thư mục</button>`;
-  if (!j.queued && !j.running)
+  if (j.queued || j.running)   // #12 đang chạy/chờ → cho hủy (dừng giữa chừng, chạy tiếp sau)
+    html += `<button class="danger" onclick="cancelJob('${j.id}')">⏹ Hủy</button>`;
+  else
     html += `<button class="danger" onclick="deleteJob('${j.id}')">🗑 Xóa</button>`;
   html += '</div>';
-  if (j.has_final || j.completed_stages.includes("downloading"))
-    html += settingsPanel(j);
-  return html;
+  return html;   // cài đặt phụ đề/che giờ nằm TRONG "Sửa lời thoại" (không lặp ngoài thẻ job)
 }
 
+let refreshGen = 0;   // tem thứ tự: phân biệt refresh có snapshot CŨ HƠN lúc edSave enqueue
 async function refresh() {
+  const myGen = ++refreshGen;   // chụp trước khi fetch (sống qua await)
   let jobs;
   try { jobs = await (await fetch("/api/jobs")).json(); }
   catch (e) { return; }
+  checkJobNotifications(jobs);   // #11 báo desktop khi job Xong/Lỗi
   const grid = document.getElementById("jobs");
   const seen = new Set();
   for (const j of jobs) {
@@ -315,6 +838,247 @@ async function refresh() {
   }
   for (const card of [...grid.children])
     if (!seen.has(card.id)) card.remove();
+
+  // Editor đang mở → cập nhật thanh tiến độ của job đó (rỗng khi job không chạy → ẩn)
+  if (edJobId) {
+    const ej = jobs.find(x => x.id === edJobId);
+    const watching = !!(edRenderWatch && edRenderWatch.id === edJobId);
+    // BỎ QUA refresh có snapshot chụp TRƯỚC lúc edSave enqueue (myGen <= armGen): nó thấy job
+    // chưa chạy → sẽ báo "xong" GIẢ. Chỉ refresh bắt đầu SAU enqueue mới được xét hoàn tất.
+    const stale = watching && myGen <= edRenderWatch.armGen;
+    const box = document.getElementById("edprogress");
+    if (box && !stale) box.innerHTML = jobProgressHTML(ej, watching ? (edRenderWatch.ttsBase || 0) : 0);
+    // job RỜI trạng thái chạy (xong/lỗi/biến mất) → coi là hoàn tất. Không cần cờ "seen":
+    // refresh hậu-enqueue luôn thấy job trong _active (đồng bộ) tới khi worker xong thật.
+    if (watching && !stale && !(ej && (ej.running || ej.queued))) {
+      edRenderWatch = null;
+      const m = document.getElementById("edmsg"), b = document.getElementById("edsavebtn");
+      const reEnable = () => { if (b) { b.disabled = false; b.textContent = "💾 Lưu & render lại"; } };
+      if (!ej) { if (m) m.textContent = "Job không còn — kiểm tra tab Jobs."; reEnable(); }
+      else if (ej.stage === "failed") { if (m) m.textContent = "Render lỗi: " + (ej.error || "(xem tab Jobs)"); reEnable(); }
+      else if (edDirty.size) {
+        // sửa thêm trong lúc render → đừng tự mở lại kẻo mất sửa đổi chưa lưu
+        if (m) m.textContent = "✓ Render xong. Có câu sửa mới chưa lưu — bấm 💾 để render lại.";
+        reEnable();
+      } else {
+        reEnable();          // nhả nút TRƯỚC: nếu openEditor refetch lỗi (early-return) vẫn còn nút dùng được
+        openEditor(edJobId); // mở lại với bản final mới (video + lồng tiếng mới)
+      }
+    }
+  }
+
+  // Thanh "Chạy tất cả" — hiện khi có job đang Chờ chạy (chưa chạy lần nào).
+  const pend = jobs.filter(j => j.stage === "pending"
+    && !(j.completed_stages && j.completed_stages.length) && !j.queued && !j.running).length;
+  const bar = document.getElementById("pending-bar");
+  if (pend > 0) {
+    bar.style.display = "";
+    bar.innerHTML = `<button onclick="runAllPending()">▶ Chạy tất cả (${pend})</button>`
+      + `<span class="meta">Job mới thêm KHÔNG tự chạy — bấm ▶ Chạy ở từng job, hoặc nút này để chạy hết.</span>`;
+  } else {
+    bar.style.display = "none";
+    bar.innerHTML = "";
+  }
+}
+
+// ---------- Series (#7/#8): glossary + casting giọng dùng chung nhiều tập ----------
+let _seriesList = [], _seriesVoices = [], _seriesCasting = [];
+
+async function refreshSeriesDatalist() {   // đổ tên series vào ô "Series" của form thêm job
+  try { _seriesList = (await (await fetch("/api/series")).json()).series || []; }
+  catch (e) { return; }
+  const dl = document.getElementById("series-list");
+  if (dl) dl.innerHTML = _seriesList.map(s => `<option value="${esc(s.name)}">`).join("");
+}
+
+async function loadSeriesTab() {
+  const [sl, vl] = await Promise.all([
+    fetch("/api/series").then(r => r.json()).catch(() => ({ series: [] })),
+    fetch("/api/voices").then(r => r.json()).catch(() => ({ voices: [] })),
+  ]);
+  _seriesList = sl.series || [];
+  _seriesVoices = vl.voices || [];
+  let h = `<h3 style="margin-top:0">📚 Series — glossary & casting giọng dùng chung nhiều tập</h3>`;
+  h += `<div class="meta" style="margin-bottom:12px;line-height:1.6">Gán mỗi <b>nhân vật</b> một <b>giọng mẫu</b> (clip trong <code>voices/</code>): mọi tập thuộc series sẽ đọc nhân vật đó bằng đúng giọng — Claude tự nhận diện câu theo tên. <b>Glossary</b> của series gộp với glossary từng tập (tập thắng khi trùng). Áp dụng cho tập <b>thêm mới</b> hoặc <b>chạy lại từ bước dịch</b>.</div>`;
+  h += `<div class="row" style="margin-bottom:6px">`;
+  h += `<input id="sv-name" list="sv-names" autocomplete="off" placeholder="Chọn series có sẵn hoặc gõ tên series mới" style="flex:1;min-width:240px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit">`;
+  h += `<datalist id="sv-names">` + _seriesList.map(s => `<option value="${esc(s.name)}">`).join("") + `</datalist>`;
+  h += `<button type="button" onclick="seriesOpen()">📂 Mở / Tạo</button></div>`;
+  if (_seriesList.length)
+    h += `<div class="meta" style="margin-bottom:10px">Đã có ${_seriesList.length} series: ` +
+      _seriesList.map((s, i) => `<a href="#" onclick="seriesOpenIdx(${i});return false">${esc(s.name)}</a> <span style="opacity:.7">(${s.cast_count} vai · ${s.gloss_lines} tên)</span>`).join(" · ") + `</div>`;
+  if (!_seriesVoices.length)
+    h += `<div class="err">Chưa có clip giọng nào trong voices/. Thêm file .wav giọng mẫu để cast được nhân vật.</div>`;
+  h += `<div id="sv-editor" style="margin-top:14px"></div>`;
+  document.getElementById("seriesview").innerHTML = h;
+}
+
+function seriesOpenIdx(i) { document.getElementById("sv-name").value = _seriesList[i].name; seriesOpen(); }
+
+async function seriesOpen() {
+  const name = document.getElementById("sv-name").value.trim();
+  if (!name) { alert("Nhập tên series."); return; }
+  let s;
+  try { s = await (await fetch("/api/series/one?name=" + encodeURIComponent(name))).json(); }
+  catch (e) { alert("Lỗi tải series."); return; }
+  _seriesCasting = Object.entries(s.casting || {}).map(([char, voice]) => ({ char, voice }));
+  if (!_seriesCasting.length) _seriesCasting.push({ char: "", voice: "" });
+  renderSeriesEditor(s.name, s.glossary || "", s.exists);
+}
+
+function _voiceOptions(sel) {
+  let o = `<option value="">— chọn giọng —</option>`;
+  o += _seriesVoices.map(v => `<option value="${esc(v.file)}"${v.file === sel ? " selected" : ""}>${esc(v.name)}</option>`).join("");
+  if (sel && !_seriesVoices.some(v => v.file === sel))   // giọng đã lưu nhưng mất file → vẫn giữ
+    o += `<option value="${esc(sel)}" selected>${esc(sel)} (thiếu file)</option>`;
+  return o;
+}
+
+function renderSeriesEditor(name, glossary, exists) {
+  const inp = "background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px";
+  let h = `<div class="card" style="background:var(--bg)">`;
+  h += `<h4 style="margin:0 0 4px">${exists ? "✏️ Sửa" : "🆕 Tạo"} series: ${esc(name)}</h4>`;
+  h += `<label class="meta">Glossary dùng chung (mỗi dòng: tên gốc=Hán-Việt / nghĩa Việt)</label>`;
+  h += `<textarea id="sv-gloss" rows="4" style="width:100%;box-sizing:border-box;${inp};margin:4px 0 12px;resize:vertical">${esc(glossary)}</textarea>`;
+  h += `<label class="meta">Casting: nhân vật → giọng mẫu</label>`;
+  h += `<div id="sv-cast" style="margin:6px 0"></div>`;
+  h += `<button type="button" class="ghost" onclick="seriesAddRow()">＋ Thêm nhân vật</button>`;
+  h += `<div class="row" style="margin-top:14px"><button type="button" onclick="seriesSave()">💾 Lưu series</button>`;
+  h += `<span class="meta" id="sv-msg"></span></div></div>`;
+  const box = document.getElementById("sv-editor");
+  box.innerHTML = h;
+  box.dataset.name = name;
+  renderCastRows();
+}
+
+function renderCastRows() {
+  const cell = "background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font:inherit;font-size:13px";
+  document.getElementById("sv-cast").innerHTML = _seriesCasting.map((c, i) => {
+    let r = `<div class="row" style="margin-bottom:6px" data-i="${i}">`;
+    r += `<input class="sv-char" placeholder="Tên nhân vật (vd Đường Tam)" value="${esc(c.char)}" style="flex:1;min-width:140px;${cell}">`;
+    r += `<select class="sv-voice" style="flex:1;min-width:140px;${cell}">${_voiceOptions(c.voice)}</select>`;
+    r += `<button type="button" class="ghost" onclick="seriesPlayRow(${i})">▶</button>`;
+    r += `<button type="button" class="danger" onclick="seriesDelRow(${i})">🗑</button></div>`;
+    return r;
+  }).join("");
+}
+
+function _collectCast() {
+  _seriesCasting = [...document.querySelectorAll("#sv-cast .row")].map(r => ({
+    char: r.querySelector(".sv-char").value,
+    voice: r.querySelector(".sv-voice").value,
+  }));
+}
+function seriesAddRow() { _collectCast(); _seriesCasting.push({ char: "", voice: "" }); renderCastRows(); }
+function seriesDelRow(i) { _collectCast(); _seriesCasting.splice(i, 1); if (!_seriesCasting.length) _seriesCasting.push({ char: "", voice: "" }); renderCastRows(); }
+function seriesPlayRow(i) {
+  const sel = document.querySelector(`#sv-cast .row[data-i="${i}"] .sv-voice`);
+  if (sel && sel.value) { stopVoice(); _vaudio = new Audio("/api/voices/file/" + encodeURIComponent(sel.value)); _vaudio.play(); }
+}
+
+async function seriesSave() {
+  const name = document.getElementById("sv-editor").dataset.name;
+  _collectCast();
+  const casting = {};
+  for (const c of _seriesCasting) { const ch = c.char.trim(); if (ch && c.voice) casting[ch] = c.voice; }
+  const msg = document.getElementById("sv-msg");
+  try {
+    const r = await fetch("/api/series", { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, glossary: document.getElementById("sv-gloss").value, casting }) });
+    if (!r.ok) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi: " + (await r.text()); return; }
+    msg.style.color = "var(--ok)";
+    msg.textContent = `Đã lưu (${Object.keys(casting).length} vai).`;
+    refreshSeriesDatalist();
+  } catch (e) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi mạng."; }
+}
+
+// ---------- #13 QC: soát lỗi dịch + timing ----------
+function _mmss(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+function closeQc() { document.getElementById("qc-modal").style.display = "none"; }
+async function qcJob(id) {
+  const body = document.getElementById("qc-body");
+  body.innerHTML = "Đang tải…";
+  document.getElementById("qc-modal").style.display = "flex";
+  let d;
+  try { d = await (await fetch(`/api/jobs/${id}/qc`)).json(); }
+  catch (e) { body.innerHTML = '<div class="err">Không tải được QC.</div>'; return; }
+  const item = "padding:6px 0;border-bottom:1px solid var(--border);font-size:13px";
+  let h = `<div class="meta" style="margin:6px 0">${d.total} câu · <b>${d.suspects.length}</b> câu nghi ngờ · <b>${d.overflow.length}</b> câu tràn timing</div>`;
+  if (!d.suspects.length && !d.overflow.length)
+    h += `<div style="color:var(--ok)">✓ Không phát hiện lỗi rõ ràng. Vẫn nên xem qua bằng "Sửa lời thoại".</div>`;
+  if (d.suspects.length) {
+    h += `<h4>Câu dịch nghi ngờ</h4>`;
+    h += d.suspects.slice(0, 150).map(s =>
+      `<div style="${item}"><b>${_mmss(s.start)}</b> <span class="badge fail">${esc(s.reason)}</span>`
+      + (s.text ? `<br><span class="ed-zh">${esc(s.text)}</span>` : "")
+      + `<br>${s.text_vi ? esc(s.text_vi) : "<i>(rỗng)</i>"}</div>`).join("");
+  }
+  if (d.overflow.length) {
+    h += `<h4>Timing tràn (giọng Việt dài hơn khoảng trống)</h4>`;
+    h += d.overflow.slice(0, 150).map(w =>
+      `<div style="${item}"><span class="badge wait">+${w.overflow_ms} ms</span> ${esc(w.text_vi)}</div>`).join("");
+  }
+  h += `<div class="row" style="margin-top:12px"><button onclick="closeQc();openEditor('${id}')">✏️ Mở Sửa lời thoại</button>`
+     + `<button class="ghost" onclick="closeQc()">Đóng</button></div>`;
+  body.innerHTML = h;
+}
+
+// ---------- #1 Đăng YouTube: gói kéo-thả + đăng thẳng OAuth ----------
+async function makePackage(id) {
+  try {
+    const r = await fetch(`/api/jobs/${id}/package`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { alert("Lỗi tạo gói: " + (d.detail || r.status)); return; }
+    alert("📦 Đã tạo gói đăng (đã mở thư mục):\n" + d.folder
+      + "\n\nKéo video.mp4 + thumbnail.jpg lên YouTube Studio; tiêu đề/mô tả/tags nằm trong upload_info.txt.");
+  } catch (e) { alert("Lỗi mạng khi tạo gói."); }
+}
+async function uploadYT(id) {
+  if (!confirm("Đăng video này thẳng lên YouTube?\n\nLần đầu sẽ mở trình duyệt để bạn cho phép. "
+    + "Mặc định quyền RIÊNG TƯ (đổi công khai sau trong Cấu hình/YouTube). Quá trình có thể mất vài phút.")) return;
+  const msg = document.getElementById("cfgmsg");
+  try {
+    const r = await fetch(`/api/jobs/${id}/upload-youtube`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { alert("Đăng lỗi: " + (d.detail || r.status)); return; }
+    alert("✅ Đã đăng lên YouTube:\n" + d.url + "\n(quyền: " + d.privacy + ")");
+  } catch (e) { alert("Lỗi mạng/timeout khi đăng (upload dài — kiểm tra YouTube Studio)."); }
+}
+
+// ---------- #17 Cắt video dài thành nhiều phần ----------
+function spMode() {
+  const m = document.getElementById("sp-mode").value;
+  document.getElementById("sp-parts-wrap").style.display = m === "parts" ? "" : "none";
+  document.getElementById("sp-cuts-wrap").style.display = m === "cuts" ? "" : "none";
+}
+async function splitVideo() {
+  const url = document.getElementById("sp-url").value.trim();
+  const file = document.getElementById("sp-file").files[0];
+  const mode = document.getElementById("sp-mode").value;
+  const msg = document.getElementById("sp-msg");
+  if (!url && !file) { msg.style.color = "var(--err)"; msg.textContent = "Nhập link hoặc chọn file."; return; }
+  if (mode === "cuts" && !document.getElementById("sp-cuts").value.trim()) {
+    msg.style.color = "var(--err)"; msg.textContent = "Nhập ít nhất 1 mốc cắt."; return;
+  }
+  const fd = new FormData();
+  if (file) fd.append("file", file);
+  fd.append("url", url);
+  fd.append("mode", mode);
+  fd.append("parts", document.getElementById("sp-parts").value || "3");
+  fd.append("cuts", document.getElementById("sp-cuts").value || "");
+  fd.append("pause_before_render", document.getElementById("pbr").checked ? "true" : "false");
+  fd.append("glossary", document.getElementById("gloss").value || "");
+  fd.append("series", document.getElementById("series").value.trim() || "");
+  msg.style.color = "var(--dim)"; msg.textContent = "Đang gửi…";
+  try {
+    const r = await fetch("/api/jobs/split", { method: "POST", body: fd });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi: " + (d.detail || r.status); return; }
+    msg.style.color = "var(--ok)"; msg.textContent = d.note || "Đang cắt…";
+    document.getElementById("sp-url").value = ""; document.getElementById("sp-file").value = "";
+    setTimeout(refresh, 1500);
+  } catch (e) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi mạng."; }
 }
 
 document.getElementById("f").addEventListener("submit", async (e) => {
@@ -324,9 +1088,13 @@ document.getElementById("f").addEventListener("submit", async (e) => {
   const btn = document.getElementById("addbtn");
   const single = !/\s/.test(text) && !/[?&]list=|\/playlist|\/@|\/channel\//.test(text);
 
+  const pbr = document.getElementById("pbr").checked;
+  const gloss = document.getElementById("gloss").value;
+  const series = document.getElementById("series").value.trim();
   if (single) {
     await fetch("/api/jobs", { method: "POST",
-      headers: {"Content-Type": "application/json"}, body: JSON.stringify({url: text}) });
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({url: text, pause_before_render: pbr, glossary: gloss, series}) });
   } else {
     btn.disabled = true;
     btn.textContent = "⏳ Đang đọc danh sách...";
@@ -341,11 +1109,11 @@ document.getElementById("f").addEventListener("submit", async (e) => {
         .map(e => "• " + e.title).join("\n");
       if (!confirm(`Tìm thấy ${entries.length} video` +
           (dup ? ` (${dup} trùng job cũ, bỏ qua)` : "") +
-          `.\nThêm ${nNew} video vào hàng đợi?\n\n${names}${nNew > 10 ? "\n..." : ""}`))
+          `.\nThêm ${nNew} video? (sẽ ở trạng thái "Chờ chạy" — bấm ▶ Chạy để bắt đầu)\n\n${names}${nNew > 10 ? "\n..." : ""}`))
         return;
       await fetch("/api/jobs/batch", { method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({urls: entries.filter(e => !e.duplicate).map(e => e.url)}) });
+        body: JSON.stringify({urls: entries.filter(e => !e.duplicate).map(e => e.url), pause_before_render: pbr, glossary: gloss, series}) });
     } finally {
       btn.disabled = false;
       btn.textContent = "＋ Thêm job";
@@ -355,10 +1123,82 @@ document.getElementById("f").addEventListener("submit", async (e) => {
   refresh();
 });
 
-function updateSubHint(id, mode) {
-  const el = document.getElementById("sm-hint-" + id);
-  if (el) el.textContent = mode === "cover_only"
-    ? "⚠ Cần upload sub_vi.srt lên YouTube Studio thủ công" : "";
+const DUP_TYPE = {vietsub: "vietsub", long_tieng: "lồng tiếng/thuyết minh", khong_ro: "không rõ loại"};
+const DUP_COV = {vietsub: "đã có VIETSUB", long_tieng: "đã có LỒNG TIẾNG",
+                 ca_hai: "đã có CẢ vietsub LẪN lồng tiếng", khong_ro: "có bản Việt nhưng không rõ loại",
+                 khong_co: "chưa thấy bản Việt"};
+const DUP_CONF = {cao: "cao", trung_binh: "trung bình", thap: "thấp"};
+
+async function checkDup() {
+  const text = document.getElementById("url").value.trim();
+  const box = document.getElementById("dupresult");
+  box.style.display = "block";
+  if (!text || /\s/.test(text)) {
+    box.innerHTML = "⚠️ Dán đúng MỘT link video (không phải nhiều link/playlist) để kiểm tra.";
+    return;
+  }
+  const btn = document.getElementById("dupbtn");
+  btn.disabled = true; btn.textContent = "⏳ Đang tra YouTube (~15s)...";
+  box.innerHTML = "Đang lấy thông tin video và tìm trên YouTube...";
+  try {
+    const res = await fetch("/api/check-dup", { method: "POST",
+      headers: {"Content-Type": "application/json"}, body: JSON.stringify({url: text}) });
+    box.innerHTML = renderDup(await res.json());
+  } catch (e) {
+    box.innerHTML = "Lỗi khi kiểm tra: " + e;
+  } finally {
+    btn.disabled = false; btn.textContent = "🔎 Kiểm tra đã có bản Việt?";
+  }
+}
+
+function renderDup(r) {
+  if (r.status === "no_api_key")
+    return "⚠️ Chưa có ANTHROPIC_API_KEY trong .env nên không phân tích được. Hãy điền key rồi thử lại.";
+  if (r.status === "no_title") return "⚠️ Không lấy được tiêu đề video — kiểm tra lại link.";
+  if (r.status === "error") return "❌ Lỗi: " + (r.error || "không rõ");
+
+  const n = r.normalized || {}, v = r.verdict || {};
+  const matches = v.matches || [];
+  let html = `<b>Nhận diện:</b> ${esc(n.series_vi || "?")}`
+    + (n.episode != null ? ` — tập ${esc(n.episode)}` : (n.kind === "tron_bo" ? " — bản tổng hợp" : ""))
+    + `<br>`;
+  if (!v.already_exists) {
+    html += `✅ <b>Có vẻ CHƯA có bản Việt</b> trong ${r.candidate_count || 0} kết quả tìm được `
+      + `(độ tin cậy: ${DUP_CONF[v.confidence] || "?"}).<br>`
+      + `<span class="meta">Lưu ý: "không thấy" KHÔNG chắc chắn 100% là chưa ai làm — chỉ là không có trong top kết quả.</span>`;
+  } else {
+    html += `⚠️ <b>Có thể ĐÃ CÓ bản Việt</b> — ${DUP_COV[v.coverage] || "?"} `
+      + `(tin cậy: ${DUP_CONF[v.confidence] || "?"}).<br>`;
+    if (!matches.length)
+      html += `<span class="meta">(không trích được link cụ thể từ kết quả)</span><br>`;
+    for (const m of matches) {
+      const views = m.views != null ? ` · ${(+m.views).toLocaleString()} views` : "";
+      const label = esc(m.title || "(không tên)");
+      const link = m.url
+        ? `<a href="${esc(safeUrl(m.url))}" target="_blank" rel="noopener">${label}</a>`
+        : label;
+      html += `&nbsp;&nbsp;• ${link}`
+        + ` <span class="meta">— ${esc(m.channel || "")}${views} · ${DUP_TYPE[m.type] || "không rõ"}</span><br>`;
+    }
+  }
+  if (v.reason) html += `<span class="meta">${esc(v.reason)}</span>`;
+  return html;
+}
+
+function toggleCoverSliders(id) {
+  const auto = document.getElementById("cv-" + id).value === "auto";
+  for (const p of ["ct", "cb", "cw"])
+    document.getElementById(p + "-" + id).disabled = auto;
+}
+
+// Hai cạnh băng che đẩy nhau, giữ khoảng hở tối thiểu 5% (từ < đến)
+function syncBand(id, which) {
+  const ct = document.getElementById("ct-" + id);
+  const cb = document.getElementById("cb-" + id);
+  if (which === "ct" && +ct.value > +cb.value - 5) cb.value = Math.min(100, +ct.value + 5);
+  if (which === "cb" && +cb.value < +ct.value + 5) ct.value = Math.max(0, +cb.value - 5);
+  document.getElementById("pct-" + id).textContent = ct.value + "%";
+  document.getElementById("cbp-" + id).textContent = cb.value + "%";
 }
 
 function readOpts(id) {
@@ -367,6 +1207,13 @@ function readOpts(id) {
     subtitle_mode: g("sm").value,
     cover: g("cv").value,
     cover_top: parseInt(g("ct").value) / 100,
+    cover_bottom: parseInt(g("cb").value) / 100,
+    cover_width: parseInt(g("cw").value) / 100,
+    fx: (g("fx") && g("fx").value) || "off",
+    frame: (g("frm") && g("frm").value) || "none",
+    frame_color: (g("frmc") && g("frmc").value) || "#FFD700",
+    frame_color2: (g("frmc2") && g("frmc2").value) || "#FFFFFF",
+    frame_width: (g("frmw") ? parseFloat(g("frmw").value) : 2) / 100,
     style: {
       font: g("ft").value,
       size: parseInt(g("fs").value),
@@ -381,29 +1228,758 @@ function readOpts(id) {
   };
 }
 
-async function previewJob(id) {
-  const img = document.getElementById("pv-" + id);
-  img.style.display = "block";
-  img.style.opacity = 0.4;
-  const res = await fetch(`/api/jobs/${id}/preview`, { method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(readOpts(id)) });
-  if (res.ok) img.src = URL.createObjectURL(await res.blob());
-  img.style.opacity = 1;
-}
-
-async function rerenderJob(id) {
-  await fetch(`/api/jobs/${id}/rerender`, { method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(readOpts(id)) });
+async function resumeJob(id) {
+  await fetch(`/api/jobs/${id}/resume`, { method: "POST" });
+  // ép thẻ vẽ lại dù panel cài đặt đang mở (refresh() bỏ qua card có details[open])
   document.querySelector(`#card-${id} details`)?.removeAttribute("open");
   delete lastJson[id];
   refresh();
 }
 
-async function resumeJob(id) {
-  await fetch(`/api/jobs/${id}/resume`, { method: "POST" });
+async function runAllPending() {
+  await fetch("/api/jobs/run-all", { method: "POST" });
   refresh();
+}
+
+async function cancelJob(id) {   // #12 dừng job đang chạy/chờ (checkpoint vẫn còn → chạy tiếp sau)
+  if (!confirm("Dừng job này? Có thể bấm 'Chạy tiếp' sau để chạy nốt từ chỗ dừng.")) return;
+  try {
+    const r = await fetch(`/api/jobs/${id}/cancel`, { method: "POST" });
+    // 409 = job vừa chạy xong/không còn trong hàng → không phải lỗi, chỉ cần làm mới
+    if (!r.ok && r.status !== 409) alert("Không hủy được: " + (await r.text()));
+  } catch (e) { alert("Lỗi mạng khi hủy."); }
+  delete lastJson[id];
+  refresh();
+}
+
+// Upload video từ máy → tạo job (xử lý y như link). Dùng XHR để có thanh % upload.
+function uploadVideo() {
+  const inp = document.getElementById("upfile");
+  const f = inp.files && inp.files[0];
+  if (!f) { alert("Chọn 1 file video trước đã."); return; }
+  const fd = new FormData();
+  fd.append("file", f);
+  fd.append("pause_before_render", document.getElementById("pbr").checked ? "true" : "false");
+  fd.append("glossary", document.getElementById("gloss").value || "");
+  fd.append("series", document.getElementById("series").value.trim() || "");
+  const btn = document.getElementById("upbtn");
+  const box = document.getElementById("upprogress");
+  const setBar = (pct, label) => {
+    box.innerHTML = `<div class="prog"><div class="prog-lbl">${esc(label)}</div>`
+      + `<div class="bar"><span style="width:${pct}%"></span></div></div>`;
+  };
+  const done = () => { btn.disabled = false; btn.textContent = "📁 Upload video từ máy"; };
+  btn.disabled = true; btn.textContent = "⏳ Đang tải lên...";
+  setBar(0, "Đang tải lên: " + f.name);
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/jobs/upload");
+  xhr.upload.onprogress = (e) => {
+    if (!e.lengthComputable) return;
+    const pct = Math.round(e.loaded / e.total * 100);
+    const mb = (n) => (n / 1048576).toFixed(0);
+    if (pct >= 100) setBar(100, "Đã tải xong — server đang lưu file…");
+    else setBar(pct, `Đang tải lên ${f.name} · ${pct}% (${mb(e.loaded)}/${mb(e.total)} MB)`);
+  };
+  xhr.onload = () => {
+    done(); box.innerHTML = "";
+    if (xhr.status >= 200 && xhr.status < 300) { inp.value = ""; refresh(); }
+    else alert("Upload lỗi: " + _errDetail(xhr.responseText, xhr.status));
+  };
+  xhr.onerror = () => { done(); box.innerHTML = ""; alert("Upload lỗi mạng / đứt kết nối."); };
+  try { xhr.send(fd); } catch (e) { done(); box.innerHTML = ""; alert("Không gửi được: " + e); }
+}
+
+// ---------- Bảng phim AI hot (Bilibili + check YouTube) ----------
+function _fmtCount(n) { n = +n || 0; return n >= 10000 ? (n / 10000).toFixed(1) + "万" : String(n); }
+async function renderTrending() {
+  const box = document.getElementById("trendtable");
+  const meta = document.getElementById("trendmeta");
+  let d;
+  try { d = await (await fetch("/api/trending")).json(); }
+  catch (e) { box.innerHTML = `<div class="err">Không tải được bảng: ${esc(String(e))}</div>`; return; }
+  const rows = d.rows || [];
+  const when = d.scanned_at ? new Date(d.scanned_at * 1000).toLocaleString() : "chưa quét";
+  meta.textContent = `${rows.length} phim · quét lúc ${when}`
+    + (d.yt_enabled ? ` · YouTube: bật (đã check ${d.yt_checked || 0})` : " · YouTube: chưa có key");
+  if (!rows.length) {
+    box.innerHTML = `<div class="note">Chưa có dữ liệu — bấm "🔄 Quét ngay" (lần đầu ~15–30 giây).</div>`;
+    return;
+  }
+  const ytCell = (r) => {
+    if (!d.yt_enabled) return '<span class="meta">—</span>';
+    const y = r.youtube;
+    if (!y) return '<span class="meta">(chưa check)</span>';
+    if (y.error) return `<span class="meta">lỗi: ${esc(y.error)}</span>`;
+    if (!y.found) return '<span style="color:var(--ok)">✓ Chưa có ai làm</span>';
+    return `<a href="${esc(y.url)}" target="_blank" rel="noopener">⚠ Đã có — ${esc(y.channel || "xem")}</a>`;
+  };
+  let h = `<table class="trend"><thead><tr><th>#</th><th>Tựa (Bilibili)</th><th>View</th><th>Like</th><th>YouTube đã có?</th><th>Từ khoá</th></tr></thead><tbody>`;
+  rows.forEach((r, i) => {
+    h += `<tr><td>${i + 1}</td>`
+      + `<td><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title)}</a>`
+      + `<div class="meta">${esc(r.author)}${r.duration ? " · " + esc(r.duration) : ""}</div></td>`
+      + `<td>${_fmtCount(r.play)}</td><td>${_fmtCount(r.like)}</td>`
+      + `<td>${ytCell(r)}</td><td class="meta">${esc(r.keyword)}</td></tr>`;
+  });
+  box.innerHTML = h + `</tbody></table>`;
+}
+async function scanTrending() {
+  const btn = document.getElementById("trendscanbtn");
+  const meta = document.getElementById("trendmeta");
+  btn.disabled = true; btn.textContent = "⏳ Đang quét...";
+  meta.textContent = "Đang quét Bilibili… (~15–30 giây)";
+  try {
+    const res = await fetch("/api/trending/scan", { method: "POST" });
+    if (!res.ok) { meta.textContent = "Lỗi: " + _errDetail(await res.text(), res.status); return; }
+    await renderTrending();
+  } catch (e) { meta.textContent = "Lỗi: " + e; }
+  finally { btn.disabled = false; btn.textContent = "🔄 Quét ngay"; }
+}
+
+/* ---------- Editor lời thoại ---------- */
+let edJobId = null, edSegs = [], edCurIdx = -1, edDirty = new Set(), edVoices = [], edHadFinal = false;
+let edCastNames = [];   // nhân vật đã cast của series (nếu có) → gợi ý gán câu trong editor
+let edMuteState = new Set();   // chỉ số dòng đang Mute (không lồng tiếng Việt)
+let edRenderWatch = null;      // {id, ttsBase, armGen}: edSave đang render → theo dõi để mở lại editor khi xong
+
+function fmtT(s) {
+  s = Math.max(0, Math.floor(s));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+function autoGrow(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+// giá trị dropdown giọng của 1 segment: "ref:<file>" (casting) | "nu" | "nam"
+function edVoiceSel(s) {
+  return s.voice_ref ? ("ref:" + s.voice_ref) : (s.voice === "nu" ? "nu" : "nam");
+}
+function edMark(i) {
+  const ta = document.getElementById("edvi-" + i);
+  const vc = document.getElementById("edvoice-" + i).value;
+  const orig = edSegs[i];
+  const ov = edVoiceSel(orig);
+  const row = document.getElementById("edrow-" + i);
+  const muteSame = edMuteState.has(i) === !!orig.mute;
+  const ci = document.getElementById("edchar-" + i);
+  const charSame = !ci || ci.value.trim() === (orig.character || "").trim();
+  if (ta.value === orig.text_vi && vc === ov && muteSame && charSame) {  // sửa rồi trả về như cũ
+    edDirty.delete(i); row.classList.remove("dirty");
+  } else {
+    edDirty.add(i); row.classList.add("dirty");
+  }
+  autoGrow(ta);  // dự phòng cho trình duyệt chưa hỗ trợ field-sizing
+}
+// Tắt/bật lồng tiếng cho 1 dòng: Mute → dòng xám, không đọc tiếng Việt (giữ tiếng gốc);
+// bấm "Áp dụng câu đã sửa" mới có hiệu lực vào video.
+function edLineMute(i) {
+  if (edMuteState.has(i)) edMuteState.delete(i); else edMuteState.add(i);
+  const muted = edMuteState.has(i);
+  document.getElementById("edrow-" + i).classList.toggle("muted", muted);
+  const b = document.getElementById("edmute-" + i);
+  if (b) {
+    b.textContent = muted ? "🔊" : "🔇";
+    b.title = muted ? "Bật lại lồng tiếng câu này" : "Tắt lồng tiếng câu này (giữ tiếng gốc)";
+  }
+  edMark(i);
+}
+// "Đổi toàn bộ": đặt giọng đã chọn cho TẤT CẢ câu (đánh dấu sửa); bấm Áp dụng/Lưu để đọc lại.
+function edApplyAllVoice() {
+  const val = document.getElementById("edbulkvoice").value;
+  let n = 0;
+  for (let i = 0; i < edSegs.length; i++) {
+    const sel = document.getElementById("edvoice-" + i);
+    if (sel && sel.value !== val) { sel.value = val; edMark(i); n++; }
+  }
+  const msg = document.getElementById("edmsg");
+  msg.textContent = n
+    ? `Đã đổi giọng ${n} câu — bấm "🔁 Áp dụng câu đã sửa" hoặc "💾 Lưu & render lại" để đọc lại.`
+    : "Tất cả câu đã dùng giọng này rồi.";
+}
+
+async function openEditor(id) {
+  let data;
+  try {
+    const res = await fetch(`/api/jobs/${id}/segments`);
+    if (!res.ok) { alert("Không tải được lời thoại: " + (await res.json()).detail); return; }
+    data = await res.json();
+  } catch (e) { alert("Lỗi tải lời thoại: " + e); return; }
+
+  try { edVoices = (await (await fetch("/api/voices")).json()).voices || []; }
+  catch (e) { edVoices = []; }
+
+  // Tự mở lại sau render (cùng job đang mở) NHƯNG người dùng vừa gõ thêm trong lúc fetch →
+  // đừng ghi đè bản đang sửa. (Mở mới từ thẻ Jobs thì edJobId đã null → bỏ qua nhánh này.)
+  if (edJobId === id && edDirty.size) {
+    const m = document.getElementById("edmsg");
+    if (m) m.textContent = "✓ Render xong. Có câu sửa mới chưa lưu — bấm 💾 để render lại.";
+    return;
+  }
+
+  edJobId = id; edSegs = data.segments; edCurIdx = -1; edDirty = new Set();
+  edCastNames = data.cast_names || [];   // series có casting → hiện ô gán nhân vật
+  edMuteState = new Set();
+  edSegs.forEach((s, i) => { if (s.mute) edMuteState.add(i); });
+  edHadFinal = data.has_final;   // job đã render → "Áp dụng giọng" sẽ xoá final, cần cảnh báo
+  const vsrc = data.has_final ? `/api/jobs/${id}/video` : `/api/jobs/${id}/source`;
+  const rows = edSegs.map((s, i) => {
+    const vsel = edVoiceSel(s);
+    return `
+    <div class="ed-row${s.mute ? " muted" : ""}" id="edrow-${i}" onclick="edRowClick(event, ${i})" ondblclick="edRowPlay(event, ${i})">
+      <div class="ed-t" title="Nhảy video tới câu này">${fmtT(s.start)}</div>
+      <div class="ed-mid">
+        ${s.text ? `<div class="ed-zh">${esc(s.text)}</div>` : ""}
+        <textarea class="ed-vi" id="edvi-${i}" rows="1" oninput="edMark(${i})">${esc(s.text_vi)}</textarea>
+        ${edCastNames.length ? `<input class="ed-char" id="edchar-${i}" list="ed-castnames" value="${esc(s.character || "")}" oninput="edMark(${i})" placeholder="👤 nhân vật (casting)" title="Nhân vật nói câu này — quyết định giọng theo bảng casting series" style="margin-top:4px;width:100%;box-sizing:border-box;background:var(--card);color:var(--dim);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font:inherit;font-size:12px">` : ""}
+      </div>
+      <div class="ed-ctl">
+        <select id="edvoice-${i}" class="ed-voice" onchange="edMark(${i})">
+          <option value="nam" ${vsel === "nam" ? "selected" : ""}>Nam — mặc định (${esc(data.voices.nam)})</option>
+          <option value="nu" ${vsel === "nu" ? "selected" : ""}>Nữ — mặc định (${esc(data.voices.nu)})</option>
+          ${edVoices.map(v => `<option value="ref:${esc(v.file)}" ${vsel === "ref:" + v.file ? "selected" : ""}>🎙 ${esc(v.name)}</option>`).join("")}
+        </select>
+        <div class="ed-btns">
+          <button class="ghost ed-mute" id="edmute-${i}" onclick="edLineMute(${i})" title="${s.mute ? "Bật lại lồng tiếng câu này" : "Tắt lồng tiếng câu này (giữ tiếng gốc)"}">${s.mute ? "🔊" : "🔇"}</button>
+          <button class="ghost ed-preview" onclick="edPreview(${i})" title="Nghe thử">🔊</button>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  _revokeEdPreview();   // mở lại (auto-reopen) thay innerHTML → nhả blob ảnh xem trước cũ trước
+  document.getElementById("pane-edit").innerHTML = `
+    <div class="ed-top">
+      <button class="ghost" onclick="closeEditor()">← Quay lại</button>
+      <b>Sửa lời thoại</b>
+      <span class="meta">${edSegs.length} câu · chỉ câu sửa mới được đọc lại</span>
+      <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Đọc lại các câu đã sửa + trộn lại lồng tiếng (chưa render) để nghe ngay trong editor">🔁 Áp dụng câu đã sửa (đọc lại)</button>
+      <button onclick="edSave()" id="edsavebtn">💾 Lưu & render lại</button>
+      <select id="edbulkvoice" class="ed-bulkvoice" title="Giọng áp cho TẤT CẢ câu">
+        <option value="nam">Nam — mặc định (${esc(data.voices.nam)})</option>
+        <option value="nu">Nữ — mặc định (${esc(data.voices.nu)})</option>
+        ${edVoices.map(v => `<option value="ref:${esc(v.file)}">🎙 ${esc(v.name)}</option>`).join("")}
+      </select>
+      <button class="ghost" onclick="edApplyAllVoice()" title="Đặt giọng đã chọn cho TẤT CẢ câu, rồi bấm Áp dụng / Lưu & render để đọc lại">↪ Đổi toàn bộ</button>
+      <span class="meta">🎙 Xử lý giọng:</span>
+      <select id="fx-ed" class="ed-bulkvoice" title="Hậu kỳ giọng (EQ/nén/chuẩn độ to) — áp khi 💾 Lưu & render lại">${fxOptionsHtml((data.render || {}).fx || "off")}</select>
+      <span class="meta" id="edmsg"></span>
+    </div>
+    <div class="ed-prog" id="edprogress"></div>
+    <div class="ed-split">
+      <div class="ed-left">
+        <div id="ed-stage">
+          <div class="ed-vwrap" id="ed-vwrap">
+            <video id="edvideo" preload="metadata" src="${vsrc}" onclick="if(event.detail<2)edTogglePlay()"></video>
+            <div class="ed-cover-ov" id="ed-cover-ov"></div>
+            <div class="ed-sub-ov" id="ed-sub-ov"><span></span></div>
+            <div class="ed-frame-ov" id="ed-frame-ov"></div>
+          </div>
+          <div class="ed-player">
+            <button class="ghost" id="edplay" onclick="edTogglePlay()" title="Phát / Dừng">▶</button>
+            <input type="range" id="edseek" min="0" max="1000" value="0" step="1" oninput="edSeekBar(this.value)" title="Tua">
+            <span class="meta" id="edtime">0:00 / 0:00</span>
+            <button class="ghost" id="edmutebtn" onclick="edToggleMute()" title="Tắt / bật tiếng">🔊</button>
+            <input type="range" id="edvol" min="0" max="100" value="100" oninput="edSetVol(this.value)" title="Âm lượng">
+            <button class="ghost" onclick="edFullscreen()" title="Toàn màn hình">⛶</button>
+          </div>
+        </div>
+        ${!data.has_final ? `<div class="meta" style="margin:6px 0 0">Khung hình là video GỐC; ${data.has_dub ? "đang phát LỒNG TIẾNG VIỆT; " : ""}phụ đề + làm mờ bên dưới là xem trước gần đúng (bản chính xác sau khi render). Nhấp 1 lần vào dòng để tua tới, nhấp ĐÚP để phát từ đó, 🔊 để nghe riêng câu.</div>` : ""}
+        <div class="ed-now" id="ednow">▶ Phát video — câu đang chiếu sẽ tự sáng & cuộn tới.</div>
+        ${edSettingsPanel(data)}
+      </div>
+      <div class="ed-list" id="edlist">${rows}</div>
+      <datalist id="ed-castnames">${edCastNames.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
+    </div>`;
+  for (const t of ["over", "jobs", "cfg"]) document.getElementById("pane-" + t).style.display = "none";
+  document.getElementById("pane-edit").style.display = "";
+  const ev = document.getElementById("edvideo");
+  ev.addEventListener("timeupdate", edHighlight);
+  ev.addEventListener("timeupdate", edUpdatePlayer);
+  ev.addEventListener("loadedmetadata", () => { edStyleSub(); edUpdatePlayer(); });
+  ev.addEventListener("play", edUpdatePlayer);
+  ev.addEventListener("pause", edUpdatePlayer);
+  edSetupDub(id, data.has_dub);
+  updateEdOverlay();
+  toggleFrameCtl();   // bật/tắt ô màu+độ dày theo loại khung đang chọn
+  edUpdatePlayer();
+  refresh();   // hiện ngay thanh tiến độ nếu job đang chạy lúc mở editor
+}
+
+// Phát bản LỒNG TIẾNG VIỆT (dubbed_audio.wav) đè lên video gốc (video tắt tiếng), đồng
+// bộ qua sự kiện của video. edDubJob giữ jobId để NẠP LẠI dub sau khi "Áp dụng giọng".
+let edDub = null, edDubOn = false, edVol = 1, edMuted = false, edDubJob = null;
+function edSetupDub(id, hasDub) {
+  edDubJob = id;
+  if (edDub) { edDub.pause(); }
+  edDub = null; edDubOn = false; edVol = 1; edMuted = false;
+  const v = document.getElementById("edvideo");
+  // Gắn listener đồng bộ MỘT LẦN, KHÔNG phụ thuộc hasDub (mỗi listener tự null-check
+  // nên là no-op khi chưa có dub). Nhờ vậy sau "Áp dụng giọng" tạo dub mới, listener
+  // vẫn lái edDub mới mà không cần gắn lại — kể cả khi mở editor lúc chưa có dub.
+  v.addEventListener("play", () => { if (edDubOn && edDub) { edDub.currentTime = v.currentTime; edDub.play().catch(() => {}); } });
+  v.addEventListener("pause", () => { if (edDub) edDub.pause(); });
+  v.addEventListener("seeking", () => { if (edDub) edDub.currentTime = v.currentTime; });
+  v.addEventListener("ratechange", () => { if (edDub) edDub.playbackRate = v.playbackRate; });
+  v.addEventListener("timeupdate", () => {   // chống lệch dần trên video dài
+    if (edDubOn && edDub && !v.paused && Math.abs(edDub.currentTime - v.currentTime) > 0.3)
+      edDub.currentTime = v.currentTime;
+  });
+  if (hasDub) { edDub = new Audio(`/api/jobs/${id}/dub`); edDubOn = true; }
+  edApplyAudio();
+}
+// Nạp lại bản dub sau khi "Áp dụng giọng" (đọc lại) — tái dùng listener đã gắn ở trên.
+function edReloadDub() {
+  const v = document.getElementById("edvideo");
+  const wasPlaying = v && !v.paused;
+  if (edDub) edDub.pause();
+  edDub = new Audio(`/api/jobs/${edDubJob}/dub?v=${Date.now()}`);  // cache-bust
+  edDubOn = true;
+  edDub.addEventListener("error", () => {   // dub thiếu/404 → bỏ dub, trả tiếng cho video (khỏi câm)
+    if (edDubOn) { edDubOn = false; edApplyAudio(); }
+  });
+  edApplyAudio();
+  if (wasPlaying && v) { edDub.currentTime = v.currentTime; edDub.play().catch(() => {}); }
+}
+// Khôi phục video + dub sau khi LƯU LỖI (editor còn mở) — tránh để khung hình đen + mất tiếng.
+function edRestoreEditorMedia() {
+  const v = document.getElementById("edvideo");
+  if (v && !v.getAttribute("src"))
+    v.src = edHadFinal ? `/api/jobs/${edJobId}/video` : `/api/jobs/${edJobId}/source`;
+  edReloadDub();
+}
+// Nhả file dub: dừng + bỏ src + load() để trình duyệt ĐÓNG kết nối → server hết khoá
+// dubbed_audio.wav. Bắt buộc gọi TRƯỚC khi đọc lại, vì Windows khoá file đang phát nên
+// server không xoá/ghi đè được (gây 500 ở lần áp dụng thứ 2 trở đi).
+function edReleaseDub() {
+  if (edDub) { edDub.pause(); edDub.removeAttribute("src"); try { edDub.load(); } catch (e) {} edDub = null; }
+  edDubOn = false;
+}
+// Lấy chi tiết lỗi an toàn kể cả khi server trả TEXT (vd "Internal Server Error", không phải JSON).
+function _errDetail(raw, status) {
+  try { return JSON.parse(raw).detail || raw || status; } catch (e) { return raw || status; }
+}
+// MỘT thanh âm lượng + nút tắt tiếng duy nhất, điều khiển nguồn đang nghe (dub nếu có).
+function edApplyAudio() {
+  const v = document.getElementById("edvideo");
+  if (edDubOn && edDub) { if (v) v.muted = true; edDub.volume = edVol; edDub.muted = edMuted; }
+  else if (v) { v.muted = edMuted; v.volume = edVol; }
+  const mb = document.getElementById("edmutebtn"); if (mb) mb.textContent = edMuted ? "🔇" : "🔊";
+  const vs = document.getElementById("edvol"); if (vs) vs.value = Math.round(edVol * 100);
+}
+function edSetVol(pct) { edVol = Math.max(0, Math.min(1, pct / 100)); if (edVol > 0) edMuted = false; edApplyAudio(); }
+function edToggleMute() { edMuted = !edMuted; edApplyAudio(); }
+
+// ----- Bộ điều khiển video gọn (thay thanh điều khiển mặc định để âm lượng = 1 nút) -----
+function edTogglePlay() {
+  const v = document.getElementById("edvideo");
+  if (!v) return;
+  if (v.paused) { const p = v.play(); if (p) p.catch(() => {}); } else v.pause();
+}
+function edSeekBar(val) {
+  const v = document.getElementById("edvideo");
+  if (v && v.duration) { v.currentTime = (val / 1000) * v.duration; edHighlight(); }
+}
+function edUpdatePlayer() {
+  const v = document.getElementById("edvideo");
+  if (!v) return;
+  const pb = document.getElementById("edplay"); if (pb) pb.textContent = v.paused ? "▶" : "⏸";
+  const sk = document.getElementById("edseek");
+  if (sk && v.duration && document.activeElement !== sk)
+    sk.value = Math.round((v.currentTime / v.duration) * 1000);
+  const tt = document.getElementById("edtime");
+  if (tt) tt.textContent = fmtT(v.currentTime) + " / " + fmtT(v.duration || 0);
+}
+function edFullscreen() {
+  // toàn màn hình CẢ video + thanh điều khiển (ed-stage) để không mất nút khi fullscreen
+  const w = document.getElementById("ed-stage");
+  if (!document.fullscreenElement) { if (w && w.requestFullscreen) w.requestFullscreen().catch(() => {}); }
+  else document.exitFullscreen().catch(() => {});
+}
+
+// #2 + #3: bảng cài đặt phụ đề/che NGAY trong editor (id hậu tố "-ed", tái dùng helper),
+// xem trước trực tiếp bằng lớp phủ trên video.
+function edSettingsPanel(data) {
+  const r = data.render || {}, s = r.style || {};
+  const sm = r.subtitle_mode || "soft", cv = r.cover || "none";
+  const ct = Math.round((r.cover_top ?? 0.78) * 100), cb = Math.round((r.cover_bottom ?? 1.0) * 100), cw = Math.round((r.cover_width ?? 1.0) * 100);
+  const font = s.font || "Arial", size = s.size || 18, color = s.color || "#FFFFFF", oColor = s.outline_color || "#000000";
+  const outline = s.outline ?? 2, marginV = s.margin_v ?? 16;
+  const back = s.back ? "checked" : "", backColor = s.back_color || "#000000", backOp = Math.round((s.back_opacity ?? 0.6) * 100);
+  const frame = r.frame || "none";
+  const frameColor = r.frame_color || "#FFD700";
+  const frameColor2 = r.frame_color2 || "#FFFFFF";
+  const frameW = Math.round((r.frame_width ?? 0.02) * 1000) / 10;   // % chiều cao
+  const FRAME_PRESETS = [["none","Không khung"],["solid","Viền đơn"],["double","Viền đôi"],
+    ["twocolor","Viền 2 màu"],["corner","Bo góc / 4 góc"]];
+  const pngFrames = data.frames || [];
+  const frameOptsHtml = FRAME_PRESETS.map(([v,l]) => `<option value="${v}" ${frame===v?"selected":""}>${l}</option>`).join("")
+    + pngFrames.map(n => `<option value="png:${esc(n)}" ${frame==="png:"+n?"selected":""}>🖼 ${esc(n)}</option>`).join("");
+  return `<details class="ed-settings"><summary>🎨 Phụ đề / che sub gốc / khung viền — xem trước trực tiếp</summary>
+    <div oninput="updateEdOverlay()" onchange="updateEdOverlay()">
+    <div class="opts">🖼 Khung viền: <select id="frm-ed" onchange="toggleFrameCtl()">${frameOptsHtml}</select>
+      Màu: <input type="color" id="frmc-ed" value="${esc(frameColor)}">
+      <span id="frmc2-wrap">Màu 2: <input type="color" id="frmc2-ed" value="${esc(frameColor2)}"></span>
+      Độ dày: <input type="range" id="frmw-ed" min="0.5" max="6" step="0.1" value="${frameW}"
+             oninput="document.getElementById('frmwp-ed').textContent=this.value+'%'">
+      <span class="pct" id="frmwp-ed">${frameW}%</span>
+      <span class="meta">Khung vẽ cứng vào video (phụ đề cũng thành vẽ cứng). Khung PNG: thả file .png (nền giữa trong suốt) vào thư mục frames/.</span></div>
+    <div class="opts">
+      Phụ đề: <select id="sm-ed">
+        <option value="soft" ${sm === "soft" ? "selected" : ""}>Track bật/tắt</option>
+        <option value="burn" ${sm === "burn" ? "selected" : ""}>Vẽ cứng</option>
+        <option value="none" ${sm === "none" ? "selected" : ""}>Không</option></select>
+      Che sub gốc: <select id="cv-ed" onchange="toggleCoverSliders('ed')">
+        <option value="none" ${cv === "none" ? "selected" : ""}>Không che</option>
+        <option value="auto" ${cv === "auto" ? "selected" : ""}>Mờ tự động theo sub</option>
+        <option value="blur" ${cv === "blur" ? "selected" : ""}>Làm mờ</option>
+        <option value="black" ${cv === "black" ? "selected" : ""}>Dải đen</option></select>
+    </div>
+    <div class="opts">
+      Vùng che từ: <input type="range" id="ct-ed" min="0" max="97" value="${ct}" ${cv === "auto" ? "disabled" : ""} oninput="syncBand('ed','ct')">
+      <span class="pct" id="pct-ed">${ct}%</span>
+      đến: <input type="range" id="cb-ed" min="3" max="100" value="${cb}" ${cv === "auto" ? "disabled" : ""} oninput="syncBand('ed','cb')">
+      <span class="pct" id="cbp-ed">${cb}%</span>
+      Rộng: <input type="range" id="cw-ed" min="20" max="100" value="${cw}" ${cv === "auto" ? "disabled" : ""} oninput="document.getElementById('cwp-ed').textContent=this.value+'%'">
+      <span class="pct" id="cwp-ed">${cw}%</span>
+    </div>
+    <div class="opts">
+      Font: <select id="ft-ed" onchange="updateFontPreview('ed')">${fontOptions(font)}</select>
+      Cỡ: <input type="number" id="fs-ed" min="10" max="40" value="${size}" style="width:56px">
+      Màu chữ: <input type="color" id="fc-ed" value="${color}" oninput="updateFontPreview('ed')">
+      Màu viền: <input type="color" id="oc-ed" value="${oColor}">
+      Viền: <input type="number" id="ow-ed" min="0" max="4" value="${outline}" style="width:48px">
+    </div>
+    <div class="font-prev" id="fp-ed" style="font-family:'${esc(font)}';color:${esc(color)}">Xem trước · Cốt truyện Ầ Ằ Ẻ Đ Ợ Ư</div>
+    <div class="opts">
+      <label><input type="checkbox" id="bk-ed" ${back}> Hộp nền</label>
+      Màu nền: <input type="color" id="bc-ed" value="${backColor}">
+      Đậm: <input type="range" id="bo-ed" min="0" max="100" value="${backOp}" oninput="document.getElementById('bop-ed').textContent=this.value+'%'">
+      <span class="pct" id="bop-ed">${backOp}%</span>
+      Dời sub lên: <input type="range" id="mv-ed" min="0" max="320" step="4" value="${marginV}" oninput="document.getElementById('mvp-ed').textContent=this.value">
+      <span class="pct" id="mvp-ed">${marginV}</span>
+    </div>
+    <div class="meta">Bấm 💾 Lưu &amp; render lại để áp dụng. Làm mờ ở đây là xem trước gần đúng (bản render dùng FFmpeg chính xác hơn). Kiểu chữ chỉ áp dụng khi phụ đề "Vẽ cứng".</div>
+    <div class="row">
+      <button class="ghost" id="edpvbtn" onclick="edPreviewFrame()" title="Dựng thử 1 khung bằng FFmpeg — chính xác hơn xem trước trực tiếp">👁 Xem trước 1 khung (chính xác)</button>
+    </div>
+    <img class="preview" id="ed-preview-frame" style="display:none">
+    </div>
+  </details>`;
+}
+
+// #5: xem trước CHÍNH XÁC 1 khung bằng FFmpeg (che + kiểu chữ + phụ đề thật) — tái dùng
+// endpoint /preview. Khác với lớp phủ CSS trực tiếp ở trên (chỉ gần đúng).
+async function edPreviewFrame() {
+  if (!edJobId) return;
+  const img = document.getElementById("ed-preview-frame");
+  const btn = document.getElementById("edpvbtn");
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Đang dựng khung..."; }
+  if (img) { img.style.display = "block"; img.style.opacity = 0.4; }
+  try {
+    const res = await fetch(`/api/jobs/${edJobId}/preview`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(readOpts("ed")) });
+    if (res.ok) {
+      if (img && img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+      if (img) img.src = URL.createObjectURL(await res.blob());
+    } else {
+      const m = document.getElementById("edmsg");
+      if (m) m.textContent = "Xem trước lỗi: " + _errDetail(await res.text(), res.status);
+    }
+  } catch (e) {
+    const m = document.getElementById("edmsg"); if (m) m.textContent = "Xem trước lỗi: " + e;
+  } finally {
+    if (img) img.style.opacity = 1;
+    if (btn) { btn.disabled = false; btn.textContent = "👁 Xem trước 1 khung (chính xác)"; }
+  }
+}
+
+function updateEdOverlay() {
+  if (!document.getElementById("cv-ed")) return;
+  const o = readOpts("ed");
+  const cov = document.getElementById("ed-cover-ov");
+  if (cov) {
+    if (o.cover === "none") { cov.style.display = "none"; }
+    else {
+      const auto = o.cover === "auto";
+      const top = auto ? 78 : o.cover_top * 100, bot = auto ? 100 : o.cover_bottom * 100, w = auto ? 100 : o.cover_width * 100;
+      cov.style.display = "block";
+      cov.style.top = top + "%"; cov.style.height = Math.max(0, bot - top) + "%";
+      cov.style.left = ((100 - w) / 2) + "%"; cov.style.width = w + "%";
+      if (o.cover === "black") { cov.style.background = "#000"; cov.style.backdropFilter = cov.style.webkitBackdropFilter = "none"; }
+      else { cov.style.background = "rgba(0,0,0,.04)"; cov.style.backdropFilter = cov.style.webkitBackdropFilter = "blur(7px)"; }
+    }
+  }
+  // xem trước khung viền (gần đúng): procedural = CSS border; png = ảnh phủ
+  const fov = document.getElementById("ed-frame-ov");
+  if (fov) {
+    const v = document.getElementById("edvideo");
+    if (!o.frame || o.frame === "none") {
+      fov.style.display = "none";
+    } else if (o.frame.startsWith("png:")) {
+      fov.style.display = "block"; fov.style.border = "none"; fov.style.boxShadow = "none";
+      fov.style.backgroundImage = `url(/api/frames/${encodeURIComponent(o.frame.slice(4))})`;
+    } else {
+      fov.style.display = "block"; fov.style.backgroundImage = "none";
+      const px = Math.max(1, Math.round(o.frame_width * (v && v.clientHeight ? v.clientHeight : 360)));
+      fov.style.border = `${px}px ${o.frame === "double" ? "double" : "solid"} ${o.frame_color}`;
+      // viền 2 màu: thêm vòng trong màu 2; bo góc: gạch đứt gợi ý (render mới chính xác 4 góc)
+      fov.style.boxShadow = (o.frame === "twocolor") ? `inset 0 0 0 ${2 * px}px ${o.frame_color2}` : "none";
+      if (o.frame === "corner") fov.style.borderStyle = "dashed";
+    }
+  }
+  edStyleSub();
+}
+function toggleFrameCtl() {
+  const sel = document.getElementById("frm-ed"); if (!sel) return;
+  const f = sel.value;
+  const proc = (f === "solid" || f === "double" || f === "twocolor" || f === "corner");
+  const c = document.getElementById("frmc-ed"), w = document.getElementById("frmw-ed");
+  if (c) c.disabled = !proc;
+  if (w) w.disabled = !proc;
+  const c2w = document.getElementById("frmc2-wrap");
+  if (c2w) c2w.style.display = (f === "twocolor") ? "" : "none";   // màu 2 chỉ cho viền 2 màu
+  updateEdOverlay();
+}
+function edStyleSub() {
+  const sub = document.getElementById("ed-sub-ov"), span = sub && sub.firstElementChild;
+  if (!sub || !span || !document.getElementById("fc-ed")) return;
+  const v = document.getElementById("edvideo");
+  if (!v || !v.clientHeight) return;   // chưa có kích thước → loadedmetadata/edHighlight sẽ tô lại
+  const st = readOpts("ed").style, sm = document.getElementById("sm-ed").value;
+  const scale = v.videoHeight ? v.clientHeight / v.videoHeight : v.clientHeight / 720;
+  sub.style.display = (sm === "none" || !span.textContent) ? "none" : "block";
+  sub.style.bottom = Math.round(st.margin_v * scale) + "px";
+  span.style.fontFamily = '"' + st.font + '"';
+  span.style.fontSize = Math.max(9, Math.round(st.size * scale)) + "px";
+  span.style.color = st.color;
+  const ow = Math.max(0, st.outline * scale);
+  span.style.textShadow = ow ? [[ow, 0], [-ow, 0], [0, ow], [0, -ow]].map(p => `${p[0]}px ${p[1]}px 0 ${st.outline_color}`).join(",") : "none";
+  span.style.background = st.back ? hexA(st.back_color, st.back_opacity) : "transparent";
+}
+function hexA(hex, a) {
+  const n = parseInt(String(hex).replace("#", ""), 16) || 0;
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+}
+
+function _revokeEdPreview() {   // nhả blob URL của ảnh "Xem trước 1 khung" trước khi huỷ DOM editor
+  const img = document.getElementById("ed-preview-frame");
+  if (img && img.src && img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+}
+function _teardownEditorMedia() {   // dừng video + audio lồng tiếng dù rời editor kiểu nào
+  const v = document.getElementById("edvideo"); if (v) v.pause();
+  if (edDub) { edDub.pause(); edDub = null; }
+  edDubOn = false;
+  _revokeEdPreview();   // closeEditor + _doShowTab gọi hàm này → khỏi rò blob khi đóng/đổi tab
+}
+
+function closeEditor() {
+  _teardownEditorMedia();
+  const pe = document.getElementById("pane-edit");
+  pe.style.display = "none"; pe.innerHTML = "";
+  edJobId = null; edSegs = []; edDirty = new Set(); edRenderWatch = null;
+  showTab("jobs"); refresh();
+}
+
+function edSeek(i) {
+  // Nhấp 1 LẦN: chỉ tua tới vị trí câu (giữ nguyên đang phát/tạm dừng), không tự phát.
+  const v = document.getElementById("edvideo");
+  v.currentTime = edSegs[i].start;
+  edHighlight(); edUpdatePlayer();
+}
+
+// Nhấp 1 lần vào dòng → tua tới câu. Trừ khi bấm ô sửa chữ / chọn giọng / nút nghe.
+function edRowClick(e, i) {
+  if (e.target.closest("textarea, select, button")) return;
+  edSeek(i);
+}
+// Nhấp ĐÚP vào dòng → tua tới câu RỒI PHÁT từ đó (kèm lồng tiếng đang áp dụng).
+function edRowPlay(e, i) {
+  if (e.target.closest("textarea, select, button")) return;
+  const v = document.getElementById("edvideo");
+  v.currentTime = edSegs[i].start;
+  const p = v.play(); if (p) p.catch(() => {});
+  edHighlight();
+}
+
+function edHighlight() {
+  const t = document.getElementById("edvideo").currentTime;
+  let idx = -1;
+  for (let i = 0; i < edSegs.length; i++)
+    if (t >= edSegs[i].start && t < edSegs[i].end) { idx = i; break; }
+  if (idx === edCurIdx) return;
+  if (edCurIdx >= 0) document.getElementById("edrow-" + edCurIdx)?.classList.remove("cur");
+  edCurIdx = idx;
+  const subSpan = document.querySelector("#ed-sub-ov span");
+  if (idx >= 0) {
+    const row = document.getElementById("edrow-" + idx);
+    row.classList.add("cur");
+    // đừng giật danh sách về câu đang phát nếu người dùng đang sửa/cuộn chỗ khác
+    const ae = document.activeElement;
+    if (!(ae && document.getElementById("edlist").contains(ae)))
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+    const txt = document.getElementById("edvi-" + idx).value;
+    document.getElementById("ednow").textContent = txt;
+    if (subSpan) { subSpan.textContent = txt; edStyleSub(); }   // phụ đề xem trước theo câu
+  } else if (subSpan) {
+    subSpan.textContent = ""; edStyleSub();   // ngoài câu → ẩn phụ đề xem trước
+  }
+}
+
+let edAudio = null;
+let edPreviewSeq = 0;
+async function edPreview(i) {
+  const text = document.getElementById("edvi-" + i).value.trim();
+  const voice = document.getElementById("edvoice-" + i).value;
+  if (!text) return;
+  document.getElementById("edvideo")?.pause();   // dừng video/dub để nghe rõ câu này
+  const seq = ++edPreviewSeq;   // chỉ lần nghe MỚI NHẤT được phát (synth viXTTS chậm)
+  if (edAudio) {  // dừng + thu hồi blob cũ kẻo rò bộ nhớ qua nhiều lần nghe thử
+    edAudio.pause();
+    if (edAudio.src.startsWith("blob:")) URL.revokeObjectURL(edAudio.src);
+    edAudio = null;
+  }
+  // Đọc CHÍNH nội dung dòng này bằng giọng đang chọn:
+  //  - ref: (giọng nhân bản đã cast) → viXTTS tổng hợp câu với clip đó (đúng giọng render)
+  //  - nam/nữ → edge-tts đọc nhanh để soát chữ
+  const body = voice.startsWith("ref:")
+    ? { text, voice_ref: voice.slice(4) }
+    : { text, voice };
+  const btn = document.querySelector(`#edrow-${i} .ed-ctl .ed-preview`);   // ĐÚNG nút loa (không phải nút Mute)
+  // KHÔNG disable nút: đổi giọng rồi bấm lại sẽ tạo lần nghe mới (seq) đè lần cũ,
+  // nên luôn nghe đúng giọng vừa chọn (trước đây nút bị khoá → bỏ qua lần bấm thứ 2).
+  if (btn) btn.textContent = "⏳";
+  try {
+    const res = await fetch("/api/tts-preview", { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (seq !== edPreviewSeq) return;   // đã có lần nghe khác đè lên → bỏ kết quả này
+    if (!res.ok) { alert("Nghe thử lỗi: " + ((await res.json()).detail || res.status)); return; }
+    const blob = await res.blob();
+    if (seq !== edPreviewSeq) return;
+    const url = URL.createObjectURL(blob);
+    edAudio = new Audio(url);
+    edAudio.addEventListener("ended", () => URL.revokeObjectURL(url));
+    edAudio.play().catch(() => {});
+  } catch (e) { alert("Lỗi nghe thử: " + e); }
+  finally { if (btn && btn.isConnected && seq === edPreviewSeq) btn.textContent = "🔊"; }
+}
+
+function edCollectEdits() {
+  return [...edDirty].map(i => {
+    const vsel = document.getElementById("edvoice-" + i).value;
+    let voice = "nam", voice_ref = "";
+    if (vsel === "nu") voice = "nu";
+    else if (vsel.startsWith("ref:")) voice_ref = vsel.slice(4);
+    // ô nhân vật (nếu series có casting) → cho sửa; không có ô thì giữ nguyên character cũ
+    const ci = document.getElementById("edchar-" + i);
+    const character = ci ? ci.value.trim() : (edSegs[i].character || "");
+    return { id: edSegs[i].id, text_vi: document.getElementById("edvi-" + i).value,
+             voice, voice_ref, character, mute: edMuteState.has(i) };
+  });
+}
+
+async function edSave() {
+  const edits = edCollectEdits();
+  const msg = document.getElementById("edmsg");
+  // chặn khi đang đọc lại (Áp dụng) hoặc đang render dở: hai luồng cùng ghi đè dubbed_audio.wav
+  // → tránh va khoá file (Windows) làm hỏng/đứng dub của worker đang chạy.
+  if (edRenderWatch || document.getElementById("edapplybtn")?.disabled) {
+    msg.textContent = "Đang đọc lại / đang render — chờ xong rồi Lưu.";
+    return;
+  }
+  // gửi kèm cài đặt phụ đề/che của editor → render lại áp dụng luôn (kể cả khi chỉ đổi
+  // cài đặt, không sửa câu nào)
+  const render = document.getElementById("cv-ed") ? readOpts("ed") : null;
+  const btn = document.getElementById("edsavebtn");
+  btn.disabled = true; btn.textContent = "⏳ Đang lưu...";
+  // nhả dub + video để server xoá/ghi đè dubbed_audio.wav / final.mp4 (Windows khoá file
+  // đang phát). Ở LẠI editor để xem tiến độ → video tạm trống trong lúc render là bình thường.
+  edReleaseDub();
+  const sv = document.getElementById("edvideo");
+  if (sv) { sv.pause(); sv.removeAttribute("src"); try { sv.load(); } catch (e) {} }
+  const reset = () => { btn.disabled = false; btn.textContent = "💾 Lưu & render lại"; };
+  try {
+    const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render }) });
+    const raw = await res.text();
+    if (!res.ok) {
+      msg.textContent = "Lỗi: " + _errDetail(raw, res.status);
+      // 409 = job khác đang chạy & giữ dubbed_audio.wav → KHÔNG mở lại dub kẻo khoá file worker đang ghi
+      if (res.status !== 409) edRestoreEditorMedia();
+      refresh(); reset(); return;
+    }
+    const r = raw ? JSON.parse(raw) : {};
+    // KHÔNG đóng editor: ở lại theo dõi thanh tiến độ ngay trong màn hình này. Khi render
+    // xong, refresh() phát hiện job rời trạng thái chạy → tự mở lại editor với bản mới.
+    edDirty = new Set();
+    document.querySelectorAll("#edlist .ed-row.dirty").forEach(el => el.classList.remove("dirty"));
+    // base = số câu còn mp3 NGAY SAU khi server xoá câu đã đổi (server trả tts_done trong r) →
+    // thanh TTS đo theo số câu phải đọc lại, không nhảy lên ~95% vì câu cũ còn mp3.
+    // armGen = gen hiện tại: mọi refresh đang dở (myGen<=armGen, snapshot tiền-enqueue) sẽ bị
+    // bỏ qua; refresh() gọi ngay dưới (++gen) và các tick sau mới được xét hoàn tất.
+    edRenderWatch = { id: edJobId, ttsBase: (r.tts_done || 0), armGen: refreshGen };
+    btn.textContent = "⏳ Đang render...";   // giữ disabled tới khi render xong (chống bấm lại)
+    msg.textContent = "Đã lưu — đang render"
+      + (r.changed ? ` (đọc lại ${r.changed} câu)` : "") + " · xem tiến độ bên dưới (đổi tab nếu muốn thoát)…";
+    refresh();   // hiện thanh tiến độ ngay
+  } catch (e) {
+    msg.textContent = "Lỗi: " + e;
+    edRestoreEditorMedia();   // lưu lỗi → editor còn mở, khôi phục video + tiếng
+    reset();
+  }
+}
+
+// #3: Áp dụng giọng đã sửa vào CẢ video — đọc lại câu sửa + trộn lại lồng tiếng, DỪNG
+// trước render, rồi nạp lại dub để nhấp đúp nghe ngay với giọng mới (không xuất final).
+async function edApplyVoices() {
+  const edits = edCollectEdits();
+  const msg = document.getElementById("edmsg");
+  if (!edits.length) { msg.textContent = "Chưa sửa câu nào để áp dụng."; return; }
+  // job đã render xong: đọc lại sẽ xoá bản final hiện tại (phải render lại sau) → hỏi trước
+  if (edHadFinal && !confirm("Áp dụng giọng sẽ xoá bản video đã render (final) và cần render lại sau khi ưng. Tiếp tục?")) return;
+  const btn = document.getElementById("edapplybtn");
+  btn.disabled = true; btn.textContent = "⏳ Đang đọc lại...";
+  const v = document.getElementById("edvideo");
+  const resumeAt = v ? v.currentTime : 0;
+  // PHẢI nhả dub trước khi server xoá/trộn lại (Windows khoá dubbed_audio.wav đang phát →
+  // lần áp dụng thứ 2 sẽ 500 nếu không nhả). Job đã render thì cũng nhả final.mp4 (đang
+  // bị video giữ) bằng cách chuyển khung hình sang video gốc trước.
+  edReleaseDub();
+  if (edHadFinal && v) { v.src = `/api/jobs/${edJobId}/source`; edHadFinal = false; }
+  try {
+    const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ edits, render: null, rebuild_only: true }) });
+    const raw = await res.text();
+    if (!res.ok) { msg.textContent = "Lỗi: " + _errDetail(raw, res.status); edReloadDub(); refresh(); return; }
+    const r = raw ? JSON.parse(raw) : {};
+    if (!r.changed) { msg.textContent = "Không có thay đổi để áp dụng (trùng bản đã lưu)."; edReloadDub(); return; }
+    msg.textContent = "Đang đọc lại + trộn lồng tiếng — xem tiến độ ngay bên dưới…";
+    const j = await edWaitRebuild(edJobId);
+    if (!j) { msg.textContent = "Đọc lại lâu hơn dự kiến — kiểm tra tab Jobs rồi mở lại."; return; }
+    if (j.stage === "failed") { msg.textContent = "Đọc lại lỗi: " + (j.error || "(xem tab Jobs)"); edReloadDub(); return; }
+    // áp dụng xong: cập nhật edSegs theo nội dung đã lưu, bỏ đánh dấu sửa
+    for (const e of edits) {
+      const seg = edSegs.find(s => s.id === e.id);
+      if (seg) { seg.text_vi = e.text_vi; seg.voice = e.voice; seg.voice_ref = e.voice_ref; seg.character = e.character; seg.mute = e.mute; }
+    }
+    edDirty = new Set();
+    document.querySelectorAll("#edlist .ed-row.dirty").forEach(el => el.classList.remove("dirty"));
+    edReloadDub();
+    if (v && resumeAt) v.currentTime = resumeAt;   // giữ lại vị trí đang xem
+    msg.textContent = "✓ Đã áp dụng vào lồng tiếng — nhấp ĐÚP vào dòng để nghe.";
+    setTimeout(() => { if (msg.textContent.startsWith("✓")) msg.textContent = ""; }, 7000);
+  } catch (e) {
+    msg.textContent = "Lỗi: " + e;
+  } finally {
+    btn.disabled = false; btn.textContent = "🔁 Áp dụng câu đã sửa (đọc lại)";
+  }
+}
+// Chờ worker đọc lại + trộn xong (job rời khỏi trạng thái chạy/hàng đợi). Trả job hoặc null.
+async function edWaitRebuild(id) {
+  for (let i = 0; i < 180; i++) {   // tối đa ~6 phút
+    await new Promise(r => setTimeout(r, 2000));
+    let jobs;
+    try { jobs = await (await fetch("/api/jobs")).json(); } catch (e) { continue; }
+    const j = jobs.find(x => x.id === id);
+    if (j && !j.running && !j.queued) return j;
+  }
+  return null;
 }
 
 async function openJob(id) {
@@ -426,7 +2002,14 @@ async function deleteJob(id) {
   refresh();
 }
 
-refresh();
+loadFonts().then(refresh);  // nạp danh sách font TRƯỚC rồi mới vẽ thẻ job
+loadGlossDefault();
+(() => {  // đánh dấu "cấu hình có thay đổi chưa lưu" để nhắc khi rời tab Cấu hình
+  const cf = document.getElementById("cfgform");
+  if (cf) { cf.addEventListener("change", markCfgDirty); cf.addEventListener("input", markCfgDirty); }
+})();
+_notifBtnLabel();   // #11 nhãn nút thông báo theo quyền hiện tại
+refreshSeriesDatalist();   // #7 đổ danh sách series vào ô "Series" của form
 setInterval(refresh, 3000);
 setInterval(refreshStats, 10000);
 </script>

@@ -31,9 +31,18 @@ def run(job: Job) -> None:
         return
 
     data = json.loads((job.dir / "transcript_vi.json").read_text(encoding="utf-8"))
-    segments = [s for s in data["segments"] if s["text_vi"].strip()]
+    # bỏ câu rỗng và câu bị "Mute" → không chèn giọng Việt, để nguyên tiếng gốc chỗ đó
+    segments = [s for s in data["segments"] if s["text_vi"].strip() and not s.get("mute")]
     bed, rate = audio_np.read_wav(job.dir / "ducked.wav")
     total = len(bed)
+
+    # Ranh giới kế của mỗi segment = start câu NGAY SAU theo thời gian, TÍNH CẢ câu mute.
+    # Nhờ vậy slot câu dub kết thúc trước câu kế (kể cả câu mute) → giọng Việt không tràn
+    # sang vùng giữ tiếng gốc của câu mute.
+    full = sorted(data["segments"], key=lambda s: s["start"])
+    next_bound = {}
+    for k, s in enumerate(full):
+        next_bound[s["id"]] = int(full[k + 1]["start"] * rate) if k + 1 < len(full) else total
 
     warnings = []
     for i, seg in enumerate(segments):
@@ -41,8 +50,7 @@ def run(job: Job) -> None:
         voice = _load_voice(mp3, rate)
 
         start = int(seg["start"] * rate)
-        next_start = (int(segments[i + 1]["start"] * rate)
-                      if i + 1 < len(segments) else total)
+        next_start = next_bound.get(seg["id"], total)
         slot = max(int(0.3 * rate), next_start - start)
 
         if len(voice) > slot:

@@ -7,3 +7,17 @@ data/
 *.log
 
 .claude/settings.local.json
+
+# Media/model lớn hoặc do máy sinh ra — KHÔNG đưa lên git (tải/tạo lại ở máy khác)
+# viXTTS ~1.8GB — tải từ capleaf/viXTTS
+models/
+# video final đã render
+output/
+# audio demo before/after tự sinh
+voice_samples/
+# token OAuth YouTube (bí mật) — data/ đã bị bỏ, ghi rõ cho chắc
+data/youtube_token.json
+*.mp4
+*.mkv
+*.webm
+_split_src_*

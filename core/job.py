@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from pathlib import Path
 
@@ -23,6 +24,7 @@ class Stage(str, Enum):
     RENDERING = "rendering"
     METADATA = "metadata"
     UPLOADING = "uploading"
+    PAUSED = "paused"
     DONE = "done"
     FAILED = "failed"
 
@@ -57,6 +59,9 @@ class Job:
     # override cài đặt render theo job: subtitle_mode, cover, cover_top
     # (thiếu key nào thì S8 dùng giá trị trong config)
     render: dict = field(default_factory=dict)
+    pause_before_render: bool = False
+    glossary: str = ""  # bảng tên riêng "中文=Hán-Việt" cho Whisper + Claude
+    series: str = ""    # tên series (nhiều tập cùng phim) → dùng chung glossary + casting
 
     @property
     def dir(self) -> Path:
@@ -75,9 +80,13 @@ class Job:
 
     @classmethod
     def create(cls, url: str, platforms: list[str] | None = None,
-               chat_id: int | None = None) -> Job:
+               chat_id: int | None = None,
+               pause_before_render: bool = False, glossary: str = "",
+               series: str = "") -> Job:
         job_id = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
-        job = cls(id=job_id, url=url, platforms=platforms or [], chat_id=chat_id)
+        job = cls(id=job_id, url=url, platforms=platforms or [], chat_id=chat_id,
+                  pause_before_render=pause_before_render, glossary=glossary,
+                  series=series)
         job.dir.mkdir(parents=True, exist_ok=True)
         job.save()
         return job
@@ -86,6 +95,10 @@ class Job:
     def load(cls, job_id: str) -> Job:
         state_path = config.JOBS_DIR / job_id / "state.json"
         data = json.loads(state_path.read_text(encoding="utf-8"))
+        # chỉ nhận field Job biết → state.json từ bản MỚI HƠN (có key lạ) không làm
+        # cls(**data) nổ TypeError khi rollback; thiếu key thì default lo (glossary/series)
+        known = {f.name for f in fields(cls)}
+        data = {k: v for k, v in data.items() if k in known}
         data["stage"] = Stage(data["stage"])
         return cls(**data)
 
@@ -100,7 +113,12 @@ class Job:
             "chat_id": self.chat_id,
             "created_at": self.created_at,
             "render": self.render,
+            "pause_before_render": self.pause_before_render,
+            "glossary": self.glossary,
+            "series": self.series,
         }
-        self.state_path.write_text(
-            json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        # ghi nguyên tử: file tạm (tên duy nhất) rồi os.replace → không để state.json bị
+        # torn/nửa vời khi bị kill giữa lúc ghi (đọc lại sẽ JSONDecodeError, mất job khỏi UI)
+        tmp = self.state_path.with_name(f"state.{uuid.uuid4().hex}.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp, self.state_path)
