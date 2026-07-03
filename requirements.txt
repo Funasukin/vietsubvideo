@@ -1,14 +1,14 @@
 # Phase 0/1 — loi pipeline
 python-dotenv
 truststore  # tin kho chung chi OS — sua loi SSL khi may co AV/proxy chan HTTPS
-yt-dlp
+# PIN bản stable: bản mới hơn từng vỡ extractor (Douyin a_bogus) — xem CHANGELOG 2026-07-03
+yt-dlp==2026.6.9
 edge-tts
 anthropic
 pydub
 audioop-lts  # pydub can audioop, da bi go khoi Python 3.13+
 
 # Phase 2 — Telegram bot
-aiogram
 
 # Dashboard web local
 fastapi

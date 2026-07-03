@@ -25,8 +25,24 @@ _ILLEGAL = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
 
 
 def _dir():
-    d = config.DATA_DIR / "series"
+    """Thư mục series NẰM TRONG repo (git theo dõi) → đồng bộ 2 máy qua push/pull.
+    Trước đây ở data/series (data/ bị gitignore) nên casting/glossary series lệch
+    giữa desktop/laptop — trái mục đích 'nhất quán xuyên tập'. Tự di trú 1 lần."""
+    d = config.BASE_DIR / "series"
     d.mkdir(parents=True, exist_ok=True)
+    old = config.DATA_DIR / "series"
+    if old.exists():
+        for p in old.glob("*.json"):
+            dest = d / p.name
+            if not dest.exists():      # không đè bản đã sync từ máy kia
+                try:
+                    p.replace(dest)
+                except OSError:
+                    pass
+        try:
+            old.rmdir()                # chỉ xoá được khi đã rỗng
+        except OSError:
+            pass
     return d
 
 
@@ -84,9 +100,7 @@ def save(name: str, glossary: str, casting: dict) -> dict:
 def list_all() -> list[dict]:
     """Danh sách series đã lưu (cho dropdown / trang quản lý)."""
     out = []
-    d = config.DATA_DIR / "series"
-    if not d.exists():
-        return out
+    d = _dir()   # dùng chung đường dẫn (kèm di trú) với load/save
     for p in sorted(d.glob("*.json")):
         try:
             j = json.loads(p.read_text(encoding="utf-8"))

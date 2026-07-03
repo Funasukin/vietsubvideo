@@ -6,6 +6,51 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt dọn dẹp + tối ưu theo review tổng thể (5 mục, user duyệt)
+
+**1. Dọn rác:** XÓA worker.py, bot/ (aiogram stub), uploaders/ (Phase-3 stub),
+_azure_tts.html — tất cả đã bị thay bởi worker thread trong server.py,
+core/notify.py, core/youtube_upload.py, không ai import. Gỡ field chết
+Job.platforms + Job.chat_id (state.json cũ vẫn nạp được — Job.load lọc key lạ).
+Gỡ aiogram khỏi requirements; PIN yt-dlp==2026.6.9 (bản mới vỡ Douyin).
+KHÔNG xoá output/*.mp4 cũ — sau khi dọn data/jobs, đó là bản duy nhất còn lại.
+
+**2. Series đồng bộ 2 máy (sửa lỗ thiết kế):** kho series chuyển
+data/series (gitignore — mỗi máy một bản!) → **series/ trong repo** (git theo
+dõi, push/pull là casting+glossary nhất quán xuyên máy). Glossary mặc định
+cũng chuyển → series/_glossary_default.txt. Tự DI TRÚ 1 lần khi chạy.
+
+**3. Log per-job:** worker ghi toàn bộ stdout/stderr của cli.py vào
+<job>/run.log (append + header mỗi lượt) → job lỗi lúc vắng mặt vẫn còn vết.
+Endpoint GET /api/jobs/{id}/log (đọc 256KB cuối); UI: nút 📜 Log trong menu
+Soát. Bonus: hết luôn rủi ro crash in tiếng Việt ra console cp1258.
+
+**4. Đĩa + hiệu năng poll:** nút 🧹 Dọn file tạm (job DONE): xoá wav trung
+gian (audio_16k/full, vocals, ducked, dubbed...) + *_sped.wav, GỠ
+extracting/bgm/mixing khỏi completed_stages → "Sửa lời thoại" sau đó tự tách
+audio lại từ source (đã trace: extracting đứng trước tts nên an toàn).
+_job_summary cache seg_total/tts_done theo mtime (hết đọc cả transcript mỗi
+3 giây); progress chỉ đọc khi job đang chạy. Vá vận hành: rerender gate khoá
+file như save_segments; .env ghi nguyên tử; atexit kill job mồ côi khi server tắt.
+
+**5. UX + hàng đợi:** thẻ job gom 9 nút → 2 nút chính + 2 menu (🔎 Soát ▾ /
+📤 Xuất bản ▾). Tab Cấu hình gập 4 nhóm ít dùng (diarization/khử ồn/YouTube/
+Telegram — tự mở nếu đã bật). Hàng đợi: nút **⬆ Ưu tiên** (job chờ nhảy lên
+đầu) + **⏸ Tạm dừng hàng đợi** (job đang chạy chạy nốt, job kế chờ mở lại).
+
+Review đối kháng (2 vòng, 29 agent tổng): 0 lỗi CRITICAL/HIGH xác nhận.
+
+### Máy khác pull về cần làm
+
+1. Sau pull, series ở máy đó (data/series) sẽ TỰ di trú sang series/ khi chạy
+   lần đầu — nếu 2 máy có series TRÙNG TÊN khác nội dung, bản trong repo thắng,
+   bản local giữ nguyên ở data/series (không đè) → tự xử lý tay nếu cần.
+2. `pip uninstall aiogram` (tuỳ, không bắt buộc); yt-dlp giữ 2026.6.9.
+
+---
+
 ## 2026-07-03 (đêm) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Tính năng mới — chốt nốt #15 + #16 (hết sạch danh sách #1–18)

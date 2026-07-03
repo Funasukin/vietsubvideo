@@ -13,9 +13,11 @@ import os
 import queue
 import re
 import shutil
+import atexit
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -62,6 +64,8 @@ _running_id: str | None = None   # job đang chạy (None nếu rảnh) — ch�
 _current_proc: "subprocess.Popen | None" = None  # tiến trình job đang chạy (để hủy)
 _cancel: set[str] = set()        # job_id được yêu cầu hủy (đang chạy hoặc còn chờ)
 _retries: dict[str, int] = {}    # job_id → số lần đã tự chạy lại
+_queue_paused = False            # ⏸ tạm dừng hàng đợi: job đang chạy chạy nốt,
+                                 # job kế KHÔNG được bắt đầu cho tới khi mở lại
 
 
 def _enqueue(job_id: str) -> bool:
@@ -146,6 +150,13 @@ def _worker() -> None:
     global _running_id, _current_proc
     while True:
         job_id = _pending.get()          # KHÔNG giữ lock khi chờ (get() blocking)
+        # ⏸ hàng đợi tạm dừng → giữ job (vẫn hiện "trong hàng đợi"), chờ mở lại.
+        # Hủy trong lúc chờ vẫn ăn (rơi xuống nhánh _cancel bên dưới).
+        while True:
+            with _lock:
+                if not _queue_paused or job_id in _cancel:
+                    break
+            time.sleep(0.5)
         with _lock:
             if job_id in _cancel:         # hủy khi còn nằm trong hàng đợi → bỏ qua
                 _cancel.discard(job_id)
@@ -153,9 +164,21 @@ def _worker() -> None:
                 _retries.pop(job_id, None)
                 continue
             _running_id = job_id          # vẫn nằm trong _active từ lúc _enqueue
+        # Log per-job: toàn bộ stdout/stderr của cli.py ghi vào <job>/run.log (append,
+        # kèm header mỗi lượt) — job lỗi lúc vắng mặt vẫn còn vết, UI đọc qua /log.
+        log_f = None
+        try:
+            log_f = open(config.JOBS_DIR / job_id / "run.log", "ab")
+            log_f.write(f"\n===== run {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
+                        .encode("utf-8"))
+            log_f.flush()
+            out_target = log_f
+        except OSError:
+            out_target = None             # không mở được log → về console như cũ
         proc = subprocess.Popen(
             [sys.executable, str(config.BASE_DIR / "cli.py"), "--resume", job_id],
             cwd=config.BASE_DIR,
+            stdout=out_target, stderr=subprocess.STDOUT if out_target else None,
         )
         with _lock:
             _current_proc = proc
@@ -167,6 +190,11 @@ def _worker() -> None:
             if res != "ok":
                 print(f"[cancel] {job_id}: {res}")
         proc.wait()
+        if log_f is not None:
+            try:
+                log_f.close()
+            except OSError:
+                pass
         rc = proc.returncode              # ≠0 ⇒ pipeline lỗi (cli.py để exception thoát)
         with _lock:
             _current_proc = None
@@ -191,6 +219,16 @@ def _worker() -> None:
 
 
 threading.Thread(target=_worker, daemon=True, name="flowapp-worker").start()
+
+
+@atexit.register
+def _kill_running_job() -> None:
+    """Server tắt (Ctrl+C / restart) → hạ luôn job đang chạy kẻo thành tiến trình
+    mồ côi chiếm CPU/GPU. Checkpoint đã lưu theo stage nên bấm Chạy tiếp là nối lại."""
+    with _lock:
+        proc = _current_proc
+    if proc is not None and proc.poll() is None:
+        _kill_proc_tree(proc)
 
 
 def _trending_safe_scan() -> None:
@@ -279,18 +317,12 @@ def _job_summary(job_dir: Path) -> dict | None:
     if not isinstance(state, dict) or "id" not in state:
         return None
 
-    seg_total = tts_done = 0
-    tv = job_dir / "transcript_vi.json"
-    if tv.exists():
-        seg_total = len(json.loads(tv.read_text(encoding="utf-8"))["segments"])
-    if (job_dir / "tts").exists():
-        tts_done = len(list((job_dir / "tts").glob("seg_????.mp3")))
-
-    state["seg_total"] = seg_total
-    state["tts_done"] = tts_done
+    state["seg_total"] = _cached_seg_total(job_dir)
+    state["tts_done"] = _cached_tts_done(job_dir)
     state["has_final"] = (job_dir / "final.mp4").exists()
     state["has_srt"] = (job_dir / "sub_vi.srt").exists()
     state["has_thumb"] = (job_dir / "thumbnail.jpg").exists()
+    state["has_log"] = (job_dir / "run.log").exists()
     meta_p = job_dir / "metadata.json"
     if meta_p.exists():
         try:
@@ -304,15 +336,59 @@ def _job_summary(job_dir: Path) -> dict | None:
 
     mr = job_dir / "mix_report.json"
     if mr.exists():
-        report = json.loads(mr.read_text(encoding="utf-8"))
-        state["overflow"] = len(report.get("overflow_warnings", []))
-    # tiến độ trong-stage (OCR/Whisper/dịch) — chỉ hiện khi đúng stage đang chạy
-    from core import progress
-    prog = progress.read(job_dir)
-    if prog and prog.get("stage") == state.get("stage"):
-        state["prog_done"] = prog.get("done", 0)
-        state["prog_total"] = prog.get("total", 0)
+        try:
+            report = json.loads(mr.read_text(encoding="utf-8"))
+            state["overflow"] = len(report.get("overflow_warnings", []))
+        except (OSError, json.JSONDecodeError):
+            pass
+    # tiến độ trong-stage (OCR/Whisper/dịch) — chỉ đọc khi job ĐANG chạy (job xong/chờ
+    # thì file này vô nghĩa; đỡ 1 lần mở file mỗi job mỗi nhịp poll 3 giây)
+    if state["running"]:
+        from core import progress
+        prog = progress.read(job_dir)
+        if prog and prog.get("stage") == state.get("stage"):
+            state["prog_done"] = prog.get("done", 0)
+            state["prog_total"] = prog.get("total", 0)
     return state
+
+
+# Cache theo mtime cho 2 phép đếm đắt nhất của poll 3s: đọc CẢ transcript_vi.json chỉ
+# để đếm câu, và glob thư mục tts/. mtime đổi (dịch lại/đọc thêm câu) → tự tính lại.
+_seg_cache: dict[str, tuple[float, int]] = {}
+_tts_cache: dict[str, tuple[float, int]] = {}
+
+
+def _cached_seg_total(job_dir: Path) -> int:
+    tv = job_dir / "transcript_vi.json"
+    try:
+        mt = tv.stat().st_mtime
+    except OSError:
+        _seg_cache.pop(job_dir.name, None)
+        return 0
+    hit = _seg_cache.get(job_dir.name)
+    if hit and hit[0] == mt:
+        return hit[1]
+    try:
+        n = len(json.loads(tv.read_text(encoding="utf-8"))["segments"])
+    except (OSError, json.JSONDecodeError, KeyError):
+        return 0
+    _seg_cache[job_dir.name] = (mt, n)
+    return n
+
+
+def _cached_tts_done(job_dir: Path) -> int:
+    td = job_dir / "tts"
+    try:
+        mt = td.stat().st_mtime   # NTFS đổi mtime thư mục khi thêm/xoá file con
+    except OSError:
+        _tts_cache.pop(job_dir.name, None)
+        return 0
+    hit = _tts_cache.get(job_dir.name)
+    if hit and hit[0] == mt:
+        return hit[1]
+    n = len(list(td.glob("seg_????.mp3")))
+    _tts_cache[job_dir.name] = (mt, n)
+    return n
 
 
 @app.get("/api/jobs")
@@ -599,6 +675,50 @@ def cancel_job(job_id: str) -> dict:
     return {"cancelled": job_id}
 
 
+class QueuePauseBody(BaseModel):
+    paused: bool
+
+
+@app.get("/api/queue")
+def queue_state() -> dict:
+    with _lock:
+        return {"paused": _queue_paused}
+
+
+@app.post("/api/queue/pause")
+def queue_pause(body: QueuePauseBody) -> dict:
+    """⏸/▶ Tạm dừng/mở lại hàng đợi. Job đang chạy chạy nốt; job kế chờ mở lại."""
+    global _queue_paused
+    with _lock:
+        _queue_paused = body.paused
+    return {"paused": body.paused}
+
+
+@app.post("/api/jobs/{job_id}/prioritize")
+def prioritize_job(job_id: str) -> dict:
+    """⬆ Đưa job đang CHỜ lên đầu hàng đợi (chạy ngay sau job hiện tại)."""
+    _check_job_id(job_id)
+    with _lock:
+        if job_id not in _active or job_id == _running_id:
+            raise HTTPException(409, "Job không nằm trong hàng đợi")
+        # múc hết hàng ra, xếp lại: job này TRƯỚC, còn lại giữ nguyên thứ tự
+        items = []
+        while True:
+            try:
+                items.append(_pending.get_nowait())
+            except queue.Empty:
+                break
+        if job_id not in items:      # worker vừa pull đúng lúc → không đổi được nữa
+            for it in items:
+                _pending.put(it)
+            raise HTTPException(409, "Job vừa được lấy ra chạy — không đổi thứ tự được")
+        _pending.put(job_id)
+        for it in items:
+            if it != job_id:
+                _pending.put(it)
+    return {"prioritized": job_id}
+
+
 @app.post("/api/jobs/{job_id}/rerender")
 def rerender_job(job_id: str, opts: RenderOptions) -> dict:
     _check_job_id(job_id)
@@ -621,8 +741,13 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
                   "wm_method": opts.wm_method, "wm_box": opts.wm_box,
                   "crop": opts.crop, "sub_split": opts.sub_split}
     job.pause_before_render = False
-    for name in ["final.mp4", "sub_vi.srt", "metadata.json"]:
-        (job.dir / name).unlink(missing_ok=True)
+    # gate như save_segments: final/srt có thể đang bị trình duyệt phát giữ khoá —
+    # xoá hụt mà cứ enqueue thì S8 thấy file còn → bỏ qua → "render lại" giả
+    locked = [n for n in ("final.mp4", "sub_vi.srt") if not _unlink_quiet(job.dir / n)]
+    if locked:
+        raise HTTPException(409, "Tệp đang được phát/khoá: " + ", ".join(locked)
+                            + ". Dừng phát (hoặc đợi vài giây) rồi thử lại.")
+    _unlink_quiet(job.dir / "metadata.json")
     job.completed_stages = [s for s in job.completed_stages
                             if s not in ("rendering", "metadata")]
     job.error = None
@@ -863,6 +988,68 @@ def job_qc(job_id: str) -> dict:
             pass
     overflow.sort(key=lambda w: -w.get("overflow_ms", 0))
     return {"total": len(segs), "suspects": suspects, "overflow": overflow}
+
+
+@app.get("/api/jobs/{job_id}/log")
+def job_log(job_id: str, lines: int = 200) -> dict:
+    """Đuôi run.log của job (log per-job do worker ghi) — soi lỗi ngay trên UI."""
+    _check_job_id(job_id)
+    p = config.JOBS_DIR / job_id / "run.log"
+    if not p.exists():
+        raise HTTPException(404, "Job chưa có log (chưa chạy lần nào từ khi có tính năng log)")
+    lines = max(10, min(2000, lines))
+    try:
+        with p.open("rb") as f:           # chỉ đọc ~256KB cuối, log dài không nghẽn
+            f.seek(0, 2)
+            size = f.tell()
+            f.seek(max(0, size - 256_000))
+            text = f.read().decode("utf-8", errors="replace")
+    except OSError as e:
+        raise HTTPException(500, f"Đọc log lỗi: {e}")
+    tail = text.splitlines()[-lines:]
+    return {"log": "\n".join(tail), "size": size}
+
+
+# File trung gian có thể dọn sau khi job XONG (giữ final/sub/transcript/tts mp3/nguồn).
+# Xoá audio bed → gỡ luôn các stage sinh ra chúng khỏi completed_stages để lần
+# "Sửa lời thoại" sau pipeline tự tách audio lại từ source (chậm hơn chút, không hỏng).
+_CLEAN_FILES = ["audio_16k.wav", "audio_full.wav", "vocals.wav", "no_vocals.wav",
+                "ducked.wav", "dubbed_audio.wav", "dubbed_render.wav",
+                "vf_auto.txt", "ocr_raw.json"]
+_CLEAN_STAGES = {"extracting", "bgm", "mixing"}
+
+
+@app.post("/api/jobs/{job_id}/clean")
+def clean_job(job_id: str) -> dict:
+    """🧹 Dọn file trung gian của job đã XONG — thường lấy lại 200–500MB/job."""
+    _check_job_id(job_id)
+    with _lock:
+        if job_id in _active:
+            raise HTTPException(409, "Job đang chạy/chờ — không dọn được")
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    if job.stage != Stage.DONE:
+        raise HTTPException(409, "Chỉ dọn job đã hoàn thành (tránh hỏng job dở dang)")
+    freed = 0
+    for name in _CLEAN_FILES:
+        p = job.dir / name
+        try:
+            sz = p.stat().st_size if p.exists() else 0
+        except OSError:
+            sz = 0
+        if _unlink_quiet(p) and sz:       # dubbed có thể đang phát trong editor → retry/bỏ
+            freed += sz
+    for sped in (job.dir / "tts").glob("seg_*_sped.wav"):
+        try:
+            freed += sped.stat().st_size
+            sped.unlink()
+        except OSError:
+            pass
+    job.completed_stages = [s for s in job.completed_stages if s not in _CLEAN_STAGES]
+    job.save()
+    return {"freed_mb": round(freed / 1e6, 1)}
 
 
 class SegmentEdit(BaseModel):
@@ -1140,15 +1327,26 @@ def font_file(filename: str) -> FileResponse:
 
 
 # ---------- Glossary mặc định: lưu/đọc bảng tên riêng tái dùng theo bộ ----------
+# Nằm trong series/ (git theo dõi) → đồng bộ 2 máy; di trú 1 lần từ data/ cũ.
 
-_GLOSSARY_DEFAULT = config.DATA_DIR / "glossary_default.txt"
+_GLOSSARY_DEFAULT = config.BASE_DIR / "series" / "_glossary_default.txt"
+_GLOSSARY_DEFAULT_OLD = config.DATA_DIR / "glossary_default.txt"
+
+
+def _glossary_default_path() -> Path:
+    _GLOSSARY_DEFAULT.parent.mkdir(parents=True, exist_ok=True)
+    if _GLOSSARY_DEFAULT_OLD.exists() and not _GLOSSARY_DEFAULT.exists():
+        try:
+            _GLOSSARY_DEFAULT_OLD.replace(_GLOSSARY_DEFAULT)
+        except OSError:
+            pass
+    return _GLOSSARY_DEFAULT
 
 
 @app.get("/api/glossary-default")
 def get_glossary_default() -> dict:
-    text = (_GLOSSARY_DEFAULT.read_text(encoding="utf-8")
-            if _GLOSSARY_DEFAULT.exists() else "")
-    return {"glossary": text}
+    p = _glossary_default_path()
+    return {"glossary": p.read_text(encoding="utf-8") if p.exists() else ""}
 
 
 class GlossaryBody(BaseModel):
@@ -1158,8 +1356,7 @@ class GlossaryBody(BaseModel):
 @app.post("/api/glossary-default")
 def set_glossary_default(body: GlossaryBody) -> dict:
     _check_glossary(body.glossary)
-    config.DATA_DIR.mkdir(parents=True, exist_ok=True)
-    _GLOSSARY_DEFAULT.write_text(body.glossary, encoding="utf-8")
+    _glossary_default_path().write_text(body.glossary, encoding="utf-8")
     return {"saved": True}
 
 
@@ -1491,7 +1688,11 @@ def set_config(body: dict) -> dict:
     for k in updates:
         if k not in seen:
             lines.append(f"{k}={updates[k]}")
-    ENV_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # ghi nguyên tử (tmp + replace) — .env là single source, ghi dở giữa lúc worker
+    # con load_dotenv sẽ mất key; cùng pattern với state.json/series.json
+    tmp = ENV_PATH.with_name(f".env.{uuid.uuid4().hex}.tmp")
+    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    os.replace(tmp, ENV_PATH)
     return {"saved": sorted(updates), "note": "Áp dụng cho job chạy mới"}
 
 

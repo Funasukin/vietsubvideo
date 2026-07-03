@@ -50,11 +50,9 @@ _VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".flv"}
 class Job:
     id: str
     url: str
-    platforms: list[str] = field(default_factory=list)  # "youtube" | "facebook" | "tiktok"
     stage: Stage = Stage.PENDING
     completed_stages: list[str] = field(default_factory=list)
     error: str | None = None
-    chat_id: int | None = None  # chat Telegram để báo tiến độ (Phase 2)
     created_at: float = field(default_factory=time.time)
     # override cài đặt render theo job: subtitle_mode, cover, cover_top
     # (thiếu key nào thì S8 dùng giá trị trong config)
@@ -79,12 +77,11 @@ class Job:
         return None
 
     @classmethod
-    def create(cls, url: str, platforms: list[str] | None = None,
-               chat_id: int | None = None,
+    def create(cls, url: str,
                pause_before_render: bool = False, glossary: str = "",
                series: str = "") -> Job:
         job_id = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
-        job = cls(id=job_id, url=url, platforms=platforms or [], chat_id=chat_id,
+        job = cls(id=job_id, url=url,
                   pause_before_render=pause_before_render, glossary=glossary,
                   series=series)
         job.dir.mkdir(parents=True, exist_ok=True)
@@ -106,11 +103,9 @@ class Job:
         data = {
             "id": self.id,
             "url": self.url,
-            "platforms": self.platforms,
             "stage": self.stage.value,
             "completed_stages": self.completed_stages,
             "error": self.error,
-            "chat_id": self.chat_id,
             "created_at": self.created_at,
             "render": self.render,
             "pause_before_render": self.pause_before_render,
