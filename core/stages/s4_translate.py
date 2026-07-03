@@ -79,9 +79,9 @@ Soát 5 lỗi:
 Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa bằng {lang_name}, ngắn gọn (đọc TTS). Không có gì cần sửa → mảng rỗng."""
 
 
-def _batch_schema(with_character: bool = False) -> dict:
+def _batch_schema(with_character: bool = False, with_emotion: bool = False) -> dict:
     """Schema output dịch. Khi casting bật (series có bảng casting) thêm trường
-    'character' để Claude gán tên nhân vật cho câu → s5 map tên → giọng."""
+    'character'; khi EMOTION bật thêm 'emotion' (PLAN 11 mức 2) → s5 map giọng."""
     props = {
         "id": {"type": "integer"},
         "text_vi": {"type": "string"},
@@ -91,6 +91,10 @@ def _batch_schema(with_character: bool = False) -> dict:
     if with_character:
         props["character"] = {"type": "string"}   # "" nếu không rõ nhân vật
         req.append("character")
+    if with_emotion:
+        props["emotion"] = {"type": "string",
+                            "enum": ["binhthuong", "gap", "gian", "buon", "thitham"]}
+        req.append("emotion")
     return {
         "type": "object",
         "properties": {
@@ -110,6 +114,13 @@ def _batch_schema(with_character: bool = False) -> dict:
 
 
 SCHEMA = _batch_schema(False)
+
+
+# PLAN 11 mức 2: nhắc Claude gắn nhãn cảm xúc từng câu (đi kèm schema with_emotion)
+_EMOTION_HINT = ("\n\nNHÃN CẢM XÚC: mỗi segment thêm trường \"emotion\" theo sắc thái "
+                 "LỜI NÓI: \"gap\" (gấp gáp/khẩn cấp), \"gian\" (giận dữ/quát), "
+                 "\"buon\" (buồn/đau khổ), \"thitham\" (thì thầm/nói nhỏ), còn lại "
+                 "→ \"binhthuong\". Chỉ gắn nhãn khác binhthuong khi RÕ RÀNG.")
 
 
 def _cast_hint(names: list[str]) -> str:
@@ -153,7 +164,8 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
     except (json.JSONDecodeError, KeyError, TypeError):
         return {}  # output hỏng/bị cắt → coi như sót hết, để retry chia đôi lo
     return {seg["id"]: {"text_vi": seg["text_vi"], "voice": seg.get("voice", "nam"),
-                        "character": (seg.get("character") or "").strip()}
+                        "character": (seg.get("character") or "").strip(),
+                        "emotion": (seg.get("emotion") or "").strip().lower()}
             for seg in segs if isinstance(seg, dict) and "id" in seg and "text_vi" in seg}
 
 
@@ -280,11 +292,14 @@ def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
             return
         batch = [by_id[i] for i in bad_ids]
         prev_char = {i: translated[i].get("character", "") for i in bad_ids}
+        prev_emo = {i: translated[i].get("emotion", "") for i in bad_ids}
         fixed = _translate_batch(client, batch, [], extra_note=note,
                                  system=system, schema=schema)
-        for i, t in fixed.items():   # đừng để sửa-sót ghi đè character = "" đã suy trước đó
+        for i, t in fixed.items():   # đừng để sửa-sót ghi đè character/emotion đã suy trước
             if not t.get("character") and prev_char.get(i):
                 t["character"] = prev_char[i]
+            if t.get("emotion") in ("", "binhthuong") and prev_emo.get(i):
+                t["emotion"] = prev_emo[i]
         translated.update(fixed)
     remaining = [i for i, t in translated.items() if _CJK_RE.search(t["text_vi"])]
     if remaining:
@@ -335,11 +350,15 @@ def run(job: Job) -> None:
         sys_translate = _lang_system(lang_name) + block
         sys_review = _lang_review(lang_name) + block
     # casting: nếu series có bảng nhân vật → nhờ Claude gán tên nhân vật cho từng câu
+    from core import emotion
     cast_names = series.character_names(job.series)
-    cast_schema = _batch_schema(bool(cast_names))
+    emo_on = emotion.enabled()
+    cast_schema = _batch_schema(bool(cast_names), emo_on)
     if cast_names:
         sys_translate += _cast_hint(cast_names)
         print(f"  Casting: {len(cast_names)} nhân vật đã cast giọng — gán câu theo tên")
+    if emo_on:   # PLAN 11 mức 2: nhãn cảm xúc → S5 chỉnh giọng/chọn mẫu
+        sys_translate += _EMOTION_HINT
     if gloss:
         print(f"  Glossary: {len(gloss)} tên riêng (tự trích {len(auto)} "
               f"+ thủ công + series {len(series_pairs)})")
@@ -391,6 +410,12 @@ def run(job: Job) -> None:
             ch = (t.get("character") or "").strip() if t else ""
             if ch:
                 seg["character"] = ch
+        if emo_on:       # nhãn cảm xúc: chỉ lưu khi khác bình thường (transcript gọn)
+            e = (t.get("emotion") or "").strip().lower() if t else ""
+            if e and e != "binhthuong":
+                seg["emotion"] = e
+            else:
+                seg.pop("emotion", None)
 
     if config.REVIEW_TRANSLATION:
         changed = review_pass(client, segments, system=sys_review,

@@ -39,7 +39,7 @@ from core.job import Job, Stage
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
                  "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
-                 "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "PROSODY",
+                 "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "EMOTION", "PROSODY",
                  "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "SUB_SPLIT",
                  "OCR_WORKERS", "OCR_FPS",
                  "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
@@ -911,6 +911,7 @@ def get_segments(job_id: str) -> dict:
              "text": s.get("text", ""), "text_vi": s.get("text_vi", ""),
              "voice": s.get("voice", "nam"), "voice_ref": s.get("voice_ref", ""),
              "character": s.get("character", ""),
+             "emotion": s.get("emotion", ""),
              "mute": bool(s.get("mute", False))}
             for s in data["segments"]]
     # Giọng mặc định nam/nữ theo ĐÚNG engine đang dùng (để editor hiển thị khớp Cấu hình)
@@ -1184,6 +1185,7 @@ class TtsPreviewBody(BaseModel):
     text: str
     voice: str = "nam"
     voice_ref: str = ""   # tên clip trong voices/ → đọc câu này bằng viXTTS (nhân bản)
+    emotion: str = ""     # nhãn cảm xúc của câu → nghe thử ĐÚNG sắc thái sẽ render
 
 
 def _resolve_voice_ref(name: str) -> str | None:
@@ -1235,7 +1237,12 @@ def tts_preview(body: TtsPreviewBody):
         return Response(content=data, media_type="audio/mpeg",
                         headers={"Cache-Control": "no-store"})
 
-    voice = config.TTS_VOICE_NU if body.voice == "nu" else config.TTS_VOICE
+    # giọng theo NGÔN NGỮ ĐÍCH (#16) — nghe thử đúng giọng sẽ render
+    from core import emotion as emo, langs
+    _nam, _nu = langs.edge_voices()
+    voice = _nu if body.voice == "nu" else _nam
+    # nhãn cảm xúc như lúc render (prosody đo audio thì bỏ — nghe thử lẻ không có audio)
+    emo_kw = emo.edge_kwargs({"voice": body.voice, "emotion": body.emotion})
 
     import asyncio
     import uuid
@@ -1255,7 +1262,7 @@ def tts_preview(body: TtsPreviewBody):
             out.unlink(missing_ok=True)
             try:
                 await asyncio.wait_for(
-                    edge_tts.Communicate(text, voice).save(str(out)),
+                    edge_tts.Communicate(text, voice, **emo_kw).save(str(out)),
                     timeout=config.TTS_TIMEOUT_S)
             except Exception as e:  # noqa: BLE001 — gồm cả NoAudioReceived
                 last = e

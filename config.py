@@ -91,6 +91,9 @@ VOICE_FX = os.getenv("VOICE_FX", "off").strip().lower()
 # năng lượng từng câu → chỉnh rate/pitch/volume edge-tts. Bảo thủ: mơ hồ = không chỉnh.
 # Giữ dạng chuỗi "1"/"0" cho khớp dropdown tab Cấu hình (parse ở prosody.enabled()).
 PROSODY = os.getenv("PROSODY", "1").strip()
+# Nhãn cảm xúc từng câu (PLAN 11 mức 2 — core/emotion.py): Claude gắn khi dịch →
+# edge chỉnh rate/pitch/volume thêm, viXTTS chọn clip mẫu hợp cảm xúc. "0" = tắt.
+EMOTION = os.getenv("EMOTION", "1").strip()
 
 # Khung viền quanh video (S8) — xem core/frames.py. frame: none|solid|double|png:<file>
 FRAMES_DIR = BASE_DIR / "frames"   # thả file .png khung (nền giữa trong suốt) vào đây

@@ -6,6 +6,31 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### PLAN 11 MỨC 2 — Nhãn cảm xúc A+B chung một mạch (`core/emotion.py`, EMOTION=1)
+
+- **A**: Claude gắn nhãn cảm xúc từng câu khi dịch (S4, field "emotion":
+  binhthuong|gap|gian|buon|thitham — chỉ gắn khi RÕ RÀNG, lưu trên segment khi
+  khác bình thường). Giữ nhãn qua fix_leaks (cùng bài học với character).
+- **B**: S5 map nhãn theo engine — edge-tts: offset rate/pitch/volume CỘNG vào
+  prosody mức 1 (đo audio), kẹp trần ±25%/±30Hz/±25%; viXTTS: chọn clip mẫu
+  voices/ hợp cảm xúc (giận→mau-*-nhanh, buồn→mau-*-cham/nhe-nhang; casting
+  voice_ref vẫn thắng — danh tính > cảm xúc). Nhãn vào .sig → đổi nhãn/bật tắt
+  là câu bị ảnh hưởng tự đọc lại đúng.
+- Nghe thử editor giờ áp CÙNG nhãn cảm xúc + đúng giọng TARGET_LANG (trước là
+  giọng vi cứng, không sắc thái — nghe khác render).
+- Hai tầng bổ trợ: prosody = đo audio khách quan; nhãn = ngữ nghĩa lời thoại
+  (bắt được mỉa mai/đe dọa-nói-nhỏ mà audio không lộ). Config UI cạnh PROSODY.
+- Test: unit (clamp/mapping ra file mẫu thật/schema/cache), edge synth thật với
+  kwargs giận, tts-preview 2 đường. Review đối kháng: 1 lỗi thật (preview thiếu
+  cảm xúc) đã sửa; 2 "CRITICAL" là false positive (sig lệch fallback là thiết kế
+  cũ có chủ đích, không do emotion).
+
+### Máy khác pull về: `.env` thêm `EMOTION=1` (xem `.env.example`). Không gói pip mới.
+
+---
+
 ## 2026-07-04 — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt dọn dẹp + tối ưu theo review tổng thể (5 mục, user duyệt)

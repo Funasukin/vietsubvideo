@@ -364,6 +364,7 @@ const CFG_FIELDS = [
   ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
   ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
   ["PROSODY", "Tông giọng theo audio gốc", ["1", "0"]],
+  ["EMOTION", "Nhãn cảm xúc khi dịch", ["1", "0"]],
   ["TTS_VOICE", "Giọng nam (mặc định)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]],
   ["TTS_VOICE_NU", "Giọng nữ", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]],
   ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
@@ -623,7 +624,9 @@ async function loadConfig() {
   html += `<div class="hint">EQ + nén + chuẩn độ to áp NGAY khi render job mới (khỏi xử lý hậu kỳ lại). Áp cho cả edge &amp; viXTTS.</div>`;
   html += row("PROSODY", "Tông giọng theo audio gốc", ["1", "0"],
     {"1": "Bật — đo cao độ/tốc độ/độ to giọng gốc từng câu, chỉnh giọng đọc theo", "0": "Tắt — giọng đọc trung tính"});
-  html += `<div class="hint">Chỉ áp cho giọng edge: câu gào thét → đọc dồn cao giọng, thoại trầm buồn → chậm lại. Đo bảo thủ — mơ hồ (nhạc nền to) thì giữ trung tính. Desktop bật KEEP_BGM (tách giọng) sẽ đo chính xác hơn.</div>`;
+  html += row("EMOTION", "Nhãn cảm xúc khi dịch", ["1", "0"],
+    {"1": "Bật — Claude gắn nhãn (gấp/giận/buồn/thì thầm) → giọng đọc có sắc thái", "0": "Tắt"});
+  html += `<div class="hint">Hai tầng bổ trợ nhau: <b>tông giọng</b> đo từ audio gốc (khách quan), <b>nhãn cảm xúc</b> Claude suy từ lời thoại (bắt sắc thái audio không thấy). Giọng edge: cộng chỉnh rate/pitch/volume; viXTTS: nhãn chọn clip mẫu hợp cảm xúc trong voices/ (giận→nhanh, buồn→chậm; casting nhân vật vẫn thắng). Đo bảo thủ — mơ hồ thì giữ trung tính.</div>`;
 
   // Bộ giọng edge-tts (chỉ dùng khi engine = edge)
   html += `<div id="edge-voices">
@@ -2153,7 +2156,7 @@ async function edPreview(i) {
   //  - nam/nữ → edge-tts đọc nhanh để soát chữ
   const body = voice.startsWith("ref:")
     ? { text, voice_ref: voice.slice(4) }
-    : { text, voice };
+    : { text, voice, emotion: edSegs[i].emotion || "" };   // nghe thử đúng sắc thái render
   const btn = document.querySelector(`#edrow-${i} .ed-ctl .ed-preview`);   // ĐÚNG nút loa (không phải nút Mute)
   // KHÔNG disable nút: đổi giọng rồi bấm lại sẽ tạo lần nghe mới (seq) đè lần cũ,
   // nên luôn nghe đúng giọng vừa chọn (trước đây nút bị khoá → bỏ qua lần bấm thứ 2).
