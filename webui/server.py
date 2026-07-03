@@ -36,7 +36,7 @@ from core.job import Job, Stage
 
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
-                 "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX",
+                 "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "PROSODY",
                  "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "OCR_WORKERS", "OCR_FPS",
                  "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
                  "MUSIC", "MUSIC_VOL", "LOGO", "LOGO_POS", "LOGO_SCALE", "LOGO_OPACITY",

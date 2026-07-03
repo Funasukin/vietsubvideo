@@ -84,6 +84,10 @@ TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")      # nam + mặc đ�
 TTS_VOICE_NU = os.getenv("TTS_VOICE_NU", "vi-VN-HoaiMyNeural")  # nữ
 # Hậu kỳ giọng khi render (S8): off | canbang | amday | rosang | dienanh | toithieu — xem core/voice_fx.py
 VOICE_FX = os.getenv("VOICE_FX", "off").strip().lower()
+# Tông giọng theo audio gốc (PLAN mục 11, mức 1 — core/prosody.py): đo cao độ/tốc độ/
+# năng lượng từng câu → chỉnh rate/pitch/volume edge-tts. Bảo thủ: mơ hồ = không chỉnh.
+# Giữ dạng chuỗi "1"/"0" cho khớp dropdown tab Cấu hình (parse ở prosody.enabled()).
+PROSODY = os.getenv("PROSODY", "1").strip()
 
 # Khung viền quanh video (S8) — xem core/frames.py. frame: none|solid|double|png:<file>
 FRAMES_DIR = BASE_DIR / "frames"   # thả file .png khung (nền giữa trong suốt) vào đây

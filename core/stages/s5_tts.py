@@ -11,6 +11,7 @@ import json
 import edge_tts
 
 import config
+from core import prosody
 from core.job import Job
 
 RETRIES = 4  # edge-tts hay lỗi NoAudioReceived tạm thời khi gọi song song
@@ -29,7 +30,8 @@ def _voice_sig(seg: dict) -> str:
     nu = seg.get("voice") == "nu"
     if config.TTS_ENGINE == "vixtts":
         return "vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
-    return "edge:" + (config.TTS_VOICE_NU if nu else config.TTS_VOICE)
+    # kèm tông giọng (prosody) — đổi cách đo/bật tắt là câu bị ảnh hưởng tự đọc lại
+    return "edge:" + (config.TTS_VOICE_NU if nu else config.TTS_VOICE) + prosody.sig_tag(seg)
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -58,7 +60,8 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
         for attempt in range(1, RETRIES + 1):
             out.unlink(missing_ok=True)
             try:
-                communicate = edge_tts.Communicate(seg["text_vi"], voice)
+                communicate = edge_tts.Communicate(seg["text_vi"], voice,
+                                                   **prosody.edge_kwargs(seg))
                 await asyncio.wait_for(
                     communicate.save(str(out)), timeout=config.TTS_TIMEOUT_S
                 )
@@ -68,7 +71,9 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
                 await asyncio.sleep(2 ** attempt)  # 2s, 4s, 8s
                 continue
             if out.exists() and out.stat().st_size > 0:
-                _write_sig(job, seg, "edge:" + voice)   # ghi giọng THỰC tế đã đọc
+                # ghi giọng THỰC tế đã đọc (kèm tông giọng) — giữ "edge:" tường minh vì
+                # nhánh fallback vixtts→edge cần sig LỆCH với _voice_sig để lần sau thử lại
+                _write_sig(job, seg, "edge:" + voice + prosody.sig_tag(seg))
                 return
             if attempt == RETRIES:
                 raise RuntimeError(
@@ -139,6 +144,14 @@ def run(job: Job) -> None:
     n_spk = speakers.assign_pool_refs(job, data["segments"])
     if n_spk:
         print(f"  Người nói → giọng: {n_spk} câu nhận clip theo cụm (speakers.json)")
+    # Tông giọng theo audio gốc (PLAN 11 mức 1): đo trên TOÀN BỘ câu (kể cả mute —
+    # mức nền người nói chuẩn hơn), chỉ câu đọc edge-tts dùng kết quả. Ghi lại
+    # transcript để editor thấy được và lần resume sau đo ra vẫn khớp .sig.
+    n_pro = prosody.measure(job, data["segments"])
+    if n_pro:
+        print(f"  Tông giọng (audio): chỉnh {n_pro} câu theo giọng gốc")
+    (job.dir / "transcript_vi.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     # bỏ câu rỗng và câu bị "Mute" (không lồng tiếng Việt, giữ tiếng gốc)
     segments = [s for s in data["segments"] if s["text_vi"].strip() and not s.get("mute")]
     if not segments:

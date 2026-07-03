@@ -229,6 +229,12 @@ S5 tùy engine mà map (edge → prosody, viXTTS → mẫu giọng). Nhãn này 
 nếu sau này cắm C/D. Lưu ý: Azure TTS (đã vọc ở `_azure_tts.html`) dùng đúng giọng
 HoaiMy/NamMinh như edge-tts, tiếng Việt KHÔNG có style cảm xúc → không đáng trả phí.
 
+**Cập nhật 2026-07-03 — MỨC 1 ĐÃ LÀM: đo tông giọng từ AUDIO GỐC** (`core/prosody.py`,
+bật/tắt PROSODY): đo F0 + tốc độ nói + RMS từng câu so với mức nền TỪNG NGƯỜI NÓI
+(nhãn speaker diarize nếu có) → chỉnh rate/pitch/volume edge-tts. Trực tiếp hơn đoán
+từ chữ; ưu tiên đo trên vocals.wav (demucs) khi có. Vẫn để dành: A+B (nhãn cảm xúc
+text — bắt sắc thái audio không thấy được), mức 3 prosody transfer (OpenVoice/RVC, GPU).
+
 ## 12. Backlog ý tưởng tính năng (chưa làm, xếp theo giá trị)
 
 1. **Bot Telegram 2 chiều** (Phase 2 gốc) — gửi link từ điện thoại → tạo job, xem

@@ -320,6 +320,7 @@ const CFG_FIELDS = [
   ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"]],
   ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
   ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
+  ["PROSODY", "Tông giọng theo audio gốc", ["1", "0"]],
   ["TTS_VOICE", "Giọng nam (mặc định)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"]],
   ["TTS_VOICE_NU", "Giọng nữ", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]],
   ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
@@ -568,6 +569,9 @@ async function loadConfig() {
     {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
      rosang: "Rõ / sáng", dienanh: "Điện ảnh", toithieu: "Tối thiểu"});
   html += `<div class="hint">EQ + nén + chuẩn độ to áp NGAY khi render job mới (khỏi xử lý hậu kỳ lại). Áp cho cả edge &amp; viXTTS.</div>`;
+  html += row("PROSODY", "Tông giọng theo audio gốc", ["1", "0"],
+    {"1": "Bật — đo cao độ/tốc độ/độ to giọng gốc từng câu, chỉnh giọng đọc theo", "0": "Tắt — giọng đọc trung tính"});
+  html += `<div class="hint">Chỉ áp cho giọng edge: câu gào thét → đọc dồn cao giọng, thoại trầm buồn → chậm lại. Đo bảo thủ — mơ hồ (nhạc nền to) thì giữ trung tính. Desktop bật KEEP_BGM (tách giọng) sẽ đo chính xác hơn.</div>`;
 
   // Bộ giọng edge-tts (chỉ dùng khi engine = edge)
   html += `<div id="edge-voices">
