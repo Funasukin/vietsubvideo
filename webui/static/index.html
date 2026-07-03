@@ -388,6 +388,9 @@ const CFG_FIELDS = [
   ["LOGO", "Logo", []], ["LOGO_POS", "Vị trí logo", []],
   ["LOGO_SCALE", "Cỡ logo", []], ["LOGO_OPACITY", "Độ mờ logo", []],
   ["INTRO", "Intro", []], ["OUTRO", "Outro", []], ["MASTER", "Master độ to", []],
+  ["SHORTS_COUNT", "Số short mỗi lần", ["1", "2", "3", "4", "5"]],
+  ["SHORTS_LEN", "Độ dài Shorts", ["30", "45", "60"]],
+  ["SHORTS_STYLE", "Khung hình Shorts", ["vertical", "original"]],
   ["DENOISE", "Khử ồn trước Whisper", ["0", "1"]],
   ["SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"]],
   ["SUBSCRIBE_TEXT", "Chữ nhắc", []],
@@ -556,6 +559,7 @@ async function loadConfig() {
   // để khớp option, khỏi lòi thêm dòng "False" vào dropdown.
   V.KEEP_BGM = (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
   V.DENOISE = (V.DENOISE === "1" || /^true$/i.test(V.DENOISE || "")) ? "1" : "0";
+  V.SHORTS_LEN = String(parseInt(V.SHORTS_LEN || "45", 10) || 45);   // "45.0" → "45"
   let v = { voices: [], nam: "", nu: "" };
   try { v = await (await fetch("/api/voices")).json(); } catch (e) {}
   VOICE_LIST = v.voices || [];
@@ -711,7 +715,14 @@ async function loadConfig() {
     {"0": "Tắt", "1": "Bật — chuẩn -14 LUFS cho YouTube"});
   html += `<div class="hint">Logo / khung / intro-outro sẽ ép render lại video (chậm hơn, như "vẽ cứng"). Nhạc nền tự hạ nhỏ khi có thoại.</div>`;
 
-  html += `<details ${V.DENOISE === "1" || V.SUBSCRIBE === "on" ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Khử ồn &amp; Nhắc Đăng ký</h4></summary>`;
+  html += `<details><summary style="cursor:pointer"><h4 style="display:inline">Shorts tự động</h4></summary>`;
+  html += row("SHORTS_COUNT", "Số short mỗi lần", ["1", "2", "3", "4", "5"]);
+  html += row("SHORTS_LEN", "Độ dài mục tiêu", ["30", "45", "60"],
+    {"30": "30 giây", "45": "45 giây (mặc định)", "60": "60 giây (trần Shorts)"});
+  html += row("SHORTS_STYLE", "Khung hình", ["vertical", "original"],
+    {vertical: "Dọc 9:16 — video thu giữa, nền tự phóng to làm mờ", original: "Giữ nguyên khung gốc"});
+  html += `<div class="hint">Nút 🎬 Tạo Shorts (menu 📤 của job đã render) cắt các đoạn CAO TRÀO — chấm điểm bằng nhãn cảm xúc + tông giọng đo audio + mật độ thoại, mép cắt bám mép câu. Clip ra ở thư mục <code>shorts/</code> của job kèm caption gợi ý.</div>`;
+  html += `</details><details ${V.DENOISE === "1" || V.SUBSCRIBE === "on" ? "open" : ""}><summary style="cursor:pointer"><h4 style="display:inline">Khử ồn &amp; Nhắc Đăng ký</h4></summary>`;
   html += row("DENOISE", "Khử ồn trước Whisper", ["0", "1"],
     {"0": "Tắt", "1": "Bật — lọc ồn cho ASR nghe rõ (nguồn ồn/nhạc to)"});
   html += row("SUBSCRIBE", "Nhắc Like/Đăng ký", ["off", "on"],
@@ -936,6 +947,7 @@ function cardHtml(j) {
   if (j.has_final) {
     xb.push(`<button class="ghost" onclick="makePackage('${j.id}')">📦 Gói đăng (kéo-thả)</button>`);
     xb.push(`<button class="ghost" onclick="uploadYT('${j.id}')">▶ Đăng YouTube</button>`);
+    xb.push(`<button class="ghost" onclick="makeShorts('${j.id}')">🎬 Tạo Shorts cao trào</button>`);
   }
   if (j.has_srt) xb.push(`<a href="/api/jobs/${j.id}/srt">⬇ Tải sub_vi.srt</a>`);
   xb.push(`<button class="ghost" onclick="openJob('${j.id}')">📂 Mở thư mục</button>`);
@@ -1325,6 +1337,15 @@ async function makePackage(id) {
       + "\n\nKéo video.mp4 + thumbnail.jpg lên YouTube Studio; tiêu đề/mô tả/tags nằm trong upload_info.txt.");
   } catch (e) { alert("Lỗi mạng khi tạo gói."); }
 }
+async function makeShorts(id) {   // PLAN 12 #4: cắt đoạn cao trào từ final.mp4
+  try {
+    const r = await fetch(`/api/jobs/${id}/shorts`, { method: "POST" });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { alert("Không tạo được Shorts: " + (d.detail || r.status)); return; }
+    alert("🎬 " + (d.note || "Đang cắt Shorts — xong sẽ tự mở thư mục."));
+  } catch (e) { alert("Lỗi mạng khi tạo Shorts."); }
+}
+
 async function uploadYT(id) {
   if (!confirm("Đăng video này thẳng lên YouTube?\n\nLần đầu sẽ mở trình duyệt để bạn cho phép. "
     + "Mặc định quyền RIÊNG TƯ (đổi công khai sau trong Cấu hình/YouTube). Quá trình có thể mất vài phút.")) return;

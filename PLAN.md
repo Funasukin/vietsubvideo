@@ -257,17 +257,27 @@ tự trước khi gửi (dịch vụ tính phí theo ký tự). Đây cũng là 
 BẢN QUYỀN để bật kiếm tiền. VBee viết theo docs công khai — cần token thật để
 test đầu-cuối (ElevenLabs/FPT đã xác nhận format request qua đường lỗi 401).
 
-## 12. Backlog ý tưởng tính năng (chưa làm, xếp theo giá trị)
+## 12. Backlog ý tưởng tính năng (xếp theo giá trị)
+
+*Trạng thái 2026-07-04: **ĐÃ làm** #4 (Shorts — xem dưới), #8 (diarization).
+**CHƯA làm**: #1 bot Telegram 2 chiều, #2 auto-pilot theo dõi kênh, #3 đăng theo
+lịch, #5 playlist series, #6 bảng hiệu suất, #7 A/B thumbnail, #9 upload FB/TikTok
+(chờ duyệt API), #10 brand kit. Việc dở khác ngoài backlog: VBee chưa test đầu-cuối
+(cần token thật); PROSODY_TRANSFER mặc định tắt — chờ nghe thẩm định trên job thật;
+dọn tự động output/ (GC) chưa có (mới có nút 🧹 dọn per-job).*
 
 1. **Bot Telegram 2 chiều** (Phase 2 gốc) — gửi link từ điện thoại → tạo job, xem
-   tiến độ, nhận final.mp4/thông báo. `aiogram` đã nằm sẵn trong requirements.
+   tiến độ, nhận final.mp4/thông báo. (aiogram đã gỡ khỏi requirements — cài lại khi làm.)
 2. **Tự theo dõi kênh nguồn (auto-pilot)** — đăng ký danh sách kênh donghua;
    APScheduler quét định kỳ, có tập mới → tự tạo job → (tùy chọn) tự upload
    YouTube private/scheduled. Ghép với trending.py thành dây chuyền tự động 100%.
 3. **Đăng theo lịch** — YouTube `publishAt`: render xong xếp lịch công khai đều
    đặn (vd 19h mỗi ngày 1 tập) thay vì đăng dồn.
-4. **Shorts tự động** — cắt 2–3 đoạn cao trào (dựa nhãn cảm xúc/âm lượng/mix_report)
-   thành video dọc ≤60s kèm caption lớn → kéo traffic về video dài.
+4. ~~**Shorts tự động**~~ — ĐÃ LÀM 2026-07-04 (`core/shorts.py`): nút 🎬 trong menu
+   📤 của job đã render; chấm điểm cao trào bằng nhãn cảm xúc (PLAN 11 mức 2) +
+   tông giọng đo audio (mức 1) + mật độ thoại; cắt SHORTS_COUNT clip ≤ SHORTS_LEN
+   giây, dọc 9:16 nền mờ (hoặc giữ khung gốc), mép bám mép câu; ra <job>/shorts/
+   kèm info.txt caption gợi ý #Shorts. Cắt từ final.mp4 nên sẵn lồng tiếng + sub.
 5. **Playlist series trên YouTube** — video cùng bộ tự vào đúng playlist, đặt tên
    "Tập N"; ghim comment link tập trước/sau.
 6. **Bảng hiệu suất sau đăng** — YouTube Analytics API: views/CTR/retention từng

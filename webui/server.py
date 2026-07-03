@@ -49,6 +49,7 @@ SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
                  "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
                  "MUSIC", "MUSIC_VOL", "LOGO", "LOGO_POS", "LOGO_SCALE", "LOGO_OPACITY",
                  "INTRO", "OUTRO", "MASTER",
+                 "SHORTS_COUNT", "SHORTS_LEN", "SHORTS_STYLE",
                  "DENOISE", "SUBSCRIBE", "SUBSCRIBE_TEXT",
                  "TELEGRAM_CHAT_ID", "YOUTUBE_CLIENT_SECRETS", "YOUTUBE_PRIVACY"]
 # Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
@@ -1660,6 +1661,38 @@ def make_package(job_id: str) -> dict:
         except OSError:
             pass
     return {"folder": str(folder)}
+
+
+@app.post("/api/jobs/{job_id}/shorts")
+def make_shorts(job_id: str) -> dict:
+    """PLAN 12 #4: cắt Shorts cao trào từ final.mp4 (chạy nền — re-encode vài clip).
+    Xong sẽ tự mở thư mục shorts/ của job."""
+    _check_job_id(job_id)
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    if not (job.dir / "final.mp4").exists():
+        raise HTTPException(409, "Chưa có final.mp4 (job chưa render xong)")
+    from core import shorts as shorts_mod
+
+    def _work() -> None:
+        try:
+            made = shorts_mod.generate(job)
+            print(f"[shorts] {job_id}: tạo {len(made)} clip")
+            if made and os.name == "nt":
+                try:
+                    os.startfile(str(job.dir / "shorts"))
+                except OSError:
+                    pass
+        except Exception as e:
+            print(f"[shorts] {job_id} lỗi: {e}")
+
+    threading.Thread(target=_work, daemon=True, name="flowapp-shorts").start()
+    n = getattr(config, "SHORTS_COUNT", 2)
+    return {"started": True,
+            "note": f"Đang cắt ~{n} short (re-encode, mất khoảng 1 phút) — "
+                    f"xong sẽ tự mở thư mục shorts/."}
 
 
 @app.post("/api/jobs/{job_id}/upload-youtube")

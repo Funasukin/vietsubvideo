@@ -133,6 +133,11 @@ INTRO = os.getenv("INTRO", "none")            # clip intro trong clips/ (ghép �
 OUTRO = os.getenv("OUTRO", "none")            # clip outro trong clips/ (ghép cuối video)
 MASTER = os.getenv("MASTER", "0")             # 1 = master chuẩn độ to toàn video (-14 LUFS YouTube)
 
+# PLAN 12 #4 — Shorts tự động (core/shorts.py): cắt đoạn cao trào từ final.mp4
+SHORTS_COUNT = int(os.getenv("SHORTS_COUNT", "2"))       # số short mỗi lần tạo (1-5)
+SHORTS_LEN = float(os.getenv("SHORTS_LEN", "45"))        # độ dài mục tiêu (giây, ≤60)
+SHORTS_STYLE = os.getenv("SHORTS_STYLE", "vertical")     # vertical (9:16 nền mờ) | original
+
 # #14 Khử ồn audio TRƯỚC Whisper (afftdn) — chỉ lọc bản 16k cho ASR nghe rõ hơn,
 # KHÔNG đụng audio nền dùng để mix. Bật khi nguồn nhiều tiếng ồn/nhạc to.
 DENOISE = os.getenv("DENOISE", "0").lower() not in ("0", "false", "")

@@ -6,6 +6,31 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (5) — Desktop (F:\MyProject\vietsubvideo)
+
+### PLAN 12 #4 — Shorts tự động (`core/shorts.py`) + note phần chưa làm
+
+- Nút **🎬 Tạo Shorts cao trào** (menu 📤 của job đã render): chấm điểm từng câu
+  bằng nhãn cảm xúc (gấp/giận +2) + tông giọng đo audio (to/cao/dồn) + mật độ
+  thoại → trượt cửa sổ SHORTS_LEN giây, chọn SHORTS_COUNT cửa sổ điểm cao nhất
+  không chồng lấn (cách ≥15s), mép cắt bám mép câu. Job cũ không nhãn → vẫn chạy
+  bằng mật độ thoại.
+- Xuất `<job>/shorts/short_N.mp4` + `info.txt` (mốc thời gian + caption gợi ý
+  kèm #Shorts). Kiểu **dọc 9:16** (video thu giữa, nền tự phóng to làm mờ) hoặc
+  giữ khung gốc. Cắt từ final.mp4 → sẵn lồng tiếng + phụ đề. Chạy nền, xong tự
+  mở thư mục. Config: SHORTS_COUNT/LEN/STYLE (group gập trong tab Cấu hình).
+- Test: unit chọn cửa sổ trúng đúng 2 vùng nóng cảm xúc trên timeline 40 câu;
+  end-to-end video tổng hợp 120s → 2 clip 1080x1920 ≤60s + info.txt.
+- **PLAN 12 cập nhật trạng thái**: còn CHƯA làm #1 bot Telegram 2 chiều,
+  #2 auto-pilot theo dõi kênh, #3 đăng theo lịch, #5 playlist series, #6 bảng
+  hiệu suất, #7 A/B thumbnail, #9 upload FB/TikTok (chờ duyệt API), #10 brand
+  kit. Việc dở khác: VBee chưa test đầu-cuối (cần token); PROSODY_TRANSFER chờ
+  nghe thẩm định; GC tự động output/ chưa có.
+
+### Máy khác pull về: `.env` thêm SHORTS_COUNT=2 / SHORTS_LEN=45 / SHORTS_STYLE=vertical.
+
+---
+
 ## 2026-07-04 (4) — Desktop (F:\MyProject\vietsubvideo)
 
 ### PLAN 11 C/D — TTS trả phí tích hợp trong app (`core/paid_tts.py`)
