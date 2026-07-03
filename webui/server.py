@@ -40,7 +40,10 @@ from core.job import Job, Stage
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
                  "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "EMOTION",
-                 "PROSODY_TRANSFER", "PROSODY",
+                 "PROSODY_TRANSFER",
+                 "ELEVENLABS_VOICE_NAM", "ELEVENLABS_VOICE_NU", "ELEVENLABS_MODEL",
+                 "VBEE_APP_ID", "VBEE_VOICE_NAM", "VBEE_VOICE_NU",
+                 "FPT_VOICE_NAM", "FPT_VOICE_NU", "PROSODY",
                  "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "SUB_SPLIT",
                  "OCR_WORKERS", "OCR_FPS",
                  "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
@@ -51,7 +54,8 @@ SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
 # Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
 # giống ANTHROPIC_API_KEY. Bot token điều khiển bot của người dùng → coi như credential.
 # HF_TOKEN là token tài khoản HuggingFace (diarization #8) → cũng là credential.
-SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN"}
+SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN",
+                   "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"}
 ENV_PATH = config.BASE_DIR / ".env"
 
 app = FastAPI(title="FlowApp")
@@ -916,9 +920,14 @@ def get_segments(job_id: str) -> dict:
              "mute": bool(s.get("mute", False))}
             for s in data["segments"]]
     # Giọng mặc định nam/nữ theo ĐÚNG engine đang dùng (để editor hiển thị khớp Cấu hình)
+    from core import paid_tts
     if config.TTS_ENGINE == "vixtts":
         nam_v = Path(config.VIXTTS_VOICE_NAM).stem or "(mẫu mặc định)"
         nu_v = Path(config.VIXTTS_VOICE_NU).stem or "(mẫu mặc định)"
+    elif paid_tts.is_paid(config.TTS_ENGINE):
+        nam_v, nu_v = paid_tts.voice_pair(config.TTS_ENGINE)
+        nam_v = f"{config.TTS_ENGINE}: {nam_v}"
+        nu_v = f"{config.TTS_ENGINE}: {nu_v}"
     else:
         nam_v, nu_v = config.TTS_VOICE, config.TTS_VOICE_NU
     job_dir = config.JOBS_DIR / job_id
@@ -1238,8 +1247,29 @@ def tts_preview(body: TtsPreviewBody):
         return Response(content=data, media_type="audio/mpeg",
                         headers={"Cache-Control": "no-store"})
 
+    # engine trả phí (PLAN 11 C/D): nghe thử bằng CHÍNH dịch vụ đó (tốn phí ~1 câu)
+    from core import langs, paid_tts
+    eng = config.TTS_ENGINE
+    if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
+        ok, why = paid_tts.ready(eng)
+        if not ok:
+            raise HTTPException(400, why)
+        nam_v, nu_v = paid_tts.voice_pair(eng)
+        import uuid as _u   # hàm này có "import uuid" cục bộ bên dưới → tránh UnboundLocalError
+        pout = config.DATA_DIR / f"_tts_preview_{_u.uuid4().hex}.mp3"
+        pout.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            paid_tts.synth(eng, text, nu_v if body.voice == "nu" else nam_v, pout)
+            data = pout.read_bytes()
+        except RuntimeError as e:
+            raise HTTPException(502, f"{eng} lỗi: {e}")
+        finally:
+            pout.unlink(missing_ok=True)
+        return Response(content=data, media_type="audio/mpeg",
+                        headers={"Cache-Control": "no-store"})
+
     # giọng theo NGÔN NGỮ ĐÍCH (#16) — nghe thử đúng giọng sẽ render
-    from core import emotion as emo, langs
+    from core import emotion as emo
     _nam, _nu = langs.edge_voices()
     voice = _nu if body.voice == "nu" else _nam
     # nhãn cảm xúc như lúc render (prosody đo audio thì bỏ — nghe thử lẻ không có audio)
@@ -1661,6 +1691,9 @@ def get_config() -> dict:
         # khóa bí mật: chỉ báo đã đặt hay chưa, KHÔNG trả giá trị
         "telegram_token_set": bool(env.get("TELEGRAM_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN),
         "hf_token_set": bool(env.get("HF_TOKEN") or config.HF_TOKEN),
+        "elevenlabs_key_set": bool(env.get("ELEVENLABS_API_KEY") or config.ELEVENLABS_API_KEY),
+        "vbee_token_set": bool(env.get("VBEE_TOKEN") or config.VBEE_TOKEN),
+        "fpt_key_set": bool(env.get("FPT_TTS_API_KEY") or config.FPT_TTS_API_KEY),
         "youtube_ready": _youtube_ready(),
         "music_files": brand.list_music(),
         "logo_files": brand.list_logo(),

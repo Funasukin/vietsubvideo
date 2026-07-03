@@ -6,6 +6,30 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (4) — Desktop (F:\MyProject\vietsubvideo)
+
+### PLAN 11 C/D — TTS trả phí tích hợp trong app (`core/paid_tts.py`)
+
+- Engine mới trong dropdown "Giọng đọc": **elevenlabs** (~$22/th, giống người
+  nhất, đa ngôn ngữ — dùng cả khi TARGET_LANG ≠ vi) · **vbee** · **fpt** (VN,
+  chỉ tiếng Việt — đích khác tự về edge). Đây là các engine AN TOÀN BẢN QUYỀN
+  để kiếm tiền (edge/viXTTS thì không).
+- Key/token nhập tab Cấu hình (input password, CHE như bot token — server chỉ
+  báo đã-đặt-hay-chưa, đã test không lộ qua API). Giọng nam/nữ từng dịch vụ
+  cấu hình được; mặc định sẵn (Adam/Rachel, mạnh dung/ngọc huyền, leminh/banmai).
+- Ăn khớp hệ thống: câu cast voice_ref vẫn đọc viXTTS (casting thắng); prosody
+  transfer mức 3 vẫn áp lên output; .sig có engine+giọng → đổi là tự đọc lại;
+  nghe thử editor dùng CHÍNH engine trả phí (tốn phí ~1 câu); S5 in tổng ký tự
+  TRƯỚC khi gửi (các dịch vụ tính phí theo ký tự). Thiếu key → job fail với
+  message rõ (không âm thầm rơi về edge).
+- Test: ElevenLabs + FPT xác nhận format request qua đường lỗi 401 thật (key
+  giả); VBee viết theo docs công khai — CẦN TOKEN THẬT test đầu-cuối, sai
+  schema thì message lỗi sẽ in nguyên phản hồi server để sửa nhanh.
+
+### Máy khác pull về: `.env` thêm các khóa ELEVENLABS_*/VBEE_*/FPT_* (xem .env.example).
+
+---
+
 ## 2026-07-04 (3) — Desktop (F:\MyProject\vietsubvideo)
 
 ### PLAN 11 MỨC 3 — Prosody transfer (`core/prosody_transfer.py`, PROSODY_TRANSFER=0 mặc định)

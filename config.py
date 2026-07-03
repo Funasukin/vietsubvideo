@@ -82,7 +82,23 @@ HF_TOKEN = os.getenv("HF_TOKEN", "")              # token HuggingFace (bí mật
 DIARIZE_MAX_SPK = int(os.getenv("DIARIZE_MAX_SPK", "0") or "0")  # 0 = tự đoán số người nói
 
 # TTS (S5) — giọng theo nhãn voice (nam/nu): ưu tiên dò theo audio, fallback Claude
-TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").strip().lower()  # edge | vixtts (nhân bản, GPU)
+# edge | vixtts (clone, GPU) | elevenlabs | vbee | fpt (trả phí — core/paid_tts.py,
+# an toàn bản quyền để kiếm tiền; key nhập tab Cấu hình)
+TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").strip().lower()
+
+# PLAN 11 C/D — engine trả phí (key là BÍ MẬT: UI chỉ ghi, không đọc ra)
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+ELEVENLABS_MODEL = os.getenv("ELEVENLABS_MODEL", "eleven_multilingual_v2")
+# voice id lấy ở elevenlabs.io/voices (mặc định: Adam / Rachel — premade đọc được vi)
+ELEVENLABS_VOICE_NAM = os.getenv("ELEVENLABS_VOICE_NAM", "pNInz6obpgDQGcFmaJgB")
+ELEVENLABS_VOICE_NU = os.getenv("ELEVENLABS_VOICE_NU", "21m00Tcm4TlvDq8ikWAM")
+VBEE_TOKEN = os.getenv("VBEE_TOKEN", "").strip()
+VBEE_APP_ID = os.getenv("VBEE_APP_ID", "").strip()
+VBEE_VOICE_NAM = os.getenv("VBEE_VOICE_NAM", "hn_male_manhdung_news_48k-fhg")
+VBEE_VOICE_NU = os.getenv("VBEE_VOICE_NU", "hn_female_ngochuyen_full_48k-fhg")
+FPT_TTS_API_KEY = os.getenv("FPT_TTS_API_KEY", "").strip()
+FPT_VOICE_NAM = os.getenv("FPT_VOICE_NAM", "leminh")
+FPT_VOICE_NU = os.getenv("FPT_VOICE_NU", "banmai")
 TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")      # nam + mặc định
 TTS_VOICE_NU = os.getenv("TTS_VOICE_NU", "vi-VN-HoaiMyNeural")  # nữ
 # Hậu kỳ giọng khi render (S8): off | canbang | amday | rosang | dienanh | toithieu — xem core/voice_fx.py

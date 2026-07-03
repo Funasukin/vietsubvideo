@@ -10,8 +10,10 @@ import json
 
 import edge_tts
 
+import time
+
 import config
-from core import emotion, langs, prosody, prosody_transfer
+from core import emotion, langs, paid_tts, prosody, prosody_transfer
 from core.job import Job
 
 RETRIES = 4  # edge-tts hay lỗi NoAudioReceived tạm thời khi gọi song song
@@ -35,14 +37,18 @@ def _voice_sig(seg: dict) -> str:
     # đích ≠ vi: mọi câu (kể cả cast voice_ref) đọc edge theo ngôn ngữ — viXTTS là
     # finetune tiếng Việt, clone sang ngôn ngữ khác méo giọng. Sig đổi → tự đọc lại.
     pt = prosody_transfer.sig_tag()   # mức 3 bật/tắt → mọi câu tự xử lý lại
-    if langs.is_vi():
-        if seg.get("voice_ref"):
-            return "vix:ref:" + seg["voice_ref"] + pt   # cast clip → luôn viXTTS
-        nu = seg.get("voice") == "nu"
-        if config.TTS_ENGINE == "vixtts":
-            # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
-            return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
-                    + emotion.sig_tag(seg) + pt)
+    eng = config.TTS_ENGINE
+    if langs.is_vi() and seg.get("voice_ref"):
+        return "vix:ref:" + seg["voice_ref"] + pt       # cast clip → luôn viXTTS
+    nu = seg.get("voice") == "nu"
+    # engine trả phí (PLAN 11 C/D): VBee/FPT chỉ tiếng Việt — đích khác rơi về edge
+    if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
+        nam_v, nu_v = paid_tts.voice_pair(eng)
+        return f"{eng}:" + (nu_v if nu else nam_v) + pt
+    if langs.is_vi() and eng == "vixtts":
+        # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
+        return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
+                + emotion.sig_tag(seg) + pt)
     # kèm tông giọng (prosody) + nhãn cảm xúc — đổi là câu bị ảnh hưởng tự đọc lại
     return "edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg) + pt
 
@@ -153,6 +159,35 @@ def _tts_vixtts(job: Job, segments: list[dict]) -> None:
         _write_sig(job, seg, _voice_sig(seg))
 
 
+def _tts_paid(job: Job, segments: list[dict]) -> None:
+    """Đọc bằng engine trả phí (PLAN 11 C/D) — tuần tự + retry, resume theo .sig.
+    Báo TRƯỚC tổng ký tự sẽ gửi (dịch vụ tính phí theo ký tự)."""
+    eng = config.TTS_ENGINE
+    ok, why = paid_tts.ready(eng)
+    if not ok:
+        raise RuntimeError(why)
+    nam_v, nu_v = paid_tts.voice_pair(eng)
+    todo = [s for s in segments if not _seg_ready(job, s)]
+    if not todo:
+        return
+    total_chars = sum(len(s["text_vi"]) for s in todo)
+    print(f"  {eng}: đọc {len(todo)} câu (~{total_chars} ký tự — dịch vụ TÍNH PHÍ theo ký tự)")
+    for seg in todo:
+        out = _seg_path(job, seg["id"])
+        out.unlink(missing_ok=True)
+        voice = nu_v if seg.get("voice") == "nu" else nam_v
+        for attempt in range(1, 4):
+            try:
+                paid_tts.synth(eng, seg["text_vi"], voice, out)
+                break
+            except RuntimeError as e:
+                if attempt == 3:
+                    raise RuntimeError(f"{eng} lỗi ở câu {seg['id']}: {e}")
+                time.sleep(2 * attempt)
+        prosody_transfer.apply(job, seg, out)   # mức 3 vẫn áp được (xử lý audio output)
+        _write_sig(job, seg, _voice_sig(seg))
+
+
 def run(job: Job) -> None:
     data = json.loads((job.dir / "transcript_vi.json").read_text(encoding="utf-8"))
     # Casting series (#8): điền voice_ref theo character trước MỌI logic chọn giọng bên
@@ -184,7 +219,25 @@ def run(job: Job) -> None:
         return
 
     (job.dir / "tts").mkdir(exist_ok=True)
-    if not langs.is_vi():
+    eng = config.TTS_ENGINE
+    paid = paid_tts.is_paid(eng)
+    if paid and eng in paid_tts.VI_ONLY and not langs.is_vi():
+        print(f"  {eng} chỉ đọc tiếng Việt — đích {langs.name()} → dùng edge-tts")
+        paid = False
+    if paid:
+        # câu cast giọng clone (voice_ref, chỉ tiếng Việt) vẫn đọc viXTTS như mọi engine;
+        # phần còn lại đọc bằng dịch vụ trả phí. Thiếu key → fail rõ ràng (người dùng
+        # đã chủ động chọn engine trả phí, âm thầm rơi về edge là phản bội lựa chọn đó).
+        ref_segs = [s for s in segments if langs.is_vi() and s.get("voice_ref")]
+        plain_segs = [s for s in segments if s not in ref_segs]
+        _tts_paid(job, plain_segs)
+        if ref_segs:
+            try:
+                _tts_vixtts(job, ref_segs)
+            except Exception as e:
+                print(f"  viXTTS lỗi cho câu cast giọng ({e}); đọc bằng edge-tts thay thế")
+                asyncio.run(_tts_all(job, ref_segs))
+    elif not langs.is_vi():
         # #16 đích ≠ tiếng Việt: đọc TẤT CẢ bằng edge-tts giọng của ngôn ngữ đó.
         # viXTTS/casting clone là finetune tiếng Việt — bỏ qua, kể cả câu voice_ref.
         if config.TTS_ENGINE == "vixtts" or any(s.get("voice_ref") for s in segments):

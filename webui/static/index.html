@@ -360,7 +360,14 @@ const CFG_FIELDS = [
   ["CLAUDE_MODEL", "Model dịch", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"]],
   ["CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"]],
   ["TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"]],
-  ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"]],
+  ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"]],
+  ["ELEVENLABS_VOICE_NAM", "Voice ID nam ElevenLabs", []],
+  ["ELEVENLABS_VOICE_NU", "Voice ID nữ ElevenLabs", []],
+  ["VBEE_APP_ID", "VBee App ID", []],
+  ["VBEE_VOICE_NAM", "Voice code nam VBee", []],
+  ["VBEE_VOICE_NU", "Voice code nữ VBee", []],
+  ["FPT_VOICE_NAM", "Giọng nam FPT", []],
+  ["FPT_VOICE_NU", "Giọng nữ FPT", []],
   ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
   ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
   ["PROSODY", "Tông giọng theo audio gốc", ["1", "0"]],
@@ -613,8 +620,12 @@ async function loadConfig() {
   html += `<div class="hint">Cụm giọng thật → Claude gán nhân vật nhất quán; engine viXTTS còn tự chia mỗi người nói một clip giọng riêng (sửa được trong speakers.json của job). Cần <b>pip install pyannote.audio</b> (khuyến nghị desktop GPU) và chấp nhận điều khoản model <b>pyannote/segmentation-3.0</b> + <b>pyannote/speaker-diarization-3.1</b> trên huggingface.co. ${c.hf_token_set ? "✓ Token đã lưu." : "Chưa lưu token."}</div>`;
 
   html += `</details><h4>Lồng tiếng (TTS)</h4>`;
-  html += row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"],
-    {edge: "edge — nhanh, online (Microsoft)", vixtts: "vixtts — nhân bản giọng, chạy GPU"},
+  html += row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"],
+    {edge: "edge — nhanh, online (Microsoft) · KHÔNG kiếm tiền được",
+     vixtts: "vixtts — nhân bản giọng, GPU · KHÔNG kiếm tiền được",
+     elevenlabs: "ElevenLabs — trả phí (~$22/th), giống người nhất, đa ngôn ngữ ✓ kiếm tiền",
+     vbee: "VBee — trả phí (VN), giọng đọc truyện chuẩn ✓ kiếm tiền",
+     fpt: "FPT.AI — trả phí (VN), rẻ ✓ kiếm tiền"},
     'onchange="applyEngineUI()"');
   html += row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "1"],
     {"0": "Tắt — hạ nhỏ audio gốc khi có thoại", "1": "Bật — tách giọng Trung bằng demucs (GPU)"});
@@ -654,6 +665,29 @@ async function loadConfig() {
       <button class="ghost" type="button" onclick="openVoices()">📂 Mở thư mục voices</button>
       <button class="ghost" type="button" onclick="reloadConfig()">↻ Tải lại</button></div>
   </div>`;
+
+  // PLAN 11 C/D — engine TRẢ PHÍ (an toàn bản quyền để kiếm tiền). Key = bí mật:
+  // input password, chỉ gửi khi nhập; server không bao giờ trả key về.
+  const keyInput = (id, isSet, ph) =>
+    `<input id="cfg-${id}" type="password" autocomplete="off"
+      placeholder="${isSet ? '•••• đã đặt (để trống = giữ nguyên)' : esc(ph)}"
+      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit">`;
+  html += `<div id="elevenlabs-voices">
+    <div class="frow"><label>API key ElevenLabs</label>${keyInput("ELEVENLABS_API_KEY", c.elevenlabs_key_set, "xi-api-key từ elevenlabs.io")}</div>`;
+  html += textrow("ELEVENLABS_VOICE_NAM", "Voice ID nam", "vd pNInz6obpgDQGcFmaJgB (Adam)");
+  html += textrow("ELEVENLABS_VOICE_NU", "Voice ID nữ", "vd 21m00Tcm4TlvDq8ikWAM (Rachel)");
+  html += `<div class="hint">~$22/tháng (gói Creator ≈ 7–8 tập/tháng), giọng giống người nhất, đọc được đa ngôn ngữ (dùng cho mọi Ngôn ngữ lồng tiếng). Lấy voice id ở elevenlabs.io → Voices. ${c.elevenlabs_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div></div>`;
+  html += `<div id="vbee-voices">
+    <div class="frow"><label>VBee token</label>${keyInput("VBEE_TOKEN", c.vbee_token_set, "Bearer token từ vbee.vn/console")}</div>`;
+  html += textrow("VBEE_APP_ID", "VBee App ID", "app id trong console VBee");
+  html += textrow("VBEE_VOICE_NAM", "Voice code nam", "vd hn_male_manhdung_news_48k-fhg");
+  html += textrow("VBEE_VOICE_NU", "Voice code nữ", "vd hn_female_ngochuyen_full_48k-fhg");
+  html += `<div class="hint">Dịch vụ VN chuyên giọng đọc truyện/thuyết minh (chỉ tiếng Việt). Đăng ký vbee.vn → console lấy token + app id; voice code xem danh sách giọng của VBee. ${c.vbee_token_set ? "✓ Token đã lưu." : "Chưa có token."}</div></div>`;
+  html += `<div id="fpt-voices">
+    <div class="frow"><label>API key FPT.AI</label>${keyInput("FPT_TTS_API_KEY", c.fpt_key_set, "api-key từ fpt.ai (TTS)")}</div>`;
+  html += textrow("FPT_VOICE_NAM", "Giọng nam", "leminh | minhquang | thanhtung");
+  html += textrow("FPT_VOICE_NU", "Giọng nữ", "banmai | thuminh | myan | giahuy...");
+  html += `<div class="hint">Rẻ nhất nhóm trả phí (chỉ tiếng Việt). Lấy key ở fpt.ai → Text to Speech. ${c.fpt_key_set ? "✓ Key đã lưu." : "Chưa có key."}</div></div>`;
 
   html += `<h4>Thương hiệu / xuất bản (áp cho job mới)</h4>
     <div class="hint">Đặt file vào thư mục <code>music/</code> · <code>logo/</code> · <code>clips/</code> (cạnh app) → chọn ở đây.</div>`;
@@ -732,10 +766,11 @@ function openVoices() { fetch("/api/voices/open", { method: "POST" }); }
 function applyEngineUI() {
   const sel = document.getElementById("cfg-TTS_ENGINE");
   const eng = sel ? sel.value : "edge";
-  const edge = document.getElementById("edge-voices");
-  const vix = document.getElementById("vixtts-voices");
-  if (edge) edge.style.display = eng === "edge" ? "" : "none";
-  if (vix) vix.style.display = eng === "vixtts" ? "" : "none";
+  for (const [id, match] of [["edge-voices", "edge"], ["vixtts-voices", "vixtts"],
+      ["elevenlabs-voices", "elevenlabs"], ["vbee-voices", "vbee"], ["fpt-voices", "fpt"]]) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = eng === match ? "" : "none";
+  }
 }
 
 async function saveConfig() {
@@ -747,10 +782,11 @@ async function saveConfig() {
     if (el) body[key] = el.value;
   }
   // token bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
-  const tok = document.getElementById("cfg-TELEGRAM_BOT_TOKEN");
-  if (tok && tok.value.trim()) body.TELEGRAM_BOT_TOKEN = tok.value.trim();
-  const hft = document.getElementById("cfg-HF_TOKEN");
-  if (hft && hft.value.trim()) body.HF_TOKEN = hft.value.trim();
+  for (const key of ["TELEGRAM_BOT_TOKEN", "HF_TOKEN",
+                     "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"]) {
+    const el = document.getElementById("cfg-" + key);
+    if (el && el.value.trim()) body[key] = el.value.trim();
+  }
   let ok = false;
   try {
     const res = await fetch("/api/config", { method: "POST",
