@@ -71,6 +71,13 @@ AUTO_RETRY = int(os.getenv("AUTO_RETRY", "1"))
 # hơn Claude đoán từ chữ. Chắc thì đè nhãn Claude; mơ hồ thì giữ nhãn Claude.
 GENDER_DETECT = os.getenv("GENDER_DETECT", "1").lower() not in ("0", "false", "")
 
+# #8 Nhận diện NGƯỜI NÓI từ audio thật (diarization, pyannote) — xem core/speakers.py.
+# Cần: pip install pyannote.audio (khuyến nghị desktop GPU) + HF_TOKEN huggingface.co
+# (chấp nhận điều khoản model pyannote/segmentation-3.0 và speaker-diarization-3.1).
+DIARIZE = os.getenv("DIARIZE", "0")               # 1 = bật; thiếu điều kiện thì tự bỏ qua
+HF_TOKEN = os.getenv("HF_TOKEN", "")              # token HuggingFace (bí mật — UI không đọc ra)
+DIARIZE_MAX_SPK = int(os.getenv("DIARIZE_MAX_SPK", "0") or "0")  # 0 = tự đoán số người nói
+
 # TTS (S5) — giọng theo nhãn voice (nam/nu): ưu tiên dò theo audio, fallback Claude
 TTS_ENGINE = os.getenv("TTS_ENGINE", "edge").strip().lower()  # edge | vixtts (nhân bản, GPU)
 TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")      # nam + mặc định

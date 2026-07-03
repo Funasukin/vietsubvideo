@@ -130,10 +130,15 @@ def run(job: Job) -> None:
     # Casting series (#8): điền voice_ref theo character trước MỌI logic chọn giọng bên
     # dưới (sig cache + tách viXTTS/edge đều dựa voice_ref) → cùng nhân vật = cùng giọng
     # mọi tập; đổi bảng casting rồi chạy lại TTS là tự áp giọng mới (sig đổi → đọc lại).
-    from core import series
+    from core import series, speakers
     n_cast = series.apply_casting(job, data["segments"])
     if n_cast:
         print(f"  Casting: gán giọng theo nhân vật cho {n_cast} câu")
+    # #8 Cụm người nói (diarize) → clip giọng riêng cho từng cụm CHƯA được cast
+    # (chỉ engine viXTTS; casting series/chỉnh tay ở trên thắng vì đã set voice_ref)
+    n_spk = speakers.assign_pool_refs(job, data["segments"])
+    if n_spk:
+        print(f"  Người nói → giọng: {n_spk} câu nhận clip theo cụm (speakers.json)")
     # bỏ câu rỗng và câu bị "Mute" (không lồng tiếng Việt, giữ tiếng gốc)
     segments = [s for s in data["segments"] if s["text_vi"].strip() and not s.get("mute")]
     if not segments:

@@ -96,7 +96,10 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
     if context:
         ctx = "\n".join(f"- {src} → {vi}" for src, vi in context)
         parts.append(f"Ngữ cảnh (các câu ngay trước, đã dịch):\n{ctx}\n")
-    payload = [{"id": s["id"], "text": s["text"]} for s in batch]
+    # kèm nhãn người nói (nếu diarize gán được) — Claude gán character/voice nhất quán
+    payload = [{"id": s["id"], "text": s["text"],
+                **({"speaker": s["speaker"]} if s.get("speaker") else {})}
+               for s in batch]
     parts.append("Dịch các segment sau sang tiếng Việt:"
                  + extra_note + "\n"
                  + json.dumps(payload, ensure_ascii=False))
@@ -287,6 +290,21 @@ def run(job: Job) -> None:
         print(f"  Glossary: {len(gloss)} tên riêng (tự trích {len(auto)} "
               f"+ thủ công + series {len(series_pairs)})")
 
+    # #8 Nhận diện người nói từ audio (pyannote — bật qua DIARIZE=1). Nhãn speaker đi
+    # vào batch dịch để Claude gán character/voice nhất quán; S5 dùng cụm → clip giọng.
+    from core import speakers
+    audio_path = job.dir / "audio_16k.wav"
+    if not audio_path.exists():
+        audio_path = job.dir / "audio_full.wav"
+    turns = speakers.diarize(job.dir, audio_path)
+    if turns:
+        n_spk = speakers.assign(segments, turns)
+        if n_spk:
+            labels = {s["speaker"] for s in segments if s.get("speaker")}
+            sys_translate += speakers.SPEAKER_HINT
+            print(f"  Người nói (audio): {len(labels)} giọng, "
+                  f"gán {n_spk}/{len(segments)} câu")
+
     translated: dict[int, dict] = {}
     by_id = {s["id"]: s for s in segments}
 
@@ -344,6 +362,23 @@ def run(job: Job) -> None:
                   f"đổi {n} nhãn so với đoán theo chữ")
         except Exception as e:
             print(f"  Giới tính (audio) lỗi, giữ nhãn theo chữ: {e}")
+
+    # #8 Hồ sơ cụm người nói (speakers.json) + giới tính theo CỤM: trung vị F0 của
+    # cả cụm nhiều dữ liệu hơn từng câu → đồng bộ nhãn voice toàn cụm (một nhân vật
+    # không thể nửa nam nửa nữ). Chạy SAU gender từng câu để cụm thắng.
+    if any(s.get("speaker") for s in segments):
+        try:
+            prof = speakers.profiles(job.dir, audio_path, segments)
+            n = 0
+            for seg in segments:
+                cg = (prof.get(seg.get("speaker") or "") or {}).get("gender")
+                if cg and seg.get("voice") != cg:
+                    seg["voice"] = cg
+                    n += 1
+            if n:
+                print(f"  Giới tính theo cụm người nói: đồng bộ {n} câu")
+        except Exception as e:
+            print(f"  Hồ sơ người nói lỗi (bỏ qua): {e}")
 
     out_path.write_text(
         json.dumps({"language": data.get("language"), "segments": segments},

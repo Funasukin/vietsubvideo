@@ -30,14 +30,15 @@ from core.job import Job, Stage
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX",
                  "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "OCR_WORKERS", "OCR_FPS",
-                 "AUTO_RETRY",
+                 "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
                  "MUSIC", "MUSIC_VOL", "LOGO", "LOGO_POS", "LOGO_SCALE", "LOGO_OPACITY",
                  "INTRO", "OUTRO", "MASTER",
                  "DENOISE", "SUBSCRIBE", "SUBSCRIBE_TEXT",
                  "TELEGRAM_CHAT_ID", "YOUTUBE_CLIENT_SECRETS", "YOUTUBE_PRIVACY"]
 # Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
 # giống ANTHROPIC_API_KEY. Bot token điều khiển bot của người dùng → coi như credential.
-SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN"}
+# HF_TOKEN là token tài khoản HuggingFace (diarization #8) → cũng là credential.
+SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN"}
 ENV_PATH = config.BASE_DIR / ".env"
 
 app = FastAPI(title="FlowApp")
@@ -1332,6 +1333,7 @@ def get_config() -> dict:
         "api_key_set": bool(env.get("ANTHROPIC_API_KEY")),
         # khóa bí mật: chỉ báo đã đặt hay chưa, KHÔNG trả giá trị
         "telegram_token_set": bool(env.get("TELEGRAM_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN),
+        "hf_token_set": bool(env.get("HF_TOKEN") or config.HF_TOKEN),
         "youtube_ready": _youtube_ready(),
         "music_files": brand.list_music(),
         "logo_files": brand.list_logo(),

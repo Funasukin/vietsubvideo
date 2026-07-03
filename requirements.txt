@@ -40,6 +40,11 @@ google-auth-httplib2
 # Model: tu dong tai capleaf/viXTTS vao models/viXTTS khi chay lan dau.
 # Giu nhac/SFX (tach giong goc) — TUY CHON, GPU: pip install demucs  (dat KEEP_BGM=1)
 
+# #8 Nhan dien NGUOI NOI (diarization) — TUY CHON, khuyen nghi desktop GPU (CPU chay
+# duoc nhung cham). Cai:  pip install pyannote.audio   (keo theo torch)
+# Can HF_TOKEN (.env) + vao huggingface.co CHAP NHAN dieu khoan 2 model:
+#   pyannote/segmentation-3.0  va  pyannote/speaker-diarization-3.1
+# Bat: DIARIZE=1 trong .env hoac tab Cau hinh. Xem core/speakers.py.
+
 # Phase 4 — nang cao
 # demucs
-# pyannote.audio

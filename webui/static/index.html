@@ -135,6 +135,8 @@
   .ed-t:hover { color: var(--text); text-decoration: underline; }
   .ed-mid { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
   .ed-zh { font-size: 12px; color: var(--dim); line-height: 1.4; }
+  .ed-spk { font-size: 10px; color: var(--accent); border: 1px solid var(--accent);
+            border-radius: 8px; padding: 0 5px; opacity: .8; }
   .ed-vi { width: 100%; box-sizing: border-box; resize: vertical; min-height: 34px;
            field-sizing: content;  /* tự cao theo nội dung, khỏi đo bằng JS */
            background: #0d1117; color: var(--text); border: 1px solid var(--border);
@@ -322,6 +324,8 @@ const CFG_FIELDS = [
   ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
   ["OCR_FPS", "Tốc độ OCR", ["1.0", "1.5", "2.0"]],
   ["AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"]],
+  ["DIARIZE", "Nhận diện người nói", ["0", "1"]],
+  ["DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"]],
   ["MUSIC", "Nhạc nền", []], ["MUSIC_VOL", "Âm lượng nhạc", []],
   ["LOGO", "Logo", []], ["LOGO_POS", "Vị trí logo", []],
   ["LOGO_SCALE", "Cỡ logo", []], ["LOGO_OPACITY", "Độ mờ logo", []],
@@ -538,6 +542,17 @@ async function loadConfig() {
   html += row("AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"],
     {"0": "Tắt — lỗi thì dừng", "1": "1 lần (mặc định)", "2": "2 lần", "3": "3 lần"});
 
+  html += `<h4>Nhận diện người nói (diarization)</h4>`;
+  html += row("DIARIZE", "Nhận diện người nói", ["0", "1"],
+    {"0": "Tắt", "1": "Bật — phân cụm giọng thật trong audio (cần pyannote + HF token)"});
+  html += row("DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"],
+    {"0": "0 — tự đoán"});
+  html += `<div class="frow"><label>HuggingFace token</label>
+    <input id="cfg-HF_TOKEN" type="password" autocomplete="off"
+      placeholder="${c.hf_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'hf_... (huggingface.co/settings/tokens)'}"
+      style="flex:1;min-width:180px;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+  html += `<div class="hint">Cụm giọng thật → Claude gán nhân vật nhất quán; engine viXTTS còn tự chia mỗi người nói một clip giọng riêng (sửa được trong speakers.json của job). Cần <b>pip install pyannote.audio</b> (khuyến nghị desktop GPU) và chấp nhận điều khoản model <b>pyannote/segmentation-3.0</b> + <b>pyannote/speaker-diarization-3.1</b> trên huggingface.co. ${c.hf_token_set ? "✓ Token đã lưu." : "Chưa lưu token."}</div>`;
+
   html += `<h4>Lồng tiếng (TTS)</h4>`;
   html += row("TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"],
     {edge: "edge — nhanh, online (Microsoft)", vixtts: "vixtts — nhân bản giọng, chạy GPU"},
@@ -664,9 +679,11 @@ async function saveConfig() {
     const el = document.getElementById("cfg-" + key);
     if (el) body[key] = el.value;
   }
-  // bot token là bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
+  // token bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
   const tok = document.getElementById("cfg-TELEGRAM_BOT_TOKEN");
   if (tok && tok.value.trim()) body.TELEGRAM_BOT_TOKEN = tok.value.trim();
+  const hft = document.getElementById("cfg-HF_TOKEN");
+  if (hft && hft.value.trim()) body.HF_TOKEN = hft.value.trim();
   let ok = false;
   try {
     const res = await fetch("/api/config", { method: "POST",
@@ -1425,7 +1442,7 @@ async function openEditor(id) {
     const vsel = edVoiceSel(s);
     return `
     <div class="ed-row${s.mute ? " muted" : ""}" id="edrow-${i}" onclick="edRowClick(event, ${i})" ondblclick="edRowPlay(event, ${i})">
-      <div class="ed-t" title="Nhảy video tới câu này">${fmtT(s.start)}</div>
+      <div class="ed-t" title="Nhảy video tới câu này">${fmtT(s.start)}${s.speaker ? `<br><span class="ed-spk" title="Cụm người nói (nhận từ giọng trong audio gốc)">${esc(s.speaker)}</span>` : ""}</div>
       <div class="ed-mid">
         ${s.text ? `<div class="ed-zh">${esc(s.text)}</div>` : ""}
         <textarea class="ed-vi" id="edvi-${i}" rows="1" oninput="edMark(${i})">${esc(s.text_vi)}</textarea>
