@@ -19,6 +19,14 @@ import threading
 import uuid
 from pathlib import Path
 
+# Console Windows mặc định cp1258 — print tiếng Việt trong request handler (vd cảnh
+# báo thiếu logo của core/watermark) sẽ UnicodeEncodeError → 500. Ép UTF-8 như cli.py.
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):
+        pass
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
@@ -236,6 +244,9 @@ class RenderOptions(BaseModel):
     frame_color2: str = "#FFFFFF" # màu 2 (kiểu "viền 2 màu")
     frame_width: float = 0.02     # độ dày viền = tỉ lệ chiều cao
     frame_pad: bool = False       # True = "khung ngoài": thu video vào trong, khung không che hình
+    wm_method: str = "none"       # xóa/che watermark kênh gốc: none|delogo|blur|black|logo
+    wm_box: list = []             # vùng watermark [x0,y0,x1,y1] chuẩn hóa 0..1
+    crop: list = []               # cắt mép [trái,trên,phải,dưới] tỉ lệ 0..0.2 rồi phóng lại
 
 
 _JOB_ID_RE = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{6}$")
@@ -603,7 +614,9 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
                   "style": opts.style, "fx": opts.fx,
                   "frame": opts.frame, "frame_color": opts.frame_color,
                   "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
-                  "frame_pad": opts.frame_pad}
+                  "frame_pad": opts.frame_pad,
+                  "wm_method": opts.wm_method, "wm_box": opts.wm_box,
+                  "crop": opts.crop}
     job.pause_before_render = False
     for name in ["final.mp4", "sub_vi.srt", "metadata.json"]:
         (job.dir / name).unlink(missing_ok=True)
@@ -665,14 +678,26 @@ def preview(job_id: str, opts: RenderOptions) -> FileResponse:
                                         vw, vh, job.dir, opts.frame_pad)
         sub_filter = (f"subtitles=preview.srt:fontsdir={fontsdir_arg(job)}"
                       f":force_style='{build_style(style)}'")
+    # watermark/crop y hệt S8: chạy đầu chuỗi, quy đổi tọa độ vẽ sau theo crop
+    from core import watermark
+    wm_r = {"wm_method": opts.wm_method, "wm_box": opts.wm_box,
+            "crop": opts.crop, "logo": None}
+    wm_pre = watermark.pre_chain(wm_r, vw, vh, job.dir)
+    c_top, c_bot = opts.cover_top, opts.cover_bottom
+    if watermark.crop_active(opts.crop):
+        c_top, c_bot = (watermark.map_y(c_top, opts.crop),
+                        watermark.map_y(c_bot, opts.crop))
     if auto_box is not None:
+        if watermark.crop_active(opts.crop):
+            auto_box = watermark.map_box(auto_box, opts.crop)
         # ảnh PNG tĩnh không có timeline (t=0) → cửa sổ enable phải bao trùm 0
-        chain = auto_cover_chain([{"start": 0.0, "end": 86400.0, "box": auto_box}],
-                                 vw, vh)
+        chain = (auto_cover_chain([{"start": 0.0, "end": 86400.0, "box": auto_box}],
+                                  vw, vh) if auto_box else "")
         vf = f"{chain},{sub_filter}" if chain else sub_filter
     else:
-        vf = cover_filter(cover, opts.cover_top, sub_filter, opts.cover_width,
-                          opts.cover_bottom)
+        vf = cover_filter(cover, c_top, sub_filter, opts.cover_width, c_bot)
+    if wm_pre:
+        vf = f"{wm_pre},{vf}"
     vf = frames.append_to_vf(vf, opts.frame, opts.frame_color, opts.frame_color2,
                              opts.frame_width, vw, vh, job.dir, pad=opts.frame_pad)
     ffmpeg.run("-i", "preview_raw.png", "-vf", vf, "-frames:v", "1",

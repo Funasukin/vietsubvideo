@@ -14,7 +14,7 @@ import textwrap
 from datetime import datetime
 
 import config
-from core import brand, ffmpeg, frames
+from core import brand, ffmpeg, frames, watermark
 from core.job import Job
 
 
@@ -223,8 +223,9 @@ def run(job: Job) -> None:
     # (upload sub_vi.srt riêng lên YouTube Studio → viewer bật/tắt, không chồng sub)
     draw_subs = mode != "cover_only"
     if (mode == "cover_only" or cover != "none" or frame != "none"
-            or logo not in ("", "none") or subscribe == "on"):
-        mode = "burn"  # che sub / khung / logo / nhắc sub = sửa pixel = bắt buộc re-encode
+            or logo not in ("", "none") or subscribe == "on"
+            or watermark.active(r)):
+        mode = "burn"  # che sub/khung/logo/nhắc sub/xóa watermark = sửa pixel = re-encode
 
     # Audio: voice FX + nhạc nền (duck theo giọng) + master → dubbed_render.wav.
     # Nếu không có gì để làm (fx off, không nhạc, không master) → dùng thẳng dubbed_audio.wav.
@@ -252,9 +253,18 @@ def run(job: Job) -> None:
                           f":force_style='{build_style(style)}'")
         else:
             sub_filter = "null"   # filter passthrough — giữ nguyên cấu trúc chuỗi -vf
+        # Xóa/che watermark kênh gốc + crop mép: chạy ĐẦU chuỗi -vf. Crop làm dịch
+        # tọa độ mọi thứ vẽ sau → quy đổi băng che + box sub tự động qua map_y/map_box.
+        wm_pre = watermark.pre_chain(r, vw, vh, job.dir)
+        crop_r = r.get("crop") or []
+        if watermark.crop_active(crop_r):
+            top, cb = watermark.map_y(top, crop_r), watermark.map_y(cb, crop_r)
         chain = ""
         if cover == "auto":
             boxes = load_sub_boxes(job)
+            if watermark.crop_active(crop_r):
+                boxes = [dict(b, box=m) for b in boxes
+                         if (m := watermark.map_box(b["box"], crop_r))]
             if boxes:
                 chain = auto_cover_chain(boxes, vw, vh)
         if chain:
@@ -264,6 +274,8 @@ def run(job: Job) -> None:
             # job cũ chưa có sub_boxes.json) → về dải mờ thủ công
             eff = "blur" if cover == "auto" else cover
             base = cover_filter(eff, top, sub_filter, cw, cb)
+        if wm_pre:
+            base = f"{wm_pre},{base}"
         # chèn khung viền + logo watermark vào cuối chuỗi (sau cover/sub)
         vf_full = frames.append_to_vf(base, frame, frame_color, frame_color2,
                                       frame_width, vw, vh, job.dir, pad=frame_pad)
