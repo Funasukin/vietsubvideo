@@ -117,7 +117,8 @@ def extract(video: Path, work_dir: Path) -> list[dict]:
     step = 1.0 / config.OCR_FPS
     frame_paths = sorted(frames_dir.glob("*.jpg"))
 
-    # Pha 1: OCR song song (imap để đếm tiến độ theo frame → ghi stage_progress.json)
+    # Pha 1: OCR song song (map trả kết quả LƯỜI theo thứ tự → đếm được tiến độ
+    # theo frame, ghi stage_progress.json). Executor.map ≠ Pool.imap — đừng nhầm.
     print(f"  OCR: {len(frame_paths)} frame, {config.OCR_WORKERS} worker")
     from concurrent.futures import ProcessPoolExecutor
     from core import progress
@@ -127,7 +128,7 @@ def extract(video: Path, work_dir: Path) -> list[dict]:
     with ProcessPoolExecutor(max_workers=config.OCR_WORKERS,
                              initializer=_init_worker) as pool:
         for i, res in enumerate(
-                pool.imap(_ocr_one, [str(p) for p in frame_paths], chunksize=8), 1):
+                pool.map(_ocr_one, [str(p) for p in frame_paths], chunksize=8), 1):
             all_lines.append(res)
             if i % 15 == 0 or i == total:
                 progress.write(work_dir, "transcribing", i, total)
