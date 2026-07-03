@@ -318,7 +318,7 @@ const CFG_FIELDS = [
   ["TTS_VOICE_NU", "Giọng nữ", ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural"]],
   ["WHISPER_MODEL", "Model whisper", ["tiny", "base", "small", "medium", "large-v3"]],
   ["TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"]],
-  ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "burn", "none"]],
+  ["SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"]],
   ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
   ["OCR_FPS", "Tốc độ OCR", ["1.0", "1.5", "2.0"]],
   ["AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"]],
@@ -524,8 +524,9 @@ async function loadConfig() {
   html += row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
     {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"});
   html += `<div class="hint">Nguồn transcript = "auto/whisper" tự nhận diện mọi ngôn ngữ. Chọn "Chung" cho phim/video không phải donghua Trung để dịch tự nhiên (không ép Hán-Việt).</div>`;
-  html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "burn", "none"],
-    {soft: "soft — track bật/tắt (nhanh)", burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
+  html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"],
+    {soft: "soft — track bật/tắt (nhanh)", cover_only: "cover_only — chỉ che sub gốc, upload .srt riêng lên YouTube",
+     burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
 
   html += `<h4>Nhận dạng thoại (transcript)</h4>`;
   html += row("TRANSCRIPT_SOURCE", "Nguồn transcript", ["auto", "ocr", "whisper"],
@@ -1214,6 +1215,7 @@ function readOpts(id) {
     frame_color: (g("frmc") && g("frmc").value) || "#FFD700",
     frame_color2: (g("frmc2") && g("frmc2").value) || "#FFFFFF",
     frame_width: (g("frmw") ? parseFloat(g("frmw").value) : 2) / 100,
+    frame_pad: !!(g("frmp") && g("frmp").checked),
     style: {
       font: g("ft").value,
       size: parseInt(g("fs").value),
@@ -1605,6 +1607,7 @@ function edSettingsPanel(data) {
   const frameColor = r.frame_color || "#FFD700";
   const frameColor2 = r.frame_color2 || "#FFFFFF";
   const frameW = Math.round((r.frame_width ?? 0.02) * 1000) / 10;   // % chiều cao
+  const framePad = r.frame_pad ? "checked" : "";
   const FRAME_PRESETS = [["none","Không khung"],["solid","Viền đơn"],["double","Viền đôi"],
     ["twocolor","Viền 2 màu"],["corner","Bo góc / 4 góc"]];
   const pngFrames = data.frames || [];
@@ -1618,10 +1621,12 @@ function edSettingsPanel(data) {
       Độ dày: <input type="range" id="frmw-ed" min="0.5" max="6" step="0.1" value="${frameW}"
              oninput="document.getElementById('frmwp-ed').textContent=this.value+'%'">
       <span class="pct" id="frmwp-ed">${frameW}%</span>
-      <span class="meta">Khung vẽ cứng vào video (phụ đề cũng thành vẽ cứng). Khung PNG: thả file .png (nền giữa trong suốt) vào thư mục frames/.</span></div>
+      <label><input type="checkbox" id="frmp-ed" ${framePad}> Khung ngoài (thu hình vào trong — khung không che mép video)</label>
+      <span class="meta">Khung vẽ cứng vào video (phụ đề cũng thành vẽ cứng); phụ đề tự né khung. Khung PNG: thả file .png (nền giữa trong suốt) vào thư mục frames/ — tự co giãn 9-slice, không méo hoa văn. Bấm "Xem thử" để thấy chính xác khung + phụ đề.</span></div>
     <div class="opts">
       Phụ đề: <select id="sm-ed">
         <option value="soft" ${sm === "soft" ? "selected" : ""}>Track bật/tắt</option>
+        <option value="cover_only" ${sm === "cover_only" ? "selected" : ""}>Chỉ che sub gốc (upload .srt riêng lên YouTube)</option>
         <option value="burn" ${sm === "burn" ? "selected" : ""}>Vẽ cứng</option>
         <option value="none" ${sm === "none" ? "selected" : ""}>Không</option></select>
       Che sub gốc: <select id="cv-ed" onchange="toggleCoverSliders('ed')">

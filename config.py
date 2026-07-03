@@ -84,6 +84,7 @@ FRAME = os.getenv("FRAME", "none").strip()
 FRAME_COLOR = os.getenv("FRAME_COLOR", "#FFD700")        # màu viền procedural (vàng gold)
 FRAME_COLOR2 = os.getenv("FRAME_COLOR2", "#FFFFFF")      # màu 2 (cho kiểu "viền 2 màu")
 FRAME_WIDTH = float(os.getenv("FRAME_WIDTH", "0.02"))    # độ dày viền = tỉ lệ chiều cao (2%)
+FRAME_PAD = os.getenv("FRAME_PAD", "0")   # 1 = "khung ngoài": thu video vào trong, khung không che hình
 
 # Brand/xuất bản (S8) — asset dùng chung cả kênh: đặt file vào music/ logo/ clips/. Xem core/brand.py
 MUSIC = os.getenv("MUSIC", "none")            # tên file nhạc nền trong music/ (none = tắt)
@@ -144,8 +145,10 @@ KEEP_BGM = os.getenv("KEEP_BGM", "0").lower() not in ("0", "false", "")
 # Mix (S7): tăng tốc tối đa khi audio dịch dài hơn slot gốc
 MAX_SPEEDUP = 1.4
 
-# Phụ đề tiếng Việt (S8): soft = track bật/tắt được (nhanh) | burn = vẽ cứng
-# vào hình (re-encode, chậm) | none = không phụ đề. File sub_vi.srt luôn được tạo.
+# Phụ đề tiếng Việt (S8): soft = track bật/tắt được (nhanh) | cover_only = chỉ che
+# sub gốc/khung/logo, KHÔNG in sub Việt (upload sub_vi.srt riêng lên YouTube Studio
+# → viewer bật/tắt, không chồng sub) | burn = vẽ cứng vào hình (re-encode, chậm)
+# | none = không phụ đề. File sub_vi.srt luôn được tạo.
 SUBTITLE_MODE = os.getenv("SUBTITLE_MODE", "soft")
 # kiểu chữ phụ đề vẽ cứng: mặc định + override theo job ở core/stages/s8_render.py
 

@@ -223,7 +223,7 @@ class NewJob(BaseModel):
 
 
 class RenderOptions(BaseModel):
-    subtitle_mode: str = "soft"   # soft | burn | none
+    subtitle_mode: str = "soft"   # soft | cover_only | burn | none
     cover: str = "none"           # none | blur | black
     cover_top: float = 0.78       # cạnh TRÊN của băng che (tỉ lệ chiều cao)
     cover_bottom: float = 1.0     # cạnh DƯỚI của băng che (1.0 = dính đáy)
@@ -234,6 +234,7 @@ class RenderOptions(BaseModel):
     frame_color: str = "#FFD700"  # màu viền procedural
     frame_color2: str = "#FFFFFF" # màu 2 (kiểu "viền 2 màu")
     frame_width: float = 0.02     # độ dày viền = tỉ lệ chiều cao
+    frame_pad: bool = False       # True = "khung ngoài": thu video vào trong, khung không che hình
 
 
 _JOB_ID_RE = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{6}$")
@@ -600,7 +601,8 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
                   "cover_width": opts.cover_width,
                   "style": opts.style, "fx": opts.fx,
                   "frame": opts.frame, "frame_color": opts.frame_color,
-                  "frame_color2": opts.frame_color2, "frame_width": opts.frame_width}
+                  "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
+                  "frame_pad": opts.frame_pad}
     job.pause_before_render = False
     for name in ["final.mp4", "sub_vi.srt", "metadata.json"]:
         (job.dir / name).unlink(missing_ok=True)
@@ -615,9 +617,10 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
 @app.post("/api/jobs/{job_id}/preview")
 def preview(job_id: str, opts: RenderOptions) -> FileResponse:
     """Áp vùng che + kiểu chữ + phụ đề mẫu lên 1 frame thật — xem trước không cần render."""
-    from core import ffmpeg
+    from core import ffmpeg, frames
     from core.stages.s8_render import (auto_cover_chain, build_style,
-                                       cover_filter, fontsdir_arg, load_sub_boxes)
+                                       cover_filter, fontsdir_arg, load_sub_boxes,
+                                       style_with_frame_margin)
 
     try:
         job = Job.load(job_id)
@@ -653,16 +656,24 @@ def preview(job_id: str, opts: RenderOptions) -> FileResponse:
     (job.dir / "preview.srt").write_text(
         f"1\n00:00:00,000 --> 00:00:10,000\n{sample}\n", encoding="utf-8")
 
-    sub_filter = (f"subtitles=preview.srt:fontsdir={fontsdir_arg(job)}"
-                  f":force_style='{build_style(opts.style)}'")
+    vw, vh = ffmpeg.probe_dims(source)
+    if opts.subtitle_mode == "cover_only":
+        sub_filter = "null"   # cover_only không in sub Việt lên hình — xem đúng như final
+    else:
+        style = style_with_frame_margin(opts.style, opts.frame, opts.frame_width,
+                                        vw, vh, job.dir, opts.frame_pad)
+        sub_filter = (f"subtitles=preview.srt:fontsdir={fontsdir_arg(job)}"
+                      f":force_style='{build_style(style)}'")
     if auto_box is not None:
         # ảnh PNG tĩnh không có timeline (t=0) → cửa sổ enable phải bao trùm 0
         chain = auto_cover_chain([{"start": 0.0, "end": 86400.0, "box": auto_box}],
-                                 *ffmpeg.probe_dims(source))
+                                 vw, vh)
         vf = f"{chain},{sub_filter}" if chain else sub_filter
     else:
         vf = cover_filter(cover, opts.cover_top, sub_filter, opts.cover_width,
                           opts.cover_bottom)
+    vf = frames.append_to_vf(vf, opts.frame, opts.frame_color, opts.frame_color2,
+                             opts.frame_width, vw, vh, job.dir, pad=opts.frame_pad)
     ffmpeg.run("-i", "preview_raw.png", "-vf", vf, "-frames:v", "1",
                "preview.png", cwd=job.dir)
     return FileResponse(job.dir / "preview.png", media_type="image/png",

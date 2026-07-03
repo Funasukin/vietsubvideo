@@ -1,7 +1,11 @@
 """Khung viền quanh video (áp khi render S8).
 
 - Procedural (ffmpeg drawbox): 'solid' (viền đơn), 'double' (viền đôi) — chọn màu + độ dày.
-- PNG: 'png:<tên>' — phủ ảnh khung (nền GIỮA trong suốt) trong thư mục frames/ lên video.
+- PNG: 'png:<tên>' — khung ảnh trong frames/ (nền GIỮA trong suốt), dựng đúng kích thước
+  video bằng 9-SLICE (4 góc giữ nguyên tỉ lệ, 4 cạnh chỉ kéo theo 1 chiều) → hoa văn
+  không méo ở mọi tỉ lệ video (ngang/dọc/vuông).
+- pad=True ("khung ngoài"): thu video vào trong vừa đủ rồi mới vẽ khung ra phần lề —
+  khung không che mất pixel nội dung nào.
 
 append_to_vf() trả chuỗi -vf đã CHÈN khung vào cuối (sau cover/sub). Khung = sửa pixel
 → s8 ép re-encode (mode burn) khi frame != none.
@@ -10,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
 
 import config
 
@@ -33,17 +38,115 @@ def list_png() -> list[str]:
     return sorted(p.name for p in d.glob("*.png"))
 
 
-def _png_relpath(name: str, job_dir) -> str | None:
-    """Đường dẫn TƯƠNG ĐỐI (từ job_dir) tới frames/<name>.png — chặn path traversal +
-    né escape ':' ổ đĩa Windows trong filtergraph. None nếu file không hợp lệ."""
+# Cỡ ô góc 9-slice = tỉ lệ này × cạnh ngắn (của ảnh nguồn lẫn video đích)
+_CORNER_FRAC = 0.30
+
+
+def _src_png(name: str) -> Path | None:
+    """frames/<name>.png — chặn path traversal. None nếu file không hợp lệ."""
     safe = os.path.basename(name or "")          # bỏ mọi thành phần thư mục
-    # tên chứa ký tự phá filtergraph (movie=filename='...') → bỏ, kẻo vỡ render/inject filter
-    if not safe or any(ch in safe for ch in "',:;[]\\"):
-        return None
     p = config.FRAMES_DIR / safe
     if p.suffix.lower() != ".png" or not p.is_file():
         return None
-    return os.path.relpath(p, job_dir).replace("\\", "/")
+    return p
+
+
+def _nine_slice(src, tw: int, th: int):
+    """Dựng khung (tw,th) từ ảnh nguồn theo 9-slice: chia 3×3, góc giữ đúng tỉ lệ,
+    cạnh kéo theo 1 chiều, phần giữa (thường trong suốt) kéo cả 2 chiều."""
+    from PIL import Image
+    sw, sh = src.size
+    c = max(1, int(min(sw, sh) * _CORNER_FRAC))
+    ct = max(1, min(int(min(tw, th) * _CORNER_FRAC), tw // 2 - 1, th // 2 - 1))
+    sx = [0, c, sw - c, sw]
+    sy = [0, c, sh - c, sh]
+    dx = [0, ct, tw - ct, tw]
+    dy = [0, ct, th - ct, th]
+    out = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+    for i in range(3):
+        for j in range(3):
+            if sx[i + 1] <= sx[i] or sy[j + 1] <= sy[j]:
+                continue
+            if dx[i + 1] <= dx[i] or dy[j + 1] <= dy[j]:
+                continue
+            tile = src.crop((sx[i], sy[j], sx[i + 1], sy[j + 1])).resize(
+                (dx[i + 1] - dx[i], dy[j + 1] - dy[j]), Image.Resampling.LANCZOS)
+            out.paste(tile, (dx[i], dy[j]))
+    return out
+
+
+def build_sized_png(name: str, w: int, h: int, job_dir) -> str | None:
+    """Sinh <job_dir>/frame_overlay.png đúng (w,h) bằng 9-slice từ frames/<name>.
+    Trả TÊN FILE (dùng với cwd=job_dir, tên cố định nên không cần escape filtergraph);
+    None nếu nguồn không hợp lệ."""
+    p = _src_png(name)
+    if p is None:
+        return None
+    from PIL import Image
+    src = Image.open(p).convert("RGBA")
+    _nine_slice(src, w, h).save(Path(job_dir) / "frame_overlay.png")
+    return "frame_overlay.png"
+
+
+def _insets_from_alpha(img) -> tuple[int, int, int, int]:
+    """(top, bottom, left, right): bề dày lớp khung đục ở mỗi cạnh — hàng/cột xa mép
+    nhất còn alpha đáng kể, đo trên 1/3 GIỮA của cạnh đối diện để hoa văn góc
+    (vốn to hơn cạnh) không làm dày giả. Cap 35% kích thước."""
+    import numpy as np
+    a = np.asarray(img)[:, :, 3]
+    h, w = a.shape
+
+    def extent(m, cap):
+        idx = [i for i in range(min(cap, len(m))) if m[i] >= 32]
+        return (idx[-1] + 1) if idx else 0
+
+    xs = slice(w // 3, 2 * w // 3)
+    ys = slice(h // 3, 2 * h // 3)
+    cap_v, cap_h = int(0.35 * h), int(0.35 * w)
+    return (extent(a[:, xs].max(axis=1), cap_v),
+            extent(a[::-1, xs].max(axis=1), cap_v),
+            extent(a[ys, :].max(axis=0), cap_h),
+            extent(a[ys, ::-1].max(axis=0), cap_h))
+
+
+def _proc_inset(frame: str, width_frac: float, h: int) -> int:
+    """Bề dày khung procedural tính từ mép (px) — khớp hình học trong _drawboxes."""
+    wf = min(0.15, max(0.001, float(width_frac)))
+    b = max(2, int(wf * h))
+    if frame == "double":
+        return 2 * b + max(2, b // 2)   # viền ngoài + khoảng hở + viền trong
+    if frame == "twocolor":
+        return 2 * b                    # 2 viền kề nhau
+    return b                            # solid / corner
+
+
+def bottom_inset_px(frame: str, width_frac: float, w: int, h: int, job_dir) -> int:
+    """Bề dày khung ở mép DƯỚI (px) — để S8 tự đẩy phụ đề lên khỏi khung."""
+    if not frame or frame == "none":
+        return 0
+    if frame.startswith("png:"):
+        name = build_sized_png(frame[4:], w, h, job_dir)
+        if not name:
+            return 0
+        from PIL import Image
+        return _insets_from_alpha(Image.open(Path(job_dir) / name))[1]
+    if frame == "corner":
+        return 0    # ngoặc chỉ ở góc, giữa đáy trống — phụ đề căn giữa không đụng
+    return _proc_inset(frame, width_frac, h)
+
+
+def pad_inset_px(frame: str, width_frac: float, w: int, h: int, job_dir) -> int:
+    """Bề dày lề cho chế độ 'khung ngoài' (đều 4 cạnh, chẵn để scale yuv420 hợp lệ)."""
+    if frame.startswith("png:"):
+        name = build_sized_png(frame[4:], w, h, job_dir)
+        if not name:
+            return 0
+        from PIL import Image
+        ins = max(_insets_from_alpha(Image.open(Path(job_dir) / name)))
+        ins = min(ins, int(0.20 * min(w, h)))
+    else:
+        ins = _proc_inset(frame, width_frac, h)
+    return max(2, ins - ins % 2)
 
 
 def _drawboxes(frame: str, color: str, color2: str, width_frac: float, w: int, h: int) -> str:
@@ -72,16 +175,23 @@ def _drawboxes(frame: str, color: str, color2: str, width_frac: float, w: int, h
 
 
 def append_to_vf(base: str, frame: str, color: str, color2: str, width: float,
-                 w: int, h: int, job_dir) -> str:
+                 w: int, h: int, job_dir, pad: bool = False) -> str:
     """Chèn khung vào CUỐI chuỗi -vf. base = filter cover+sub (có thể là graph có ';').
-    base luôn khác rỗng khi gọi từ s8 (ít nhất là subtitles)."""
+    base luôn khác rỗng khi gọi từ s8 (ít nhất là subtitles).
+
+    pad=True: thu video vào trong đúng bề dày khung rồi mới vẽ khung ra lề —
+    không che pixel nội dung (khung PNG hoa văn thưa sẽ lộ lề đen phía sau)."""
     if not frame or frame == "none":
         return base
     base = base or "null"                         # đảm bảo có filter nguồn (s8 luôn truyền base thật)
+    if pad:
+        i = pad_inset_px(frame, width, w, h, job_dir)
+        if i:
+            base = (f"{base},scale={w - 2 * i}:{h - 2 * i}"
+                    f",pad={w}:{h}:{i}:{i}:black")
     if frame.startswith("png:"):
-        rel = _png_relpath(frame[4:], job_dir)
-        if not rel:                               # file mất/không hợp lệ → bỏ khung
+        name = build_sized_png(frame[4:], w, h, job_dir)
+        if not name:                              # file mất/không hợp lệ → bỏ khung
             return base
-        ov = f"movie=filename='{rel}',scale={w}:{h}[fr];"
-        return f"{base}[fb];{ov}[fb][fr]overlay=0:0"
+        return f"{base}[fb];movie=filename='{name}'[fr];[fb][fr]overlay=0:0"
     return f"{base},{_drawboxes(frame, color, color2, width, w, h)}"   # procedural

@@ -6,6 +6,7 @@ SUBTITLE_MODE quyết định cách lồng phụ đề (xem config.py). sub_vi.s
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -173,6 +174,20 @@ def cover_filter(cover: str, top: float, sub_filter: str, width: float = 1.0,
     return sub_filter
 
 
+def style_with_frame_margin(style: dict | None, frame: str, frame_width: float,
+                            vw: int, vh: int, job_dir, pad: bool) -> dict:
+    """Tự đẩy phụ đề lên khỏi khung viền: cộng margin_v (thang PlayResY=384 của
+    libass) thêm bề dày khung ở mép dưới — chữ không bao giờ bị khung đè.
+    pad=True ("khung ngoài"): video đã co vào trong khung → khỏi đẩy."""
+    s = dict(style or {})
+    if frame and frame != "none" and not pad:
+        ins = frames.bottom_inset_px(frame, frame_width, vw, vh, job_dir)
+        if ins:
+            base = int(s.get("margin_v", DEFAULT_STYLE["margin_v"]))
+            s["margin_v"] = base + math.ceil(ins * 384 / vh) + 2
+    return s
+
+
 def run(job: Job) -> None:
     out_path = job.dir / "final.mp4"
     if out_path.exists():
@@ -192,6 +207,7 @@ def run(job: Job) -> None:
     frame_color = r.get("frame_color", config.FRAME_COLOR)
     frame_color2 = r.get("frame_color2", config.FRAME_COLOR2)
     frame_width = float(r.get("frame_width", config.FRAME_WIDTH))
+    frame_pad = str(r.get("frame_pad", config.FRAME_PAD)).strip().lower() in ("1", "true")
     # brand/xuất bản (asset dùng chung, cấu hình toàn cục — xem core/brand.py)
     music = r.get("music", config.MUSIC)
     music_vol = r.get("music_vol", config.MUSIC_VOL)
@@ -203,8 +219,11 @@ def run(job: Job) -> None:
     outro = r.get("outro", config.OUTRO)
     master = str(r.get("master", config.MASTER)).strip().lower() in ("1", "true")
     subscribe = str(r.get("subscribe", config.SUBSCRIBE)).strip().lower()
-    if (cover != "none" or frame != "none" or logo not in ("", "none")
-            or subscribe == "on"):
+    # cover_only: che sub gốc/khung/logo như burn nhưng KHÔNG in sub Việt lên hình
+    # (upload sub_vi.srt riêng lên YouTube Studio → viewer bật/tắt, không chồng sub)
+    draw_subs = mode != "cover_only"
+    if (mode == "cover_only" or cover != "none" or frame != "none"
+            or logo not in ("", "none") or subscribe == "on"):
         mode = "burn"  # che sub / khung / logo / nhắc sub = sửa pixel = bắt buộc re-encode
 
     # Audio: voice FX + nhạc nền (duck theo giọng) + master → dubbed_render.wav.
@@ -226,8 +245,13 @@ def run(job: Job) -> None:
         )
     elif mode == "burn":
         vw, vh = ffmpeg.probe_dims(source)
-        sub_filter = (f"subtitles=sub_vi.srt:fontsdir={fontsdir_arg(job)}"
-                      f":force_style='{build_style(r.get('style'))}'")
+        if draw_subs:
+            style = style_with_frame_margin(r.get("style"), frame, frame_width,
+                                            vw, vh, job.dir, frame_pad)
+            sub_filter = (f"subtitles=sub_vi.srt:fontsdir={fontsdir_arg(job)}"
+                          f":force_style='{build_style(style)}'")
+        else:
+            sub_filter = "null"   # filter passthrough — giữ nguyên cấu trúc chuỗi -vf
         chain = ""
         if cover == "auto":
             boxes = load_sub_boxes(job)
@@ -242,7 +266,7 @@ def run(job: Job) -> None:
             base = cover_filter(eff, top, sub_filter, cw, cb)
         # chèn khung viền + logo watermark vào cuối chuỗi (sau cover/sub)
         vf_full = frames.append_to_vf(base, frame, frame_color, frame_color2,
-                                      frame_width, vw, vh, job.dir)
+                                      frame_width, vw, vh, job.dir, pad=frame_pad)
         vf_full = brand.append_logo(vf_full, logo, logo_pos, logo_scale, logo_opacity, vw, job.dir)
         sub_dur = brand._duration(source) if subscribe == "on" else 0.0
         vf_full = brand.append_subscribe(vf_full, subscribe,   # #18 nhắc Like/Đăng ký
