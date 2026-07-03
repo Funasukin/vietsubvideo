@@ -91,7 +91,9 @@ def make_srt(job: Job, split: bool = False) -> None:
     entries: list[tuple[float, float, str]] = []
     for seg in segs:
         pieces = seg.get("pieces") or []
-        if split and len(pieces) > 1:
+        # chỉ tách khi câu đủ dài: trung bình ≥2 từ/mảnh — kẻo bổ đôi tên riêng
+        # ("Đường Tam" 2 mảnh → "Đường"/"Tam") khi dữ liệu mốc nhiễu
+        if split and len(pieces) > 1 and len(seg["text_vi"].split()) >= 2 * len(pieces):
             texts = _split_text(seg["text_vi"],
                                 [max(1.0, float(p.get("len", 1))) for p in pieces])
             if texts:
