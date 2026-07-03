@@ -6,6 +6,43 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-03 (đêm) — Desktop (F:\MyProject\vietsubvideo)
+
+### Tính năng mới — chốt nốt #15 + #16 (hết sạch danh sách #1–18)
+
+- **#15 UI duyệt glossary gợi ý** (`core/glossary.py`, `webui/server.py`, UI):
+  nút **📒 Tên riêng** trên thẻ job (sau bước transcript) → modal hiện bảng tên
+  riêng hiện tại + danh sách Claude trích từ chính video (S4 giờ LƯU cache
+  `glossary_auto.json`; chưa có cache thì trích live 1 call). Bấm ➕ từng mục /
+  ➕ tất cả; checkbox **lưu thêm vào series** (chỉ THÊM tên chưa có, không đè);
+  **💾 Lưu & dịch lại** = reset job về sau transcript (xoá transcript_vi/tts/
+  final/metadata) rồi tự resume — dịch lại với glossary mới.
+  `auto_extract` có bản generic (mọi ngôn ngữ nguồn, không CJK gate) khi không
+  phải donghua-tiếng-Việt. Endpoint: GET `.../glossary-suggest`, POST `.../glossary`.
+- **#16 Lồng tiếng đa ngôn ngữ ĐÍCH** (`core/langs.py`, `TARGET_LANG` trong
+  Cấu hình): vi|en|zh|ja|ko|es|fr|id|th|pt. Khác vi → S4 dùng prompt dịch/review
+  theo ngôn ngữ đó (bỏ Hán-Việt/donghua), S5 đọc bằng cặp giọng edge-tts của
+  ngôn ngữ (tên giọng đã verify `--list-voices`; đổi TARGET_LANG là .sig lệch →
+  tự đọc lại), S9 metadata viết cùng ngôn ngữ. Đích zh/ja: TẮT leak-check chữ
+  Hán (hợp lệ) + review cho phép CJK; `_CLAUSE_SPLIT` (sub_split) thêm dấu câu
+  CJK 。？！、；：. **Giới hạn**: viXTTS/casting clone là finetune tiếng Việt →
+  đích ≠ vi thì mọi câu (kể cả voice_ref) đọc edge, có log nhắc.
+
+### Ghi chú kỹ thuật
+
+- Job thật chạy tối nay đã đi qua s4 mới → `glossary_auto.json` sinh tự nhiên
+  (5 tên: Đường Tam, Đấu La Đại Lục...) — cache suggest hoạt động ngay.
+- Test: reset "dịch lại" đúng stage/file; series merge dedupe; edge en-US OK;
+  clause-split CJK/VI đúng; JS node --check sạch.
+
+### Máy khác pull về cần làm
+
+1. `.env` thêm `TARGET_LANG=vi` (xem `.env.example`) — không có gói pip mới.
+2. Job cũ muốn thấy gợi ý glossary: bấm 📒 Tên riêng (lần đầu trích live 1 call
+   Haiku rồi cache).
+
+---
+
 ## 2026-07-03 — Laptop (C:\MyProject\FlowApp)
 
 ### Tính năng mới

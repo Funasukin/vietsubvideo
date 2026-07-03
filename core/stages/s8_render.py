@@ -41,8 +41,10 @@ def _wrap(text: str) -> str:
     return "\n".join(lines)
 
 
-# tách câu Việt tại dấu câu (ưu tiên) để chia theo nhịp sub gốc
-_CLAUSE_SPLIT = re.compile(r"(?<=[,;:.!?…—])\s+")
+# tách câu tại dấu câu (ưu tiên) để chia theo nhịp sub gốc — gồm cả dấu CJK
+# (。？！、；：) cho ngôn ngữ đích zh/ja (#16); dấu CJK là fullwidth nên có thể
+# không có khoảng trắng theo sau → \s* thay vì \s+ cho nhóm CJK
+_CLAUSE_SPLIT = re.compile(r"(?<=[,;:.!?…—])\s+|(?<=[。？！、；：])\s*")
 
 
 def _split_text(text: str, weights: list[float]) -> list[str] | None:

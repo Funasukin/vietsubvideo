@@ -11,7 +11,7 @@ import json
 import edge_tts
 
 import config
-from core import prosody
+from core import langs, prosody
 from core.job import Job
 
 RETRIES = 4  # edge-tts hay lỗi NoAudioReceived tạm thời khi gọi song song
@@ -21,17 +21,27 @@ def _seg_path(job: Job, seg_id: int):
     return job.dir / "tts" / f"seg_{seg_id:04d}.mp3"
 
 
+def _edge_voice(seg: dict) -> str:
+    """Giọng edge-tts cho 1 câu theo NGÔN NGỮ ĐÍCH (#16): vi giữ TTS_VOICE/_NU trong
+    Cấu hình, ngôn ngữ khác dùng cặp giọng của core/langs.py."""
+    nam, nu = langs.edge_voices()
+    return nu if seg.get("voice") == "nu" else nam
+
+
 def _voice_sig(seg: dict) -> str:
     """Chữ ký giọng DỰ KIẾN của 1 câu (engine + nguồn giọng). Lưu cạnh mp3 (.sig) để
     resume biết file cũ có đúng giọng hiện tại không — nếu khác (đổi giọng/clip/engine,
-    hay mp3 cũ từ trước khi có tính năng) thì đọc lại, không giữ giọng cũ."""
-    if seg.get("voice_ref"):
-        return "vix:ref:" + seg["voice_ref"]          # cast clip → luôn viXTTS
-    nu = seg.get("voice") == "nu"
-    if config.TTS_ENGINE == "vixtts":
-        return "vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
+    ĐỔI NGÔN NGỮ ĐÍCH, hay mp3 cũ từ trước khi có tính năng) thì đọc lại."""
+    # đích ≠ vi: mọi câu (kể cả cast voice_ref) đọc edge theo ngôn ngữ — viXTTS là
+    # finetune tiếng Việt, clone sang ngôn ngữ khác méo giọng. Sig đổi → tự đọc lại.
+    if langs.is_vi():
+        if seg.get("voice_ref"):
+            return "vix:ref:" + seg["voice_ref"]      # cast clip → luôn viXTTS
+        nu = seg.get("voice") == "nu"
+        if config.TTS_ENGINE == "vixtts":
+            return "vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
     # kèm tông giọng (prosody) — đổi cách đo/bật tắt là câu bị ảnh hưởng tự đọc lại
-    return "edge:" + (config.TTS_VOICE_NU if nu else config.TTS_VOICE) + prosody.sig_tag(seg)
+    return "edge:" + _edge_voice(seg) + prosody.sig_tag(seg)
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -55,7 +65,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
     # bỏ qua nếu mp3 còn đúng giọng (khớp .sig); 0 byte/khác giọng → đọc lại
     if _seg_ready(job, seg):
         return  # resume
-    voice = config.TTS_VOICE_NU if seg.get("voice") == "nu" else config.TTS_VOICE
+    voice = _edge_voice(seg)
     async with sem:
         for attempt in range(1, RETRIES + 1):
             out.unlink(missing_ok=True)
@@ -161,7 +171,14 @@ def run(job: Job) -> None:
         return
 
     (job.dir / "tts").mkdir(exist_ok=True)
-    if config.TTS_ENGINE == "vixtts":
+    if not langs.is_vi():
+        # #16 đích ≠ tiếng Việt: đọc TẤT CẢ bằng edge-tts giọng của ngôn ngữ đó.
+        # viXTTS/casting clone là finetune tiếng Việt — bỏ qua, kể cả câu voice_ref.
+        if config.TTS_ENGINE == "vixtts" or any(s.get("voice_ref") for s in segments):
+            print(f"  Đích {langs.name()}: viXTTS/casting clone tạm không áp dụng — "
+                  f"toàn bộ đọc edge-tts ({langs.edge_voices()[0]})")
+        asyncio.run(_tts_all(job, segments))
+    elif config.TTS_ENGINE == "vixtts":
         try:
             _tts_vixtts(job, segments)
         except Exception as e:

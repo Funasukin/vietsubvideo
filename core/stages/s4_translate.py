@@ -18,6 +18,13 @@ _LEAK_NOTE = ("\nLƯU Ý ĐẶC BIỆT: lần dịch trước các câu này cò
               "Dịch lại HOÀN TOÀN sang tiếng Việt — mọi từ Hán phải thành nghĩa Việt "
               "hoặc âm Hán-Việt (ví dụ 祭品 → vật tế, 部落 → bộ lạc).")
 
+
+def _leak_note(lang_name: str) -> str:
+    if lang_name == "tiếng Việt":
+        return _LEAK_NOTE
+    return ("\nLƯU Ý ĐẶC BIỆT: lần dịch trước các câu này còn SÓT ký tự của ngôn ngữ "
+            f"gốc. Dịch lại HOÀN TOÀN sang {lang_name}, không để sót từ chưa dịch.")
+
 SYSTEM = """Bạn là dịch giả chuyên nghiệp chuyên dịch phim/truyện Trung Quốc (tu tiên, hệ thống, đô thị) và video tiếng nước ngoài sang tiếng Việt để lồng tiếng kiểu thuyết minh.
 
 Quy tắc:
@@ -42,6 +49,35 @@ Quy tắc:
 - Không để sót NGUYÊN câu tiếng nước ngoài chưa dịch (trừ tên riêng/thuật ngữ giữ nguyên có chủ đích).
 - Mỗi segment dịch độc lập đúng theo id, không gộp, không tách.
 - Mỗi segment gắn "voice": "nam" hoặc "nu" theo người nói (suy từ ngữ cảnh); dẫn chuyện/không chắc → "nam"."""
+
+# #16 Ngôn ngữ đích KHÁC tiếng Việt: prompt chung theo TARGET_LANG (không có khái niệm
+# Hán-Việt/xưng hô cổ trang — mấy quy tắc đó chỉ có nghĩa với tiếng Việt).
+def _lang_system(lang_name: str) -> str:
+    return f"""Bạn là dịch giả chuyên nghiệp, dịch phụ đề/thoại video sang {lang_name} để lồng tiếng kiểu thuyết minh. Nội dung có thể là BẤT KỲ thể loại và BẤT KỲ ngôn ngữ nguồn nào.
+
+Quy tắc:
+- TOÀN BỘ trường "text_vi" phải là {lang_name} (tên trường giữ nguyên vì lý do kỹ thuật).
+- Dịch TỰ NHIÊN như lời nói bản xứ, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
+- Xưng hô/văn phong phù hợp ngữ cảnh và văn hóa của {lang_name}.
+- Tên riêng, thương hiệu, địa danh: dùng dạng quen thuộc trong {lang_name} (tên quốc tế thường giữ nguyên).
+- Giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
+- Không để sót NGUYÊN câu tiếng nước ngoài chưa dịch (trừ tên riêng giữ nguyên có chủ đích).
+- Mỗi segment dịch độc lập đúng theo id, không gộp, không tách.
+- Mỗi segment gắn "voice": "nam" hoặc "nu" theo GIỚI TÍNH người nói (suy từ ngữ cảnh); dẫn chuyện/không chắc → "nam"."""
+
+
+def _lang_review(lang_name: str) -> str:
+    return f"""Bạn là biên tập bản dịch thuyết minh video sang {lang_name}. Bạn nhận toàn bộ bản dịch một video (dịch theo từng đoạn nên có thể lệch nhau) và chỉ trả về những segment CẦN SỬA.
+
+Soát 5 lỗi:
+1. Tên riêng/thuật ngữ dịch không nhất quán giữa các câu → thống nhất.
+2. Xưng hô/văn phong đổi thất thường giữa cùng một cặp nhân vật → nhất quán, tự nhiên.
+3. Câu dịch cứng, bám chữ, người bản xứ không nói vậy → viết lại tự nhiên bằng {lang_name}.
+4. Còn sót NGUYÊN câu chưa dịch sang {lang_name}.
+5. Nhãn voice sai rõ ràng so với ngữ cảnh.
+
+Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa bằng {lang_name}, ngắn gọn (đọc TTS). Không có gì cần sửa → mảng rỗng."""
+
 
 def _batch_schema(with_character: bool = False) -> dict:
     """Schema output dịch. Khi casting bật (series có bảng casting) thêm trường
@@ -196,8 +232,9 @@ REVIEW_SCHEMA = {
 
 
 def review_pass(client: anthropic.Anthropic, segments: list[dict],
-                system: str = REVIEW_SYSTEM) -> list[int]:
-    """Đọc lại toàn bộ bản dịch, sửa tại chỗ các câu lệch. Trả về list id đã sửa."""
+                system: str = REVIEW_SYSTEM, allow_cjk: bool = False) -> list[int]:
+    """Đọc lại toàn bộ bản dịch, sửa tại chỗ các câu lệch. Trả về list id đã sửa.
+    allow_cjk=True khi ngôn ngữ ĐÍCH là zh/ja — chữ Hán trong bản sửa là hợp lệ."""
     payload = [{"id": s["id"], "zh": s["text"], "vi": s["text_vi"],
                 "voice": s.get("voice", "nam")} for s in segments]
     resp = client.messages.create(
@@ -216,8 +253,8 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
     changed = []
     for fix in result["fixes"]:
         seg = by_id.get(fix["id"])
-        # không nhận bản sửa lại đưa ký tự Trung vào
-        if seg and fix["text_vi"].strip() and not _CJK_RE.search(fix["text_vi"]):
+        # không nhận bản sửa lại đưa ký tự Trung vào (trừ khi đích là zh/ja)
+        if seg and fix["text_vi"].strip() and (allow_cjk or not _CJK_RE.search(fix["text_vi"])):
             if seg["text_vi"] != fix["text_vi"]:
                 seg["text_vi"] = fix["text_vi"]
                 changed.append(fix["id"])
@@ -232,16 +269,18 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
 
 def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
               translated: dict[int, dict], attempts: int = 2,
-              system: str = SYSTEM, schema: dict = SCHEMA) -> None:
+              system: str = SYSTEM, schema: dict = SCHEMA,
+              note: str = _LEAK_NOTE) -> None:
     """Dịch lại các câu còn sót ký tự Trung (Haiku thỉnh thoảng bỏ sót từ khó).
-    GIỮ nhãn character cũ nếu lần sửa không gán lại (kẻo mất casting của câu leak)."""
+    GIỮ nhãn character cũ nếu lần sửa không gán lại (kẻo mất casting của câu leak).
+    KHÔNG gọi khi ngôn ngữ đích là zh/ja (chữ Hán là hợp lệ) — caller tự chặn."""
     for _ in range(attempts):
         bad_ids = [i for i, t in translated.items() if _CJK_RE.search(t["text_vi"])]
         if not bad_ids:
             return
         batch = [by_id[i] for i in bad_ids]
         prev_char = {i: translated[i].get("character", "") for i in bad_ids}
-        fixed = _translate_batch(client, batch, [], extra_note=_LEAK_NOTE,
+        fixed = _translate_batch(client, batch, [], extra_note=note,
                                  system=system, schema=schema)
         for i, t in fixed.items():   # đừng để sửa-sót ghi đè character = "" đã suy trước đó
             if not t.get("character") and prev_char.get(i):
@@ -264,22 +303,37 @@ def run(job: Job) -> None:
 
     # Glossary tên riêng: tự trích từ transcript + bảng thủ công (thủ công thắng).
     # Chèn vào system prompt để dịch tên nhất quán + sửa chữ đồng âm nghe nhầm.
-    from core import glossary, series
+    from core import glossary, langs, series
+    donghua = config.CONTENT_STYLE == "donghua"
+    vi_target = langs.is_vi()
+    lang_name = langs.name()
     auto = []
     if config.GLOSSARY_AUTO:
         # client riêng timeout ngắn: call phụ, tránh ghim worker khi mạng kẹt
         aux = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY,
                                   timeout=60.0, max_retries=1)
-        auto = glossary.auto_extract(aux, config.CLAUDE_MODEL, segments)
+        # prompt donghua (Hán-Việt) chỉ khi nội dung donghua + đích tiếng Việt
+        auto = glossary.auto_extract(aux, config.CLAUDE_MODEL, segments,
+                                     generic=not (donghua and vi_target),
+                                     lang_name=lang_name)
+        # #15 lưu gợi ý để UI hiện cho người dùng duyệt (không tốn call lại)
+        if auto:
+            (job.dir / "glossary_auto.json").write_text(
+                json.dumps([{"zh": z, "vi": v} for z, v in auto], ensure_ascii=False),
+                encoding="utf-8")
     # ưu tiên: glossary TẬP (job) > glossary DÙNG CHUNG series > tự trích. merged() áp
     # auto_pairs trước rồi để manual(job) đè; xếp series SAU auto để series thắng auto.
     series_pairs = glossary.parse(series.glossary_for(job.series))
     gloss = glossary.merged(job.glossary, auto + series_pairs)
     block = glossary.claude_block(gloss)
-    # văn phong theo kiểu nội dung: donghua (Trung cổ trang) vs general (mọi thể loại)
-    donghua = config.CONTENT_STYLE == "donghua"
-    sys_translate = (SYSTEM if donghua else GENERAL_SYSTEM) + block
-    sys_review = (REVIEW_SYSTEM if donghua else GENERAL_REVIEW_SYSTEM) + block
+    # văn phong: đích tiếng Việt → donghua/general như cũ; đích khác → prompt theo ngôn ngữ
+    if vi_target:
+        sys_translate = (SYSTEM if donghua else GENERAL_SYSTEM) + block
+        sys_review = (REVIEW_SYSTEM if donghua else GENERAL_REVIEW_SYSTEM) + block
+    else:
+        print(f"  Ngôn ngữ đích: {lang_name} (TARGET_LANG={langs.code()})")
+        sys_translate = _lang_system(lang_name) + block
+        sys_review = _lang_review(lang_name) + block
     # casting: nếu series có bảng nhân vật → nhờ Claude gán tên nhân vật cho từng câu
     cast_names = series.character_names(job.series)
     cast_schema = _batch_schema(bool(cast_names))
@@ -321,7 +375,9 @@ def run(job: Job) -> None:
                                                 system=sys_translate, schema=cast_schema))
         progress.write(job.dir, "translating", len(translated), total)
 
-    fix_leaks(client, by_id, translated, system=sys_translate, schema=cast_schema)
+    if not langs.cjk_target():   # đích zh/ja: chữ Hán/kanji là hợp lệ, không phải "sót"
+        fix_leaks(client, by_id, translated, system=sys_translate, schema=cast_schema,
+                  note=_leak_note(lang_name))
 
     missing_final = [s["id"] for s in segments if s["id"] not in translated]
     if missing_final:
@@ -337,7 +393,8 @@ def run(job: Job) -> None:
                 seg["character"] = ch
 
     if config.REVIEW_TRANSLATION:
-        changed = review_pass(client, segments, system=sys_review)
+        changed = review_pass(client, segments, system=sys_review,
+                              allow_cjk=langs.cjk_target())
         if changed:
             print(f"  Review: sửa {len(changed)} câu (nhất quán tên/xưng hô): {changed}")
 

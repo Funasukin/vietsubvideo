@@ -97,7 +97,9 @@ def _compose_description(meta: dict, duration: float) -> str:
         if hs:
             parts.append(hs)
 
-    parts.append("Video được dịch và lồng tiếng tự động.")
+    from core import langs
+    parts.append("Video được dịch và lồng tiếng tự động." if langs.is_vi()
+                 else "Auto-translated & dubbed video.")
     return "\n\n".join(p for p in parts if p)
 
 
@@ -120,7 +122,12 @@ def run(job: Job) -> None:
         except (OSError, json.JSONDecodeError):
             meta = {}
     if not meta_path.exists() or "title" not in meta:
+        from core import langs
         system = SYSTEM_DONGHUA if config.CONTENT_STYLE == "donghua" else SYSTEM_GENERAL
+        if not langs.is_vi():   # #16 metadata cùng ngôn ngữ với bản lồng tiếng
+            system = SYSTEM_GENERAL + (f"\nQUAN TRỌNG: viết TOÀN BỘ title, description, "
+                                       f"tags, hashtags, hook_lines, chapters, summary "
+                                       f"bằng {langs.name()} (khớp ngôn ngữ lồng tiếng).")
         resp = client.messages.create(
             model=config.METADATA_MODEL,
             max_tokens=2500,

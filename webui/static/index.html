@@ -290,6 +290,26 @@
     </div>
   </div>
 
+  <div id="gloss-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeGloss()">
+    <div class="modal-box" style="max-width:720px;max-height:82vh;overflow:auto;text-align:left">
+      <div class="row" style="justify-content:space-between">
+        <h3 style="margin:0">📒 Tên riêng (glossary) của job</h3>
+        <button class="ghost" onclick="closeGloss()">✕ Đóng</button>
+      </div>
+      <div class="meta" style="margin:6px 0">Bảng tên riêng đang áp cho job — mỗi dòng <code>tên gốc=bản dịch</code>. Gợi ý bên dưới do Claude trích từ chính video.</div>
+      <textarea id="gl-text" rows="7" style="width:100%;box-sizing:border-box;background:var(--card);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px;resize:vertical"></textarea>
+      <div id="gl-suggest" style="margin:10px 0;font-size:13px">Đang tải gợi ý…</div>
+      <label id="gl-series-wrap" style="display:none;font-size:13px;color:var(--dim);cursor:pointer">
+        <input type="checkbox" id="gl-series"> Lưu thêm vào series <b id="gl-series-name"></b> (áp cho mọi tập sau)
+      </label>
+      <div class="row" style="margin-top:12px">
+        <button onclick="glossSave(false)">💾 Lưu</button>
+        <button class="ghost" onclick="glossSave(true)" title="Xoá bản dịch + lồng tiếng cũ, dịch lại từ đầu với glossary mới">💾 Lưu &amp; dịch lại</button>
+        <span class="meta" id="gl-msg"></span>
+      </div>
+    </div>
+  </div>
+
   <div id="qc-modal" class="modal-overlay" style="display:none" onclick="if(event.target===this)closeQc()">
     <div class="modal-box" style="max-width:760px;max-height:82vh;overflow:auto;text-align:left">
       <div class="row" style="justify-content:space-between">
@@ -317,6 +337,7 @@ let FONT_LIST = FONTS.map(n => ({ name: n, file: null }));  // nạp lại từ 
 const CFG_FIELDS = [
   ["CLAUDE_MODEL", "Model dịch", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"]],
   ["CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"]],
+  ["TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"]],
   ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts"]],
   ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
   ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
@@ -533,7 +554,11 @@ async function loadConfig() {
     {"claude-haiku-4-5-20251001": "Haiku 4.5 — rẻ, nhanh", "claude-sonnet-4-6": "Sonnet 4.6 — dịch mượt hơn"});
   html += row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
     {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"});
-  html += `<div class="hint">Nguồn transcript = "auto/whisper" tự nhận diện mọi ngôn ngữ. Chọn "Chung" cho phim/video không phải donghua Trung để dịch tự nhiên (không ép Hán-Việt).</div>`;
+  html += row("TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"],
+    {vi: "Tiếng Việt (mặc định)", en: "English", zh: "中文 — Tiếng Trung", ja: "日本語 — Tiếng Nhật",
+     ko: "한국어 — Tiếng Hàn", es: "Español — Tây Ban Nha", fr: "Français — Pháp",
+     id: "Bahasa Indonesia", th: "ไทย — Tiếng Thái", pt: "Português — Brazil"});
+  html += `<div class="hint">Nguồn transcript = "auto/whisper" tự nhận diện mọi ngôn ngữ. Chọn "Chung" cho phim/video không phải donghua Trung để dịch tự nhiên (không ép Hán-Việt). Ngôn ngữ lồng tiếng ≠ Tiếng Việt: dịch + đọc bằng giọng edge của ngôn ngữ đó; viXTTS/casting giọng clone tạm không áp dụng (chỉ tiếng Việt).</div>`;
   html += row("SUBTITLE_MODE", "Phụ đề mặc định", ["soft", "cover_only", "burn", "none"],
     {soft: "soft — track bật/tắt (nhanh)", cover_only: "cover_only — chỉ che sub gốc, upload .srt riêng lên YouTube",
      burn: "burn — vẽ cứng vào hình", none: "none — không phụ đề"});
@@ -829,6 +854,8 @@ function cardHtml(j) {
     html += `<button class="ghost" id="thumb-${j.id}" onclick="regenThumb('${j.id}')">🖼 ${j.has_thumb ? "Thumbnail mới" : "Tạo thumbnail"}</button>`;
   if (j.seg_total && !j.queued && !j.running)   // #13 soát lỗi dịch + timing
     html += `<button class="ghost" onclick="qcJob('${j.id}')">🔍 QC</button>`;
+  if (j.completed_stages.includes("transcribing") && !j.queued && !j.running)  // #15 tên riêng
+    html += `<button class="ghost" onclick="openGloss('${j.id}')">📒 Tên riêng</button>`;
   if (j.has_final) {   // #1 đăng YouTube: gói kéo-thả + đăng thẳng OAuth
     html += `<button class="ghost" onclick="makePackage('${j.id}')">📦 Gói đăng</button>`;
     html += `<button class="ghost" onclick="uploadYT('${j.id}')">▶ Đăng YouTube</button>`;
@@ -1025,6 +1052,103 @@ async function seriesSave() {
 
 // ---------- #13 QC: soát lỗi dịch + timing ----------
 function _mmss(sec) { sec = Math.max(0, Math.floor(sec)); return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0"); }
+// ---------- #15 Glossary theo job: xem/duyệt tên riêng Claude gợi ý ----------
+let _glJobId = null, _glSuggest = [];
+function closeGloss() { document.getElementById("gloss-modal").style.display = "none"; }
+
+async function openGloss(id) {
+  _glJobId = id;
+  const jobs = await (await fetch("/api/jobs")).json().catch(() => []);
+  const j = (jobs || []).find(x => x.id === id) || {};
+  document.getElementById("gl-text").value = j.glossary || "";
+  const sw = document.getElementById("gl-series-wrap");
+  if (j.series) {
+    sw.style.display = "";
+    document.getElementById("gl-series-name").textContent = j.series;
+  } else sw.style.display = "none";
+  document.getElementById("gl-msg").textContent = "";
+  document.getElementById("gl-suggest").innerHTML = "⏳ Đang trích tên riêng từ video…";
+  document.getElementById("gloss-modal").style.display = "flex";
+  try {
+    const r = await fetch(`/api/jobs/${id}/glossary-suggest`);
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      document.getElementById("gl-suggest").innerHTML =
+        `<span class="err">${esc(d.detail || "Không trích được gợi ý")}</span>`;
+      return;
+    }
+    _glSuggest = d.pairs || [];
+    renderGlossSuggest();
+  } catch (e) {
+    document.getElementById("gl-suggest").innerHTML = '<span class="err">Lỗi mạng khi trích gợi ý.</span>';
+  }
+}
+
+function _glHave() {   // các tên gốc đã có trong textarea (để đánh dấu ✓)
+  const have = new Set();
+  for (const line of document.getElementById("gl-text").value.split("\n")) {
+    const z = line.split("=")[0].trim();
+    if (z && !z.startsWith("#")) have.add(z);
+  }
+  return have;
+}
+
+function renderGlossSuggest() {
+  const box = document.getElementById("gl-suggest");
+  if (!_glSuggest.length) { box.innerHTML = '<span class="meta">Không trích được tên riêng nào từ video này.</span>'; return; }
+  const have = _glHave();
+  let h = `<div class="row" style="justify-content:space-between;margin-bottom:4px">
+    <b>Gợi ý từ video (${_glSuggest.length})</b>
+    <button class="ghost" type="button" onclick="glossAddAll()">➕ Thêm tất cả</button></div>`;
+  h += _glSuggest.map((p, i) => {
+    const got = have.has(p.zh);
+    return `<div class="row" style="padding:3px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1">${esc(p.zh)} = ${esc(p.vi)}</span>
+      ${got ? '<span style="color:var(--ok)">✓ đã có</span>'
+            : `<button class="ghost" type="button" onclick="glossAdd(${i})">➕</button>`}</div>`;
+  }).join("");
+  box.innerHTML = h;
+}
+
+function glossAdd(i) {
+  const p = _glSuggest[i];
+  if (!p || _glHave().has(p.zh)) return renderGlossSuggest();
+  const ta = document.getElementById("gl-text");
+  ta.value = (ta.value.trimEnd() + `\n${p.zh}=${p.vi}`).trim();
+  renderGlossSuggest();
+}
+function glossAddAll() {
+  const ta = document.getElementById("gl-text");
+  const have = _glHave();
+  const lines = _glSuggest.filter(p => !have.has(p.zh)).map(p => `${p.zh}=${p.vi}`);
+  if (lines.length) ta.value = (ta.value.trimEnd() + "\n" + lines.join("\n")).trim();
+  renderGlossSuggest();
+}
+
+async function glossSave(retranslate) {
+  if (retranslate && !confirm("Dịch lại với glossary mới?\n\nBản dịch + lồng tiếng + video final hiện tại sẽ bị xoá và job chạy lại từ bước dịch (tốn thời gian + phí dịch)."))
+    return;
+  const msg = document.getElementById("gl-msg");
+  msg.style.color = "var(--dim)"; msg.textContent = "Đang lưu…";
+  try {
+    const r = await fetch(`/api/jobs/${_glJobId}/glossary`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ glossary: document.getElementById("gl-text").value,
+        save_series: !!document.getElementById("gl-series")?.checked && document.getElementById("gl-series-wrap").style.display !== "none",
+        retranslate }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi: " + (d.detail || r.status); return; }
+    msg.style.color = "var(--ok)";
+    msg.textContent = "✓ Đã lưu" + (d.series_added ? ` (+${d.series_added} tên vào series)` : "");
+    if (retranslate && d.reset) {
+      closeGloss();
+      await fetch(`/api/jobs/${_glJobId}/resume`, { method: "POST" });  // chạy lại từ bước dịch
+      delete lastJson[_glJobId];
+      refresh();
+    }
+  } catch (e) { msg.style.color = "var(--err)"; msg.textContent = "Lỗi mạng."; }
+}
+
 function closeQc() { document.getElementById("qc-modal").style.display = "none"; }
 async function qcJob(id) {
   const body = document.getElementById("qc-body");

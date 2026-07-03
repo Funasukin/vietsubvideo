@@ -75,6 +75,15 @@ Với mỗi mục cho:
 
 Chỉ lấy danh từ riêng QUAN TRỌNG/LẶP LẠI, bỏ từ thường. Tối đa 40 mục. Bỏ qua nếu transcript không phải tiếng Trung."""
 
+# Bản CHUNG: nguồn mọi ngôn ngữ, đích theo TARGET_LANG (không ép Hán-Việt/donghua)
+_AUTO_SYSTEM_GENERIC = """Bạn trích DANH TỪ RIÊNG từ transcript video (bất kỳ ngôn ngữ nguồn nào): tên người, nhân vật, tổ chức/thương hiệu, địa danh, thuật ngữ riêng lặp lại.
+
+Với mỗi mục cho:
+- zh: tên gốc ĐÚNG như xuất hiện trong transcript (giữ nguyên ngôn ngữ gốc).
+- vi: cách dịch/phiên âm chuẩn, quen thuộc sang {LANG} (tên quốc tế thường giữ nguyên).
+
+Chỉ lấy danh từ riêng QUAN TRỌNG/LẶP LẠI, bỏ từ thường. Tối đa 40 mục."""
+
 _AUTO_SCHEMA = {
     "type": "object",
     "properties": {
@@ -97,17 +106,21 @@ _AUTO_SCHEMA = {
 
 
 def auto_extract(client: anthropic.Anthropic, model: str,
-                 segments: list[dict]) -> list[tuple[str, str]]:
-    """Claude đọc transcript Hán → trích tên riêng + Hán-Việt. Lỗi thì trả []."""
+                 segments: list[dict], generic: bool = False,
+                 lang_name: str = "tiếng Việt") -> list[tuple[str, str]]:
+    """Claude đọc transcript → trích tên riêng + bản dịch. Lỗi thì trả [].
+    generic=True: nguồn mọi ngôn ngữ, đích lang_name (không CJK gate/không ép Hán-Việt)."""
     text = "\n".join(s.get("text", "") for s in segments)
-    if not _CJK.search(text):
-        return []  # không phải tiếng Trung → bỏ
+    if not generic and not _CJK.search(text):
+        return []  # prompt donghua chỉ hợp transcript tiếng Trung → bỏ
     text = text[:20000]  # đủ để bắt tên lặp lại, giữ chi phí thấp
+    system = (_AUTO_SYSTEM_GENERIC.replace("{LANG}", lang_name) if generic
+              else _AUTO_SYSTEM)
     try:
         resp = client.messages.create(
             model=model,
             max_tokens=2000,
-            system=[{"type": "text", "text": _AUTO_SYSTEM}],
+            system=[{"type": "text", "text": system}],
             messages=[{"role": "user", "content":
                        "Trích danh từ riêng từ transcript sau:\n" + text}],
             output_config={"format": {"type": "json_schema", "schema": _AUTO_SCHEMA}},

@@ -35,6 +35,9 @@ TRANSLATE_BATCH_OVERLAP = 3  # segment cuối batch trước gửi kèm làm con
 # Kiểu nội dung → chọn văn phong dịch: donghua (Trung cổ trang: Hán-Việt, xưng hô cổ)
 # hay general (mọi thể loại/ngôn ngữ: dịch tự nhiên hiện đại, giữ tên gốc). Xem s4_translate.
 CONTENT_STYLE = os.getenv("CONTENT_STYLE", "donghua").strip().lower()
+# #16 Ngôn ngữ ĐÍCH lồng tiếng+phụ đề (vi|en|zh|ja|ko|es|fr|id|th|pt — core/langs.py).
+# Khác "vi": dịch + đọc bằng giọng edge của ngôn ngữ đó; viXTTS/casting tạm không áp dụng.
+TARGET_LANG = os.getenv("TARGET_LANG", "vi").strip().lower()
 # Vòng review sau dịch: đọc lại toàn bộ, sửa tên riêng/xưng hô lệch giữa các batch
 REVIEW_TRANSLATION = os.getenv("REVIEW_TRANSLATION", "1").lower() not in ("0", "false")
 # Tự trích bảng tên riêng từ transcript (1 call Claude/job) để dịch tên nhất quán

@@ -35,7 +35,8 @@ import config
 from core.job import Job, Stage
 
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
-SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
+SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
+                 "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "PROSODY",
                  "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "SUB_SPLIT",
                  "OCR_WORKERS", "OCR_FPS",
@@ -1160,6 +1161,100 @@ def set_glossary_default(body: GlossaryBody) -> dict:
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     _GLOSSARY_DEFAULT.write_text(body.glossary, encoding="utf-8")
     return {"saved": True}
+
+
+# ---------- #15 Glossary theo JOB: gợi ý tên riêng từ chính video + sửa/dịch lại ----------
+
+@app.get("/api/jobs/{job_id}/glossary-suggest")
+def glossary_suggest(job_id: str) -> dict:
+    """Tên riêng Claude trích từ transcript của job. Ưu tiên cache glossary_auto.json
+    (S4 đã lưu khi dịch); chưa có thì trích ngay (1 call ngắn) rồi cache lại."""
+    _check_job_id(job_id)
+    jd = config.JOBS_DIR / job_id
+    cache = jd / "glossary_auto.json"
+    if cache.exists():
+        try:
+            return {"pairs": json.loads(cache.read_text(encoding="utf-8")),
+                    "cached": True}
+        except (OSError, json.JSONDecodeError):
+            pass
+    tz = jd / "transcript_zh.json"
+    if not tz.exists():
+        raise HTTPException(409, "Job chưa có transcript (chạy tới bước nhận dạng đã)")
+    try:
+        segments = json.loads(tz.read_text(encoding="utf-8"))["segments"]
+    except (OSError, json.JSONDecodeError, KeyError):
+        raise HTTPException(422, "transcript hỏng")
+    import anthropic
+    from core import glossary, langs
+    aux = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY,
+                              timeout=60.0, max_retries=1)
+    donghua_vi = config.CONTENT_STYLE == "donghua" and langs.is_vi()
+    pairs = glossary.auto_extract(aux, config.CLAUDE_MODEL, segments,
+                                  generic=not donghua_vi, lang_name=langs.name())
+    out = [{"zh": z, "vi": v} for z, v in pairs]
+    if out:
+        cache.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    return {"pairs": out, "cached": False}
+
+
+class JobGlossaryBody(BaseModel):
+    glossary: str
+    save_series: bool = False   # gộp thêm vào glossary DÙNG CHUNG của series (nếu job có)
+    retranslate: bool = False   # xoá bản dịch + TTS → chạy lại từ bước dịch với glossary mới
+
+
+@app.post("/api/jobs/{job_id}/glossary")
+def set_job_glossary(job_id: str, body: JobGlossaryBody) -> dict:
+    """Cập nhật glossary của job (#15). retranslate=True: reset về sau bước transcript
+    để dịch lại với glossary mới (client tự bấm/gọi resume sau khi reset xong)."""
+    _check_job_id(job_id)
+    _check_glossary(body.glossary)
+    with _lock:
+        if job_id in _active:
+            raise HTTPException(409, "Job đang chạy — chờ xong/Hủy rồi sửa glossary")
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    job.glossary = body.glossary
+    added_series = 0
+    if body.save_series and job.series:
+        # gộp vào series: chỉ THÊM cặp có tên gốc CHƯA có (không đè bản series đang có)
+        from core import glossary as g, series
+        s = series.load(job.series) or {"glossary": "", "casting": {}}
+        have = {z for z, _ in g.parse(s.get("glossary", ""))}
+        new_lines = [f"{z}={v}" if v else z
+                     for z, v in g.parse(body.glossary) if z not in have]
+        if new_lines:
+            merged = (s.get("glossary", "").rstrip() + "\n" + "\n".join(new_lines)).strip()
+            if len(merged) > 20000:
+                raise HTTPException(400, "Glossary series vượt 20000 ký tự sau khi gộp")
+            series.save(job.series, merged, s.get("casting") or {})
+            added_series = len(new_lines)
+
+    reset = False
+    if body.retranslate:
+        # các file stage sau "có thì bỏ qua" — phải xoá TRƯỚC (Windows có thể khoá → 409
+        # sớm, chưa đổi state, người dùng dừng phát rồi thử lại; xem save_segments)
+        gating = ["transcript_vi.json", "sub_vi.srt", "dubbed_audio.wav", "final.mp4"]
+        locked = [n for n in gating if not _unlink_quiet(job.dir / n)]
+        if locked:
+            raise HTTPException(409, "Tệp đang được phát/khoá: " + ", ".join(locked)
+                                + ". Dừng phát rồi thử lại.")
+        _unlink_quiet(job.dir / "mix_report.json")
+        _unlink_quiet(job.dir / "ducked.wav")
+        _unlink_quiet(job.dir / "metadata.json")   # title/desc theo bản dịch cũ → làm lại
+        shutil.rmtree(job.dir / "tts", ignore_errors=True)  # text đổi → toàn bộ mp3 cũ sai
+        keep = ("downloading", "extracting", "transcribing")
+        job.completed_stages = [s for s in job.completed_stages if s in keep]
+        job.stage = Stage.PENDING
+        job.error = None
+        from core import progress
+        progress.clear(job.dir)
+        reset = True
+    job.save()
+    return {"saved": True, "series_added": added_series, "reset": reset}
 
 
 # ---------- Thư viện giọng viXTTS: liệt kê voices/ + nghe thử clip mẫu ----------
