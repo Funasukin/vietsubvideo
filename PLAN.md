@@ -211,3 +211,42 @@ data/jobs/20260610_153000_abc123/
 1. Phase 0: dựng skeleton project + cài đặt môi trường (Python 3.11+, FFmpeg).
 2. Nộp đăng ký API các nền tảng (mục Phase 0) — đường găng dài nhất.
 3. Bắt đầu Phase 1 với 1 video donghua mẫu ngắn (~5 phút) làm video test chuẩn.
+
+## 11. Cải thiện giọng đọc cho giống người, có cảm xúc (ĐỂ DÀNH — quay lại sau)
+
+*Ghi 2026-07-03. Hiện trạng: edge-tts đọc đều đều một ngữ điệu; viXTTS đã tích hợp
+(desktop, GPU) kèm 12 mẫu giọng trong `voices/` (calm/chậm/nhanh/truyền cảm × nam/nữ).*
+
+| Phương án | Chi phí | Máy | Mức cải thiện |
+|---|---|---|---|
+| **A. Nhãn cảm xúc + prosody edge-tts** — Claude gắn nhãn cảm xúc từng câu khi dịch (bình thường/gấp/giận/buồn/thì thầm) vào schema S4; S5 map nhãn → rate/pitch/volume của edge-tts | Free | Cả 2 | Trung bình (nhịp điệu sống hơn, timbre vẫn là máy) |
+| **B. Nhãn cảm xúc → chọn mẫu giọng viXTTS** — cùng nhãn ở A nhưng map ra file mẫu trong `voices/` (giận→nhanh/mạnh, buồn→chậm...); viXTTS bắt chước cả ngữ điệu clip mẫu. Nâng cao: tự thu 30s giọng mình làm mẫu → giọng độc quyền | Free | Desktop (GPU) | Lớn nhất nhóm free |
+| **C. ElevenLabs** (eleven_multilingual, có tiếng Việt) | ~$22/th ≈ 7–8 tập | Cả 2 | Cao nhất, giống người thật |
+| **D. VBee / FPT.AI** — dịch vụ VN chuyên giọng đọc truyện/thuyết minh | ~vài trăm k VND/th | Cả 2 | Khá, đúng chất kênh truyện VN |
+
+**Khuyến nghị khi làm: A + B chung một mạch** — nhãn cảm xúc sinh ở S4 dùng chung,
+S5 tùy engine mà map (edge → prosody, viXTTS → mẫu giọng). Nhãn này cũng là bệ phóng
+nếu sau này cắm C/D. Lưu ý: Azure TTS (đã vọc ở `_azure_tts.html`) dùng đúng giọng
+HoaiMy/NamMinh như edge-tts, tiếng Việt KHÔNG có style cảm xúc → không đáng trả phí.
+
+## 12. Backlog ý tưởng tính năng (chưa làm, xếp theo giá trị)
+
+1. **Bot Telegram 2 chiều** (Phase 2 gốc) — gửi link từ điện thoại → tạo job, xem
+   tiến độ, nhận final.mp4/thông báo. `aiogram` đã nằm sẵn trong requirements.
+2. **Tự theo dõi kênh nguồn (auto-pilot)** — đăng ký danh sách kênh donghua;
+   APScheduler quét định kỳ, có tập mới → tự tạo job → (tùy chọn) tự upload
+   YouTube private/scheduled. Ghép với trending.py thành dây chuyền tự động 100%.
+3. **Đăng theo lịch** — YouTube `publishAt`: render xong xếp lịch công khai đều
+   đặn (vd 19h mỗi ngày 1 tập) thay vì đăng dồn.
+4. **Shorts tự động** — cắt 2–3 đoạn cao trào (dựa nhãn cảm xúc/âm lượng/mix_report)
+   thành video dọc ≤60s kèm caption lớn → kéo traffic về video dài.
+5. **Playlist series trên YouTube** — video cùng bộ tự vào đúng playlist, đặt tên
+   "Tập N"; ghim comment link tập trước/sau.
+6. **Bảng hiệu suất sau đăng** — YouTube Analytics API: views/CTR/retention từng
+   video ngay trong dashboard → biết bộ nào nên làm tiếp (nối với trending.py).
+7. **A/B thumbnail** — sinh 2–3 biến thể, dùng "Test & compare" chính thức của YouTube.
+8. **Nhận diện người nói từ audio gốc** (pyannote, Phase 4) — casting giọng theo
+   NHÂN VẬT chính xác thay vì Claude đoán từ text.
+9. **Upload Facebook Reels / TikTok** — code sẵn interface; chờ duyệt API (user nộp hồ sơ).
+10. **Brand kit xuất/nhập** — đóng gói preset (style sub + khung + logo + intro/outro
+    + nhạc) thành 1 file để đồng bộ giữa laptop/desktop.
