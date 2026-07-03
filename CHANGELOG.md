@@ -6,6 +6,29 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (3) — Desktop (F:\MyProject\vietsubvideo)
+
+### PLAN 11 MỨC 3 — Prosody transfer (`core/prosody_transfer.py`, PROSODY_TRANSFER=0 mặc định)
+
+- Ép DÁNG đường ngữ điệu câu GỐC lên giọng đọc bằng **Praat PSOLA**
+  (praat-parselmouth — CPU, chạy cả 2 máy, không cần model GPU): trích F0 câu
+  gốc (ưu tiên vocals.wav demucs) → dáng 24 điểm chuẩn hóa semitone → ép quanh
+  trung vị giọng đọc (w=0.7, kẹp ±7 semitone), NEO vào khoảng có tiếng của TTS.
+  PSOLA giữ nguyên độ dài → không ảnh hưởng atempo S7. Áp cho cả edge lẫn viXTTS,
+  chạy ngay sau synth trong S5; cờ :pt1 vào .sig → bật/tắt là tự xử lý lại.
+- **Đo thật**: tương quan dáng F0 với nguồn +0.38 → **+0.66** (nguồn = giọng
+  người thật truyền cảm, TTS = edge trung tính). Bug đầu tiên tự bắt được khi
+  đo: trải dáng lên cả file (dạt vào khoảng lặng đầu/cuối) → sửa neo theo
+  khoảng có tiếng.
+- Vì sao KHÔNG dùng OpenVoice/RVC như phác thảo: RVC giữ âm vị nguồn (ra tiếng
+  Trung giọng mới), OpenVoice chuyển timbre (viXTTS đã làm) — cái cần là ngữ
+  điệu → PSOLA đúng công cụ. Mặc định TẮT (thử nghiệm) — bật trong tab Cấu hình
+  rồi nghe thử job thật để thẩm định chất lượng.
+
+### Máy khác pull về: `pip install praat-parselmouth` + `.env` thêm `PROSODY_TRANSFER=0`.
+
+---
+
 ## 2026-07-04 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### PLAN 11 MỨC 2 — Nhãn cảm xúc A+B chung một mạch (`core/emotion.py`, EMOTION=1)

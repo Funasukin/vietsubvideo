@@ -94,6 +94,9 @@ PROSODY = os.getenv("PROSODY", "1").strip()
 # Nhãn cảm xúc từng câu (PLAN 11 mức 2 — core/emotion.py): Claude gắn khi dịch →
 # edge chỉnh rate/pitch/volume thêm, viXTTS chọn clip mẫu hợp cảm xúc. "0" = tắt.
 EMOTION = os.getenv("EMOTION", "1").strip()
+# PLAN 11 mức 3 (core/prosody_transfer.py): ép DÁNG đường ngữ điệu câu gốc lên giọng
+# đọc bằng Praat PSOLA. Thử nghiệm — mặc định tắt; cần praat-parselmouth.
+PROSODY_TRANSFER = os.getenv("PROSODY_TRANSFER", "0").strip()
 
 # Khung viền quanh video (S8) — xem core/frames.py. frame: none|solid|double|png:<file>
 FRAMES_DIR = BASE_DIR / "frames"   # thả file .png khung (nền giữa trong suốt) vào đây

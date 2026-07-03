@@ -11,7 +11,7 @@ import json
 import edge_tts
 
 import config
-from core import emotion, langs, prosody
+from core import emotion, langs, prosody, prosody_transfer
 from core.job import Job
 
 RETRIES = 4  # edge-tts hay lỗi NoAudioReceived tạm thời khi gọi song song
@@ -34,16 +34,17 @@ def _voice_sig(seg: dict) -> str:
     ĐỔI NGÔN NGỮ ĐÍCH, hay mp3 cũ từ trước khi có tính năng) thì đọc lại."""
     # đích ≠ vi: mọi câu (kể cả cast voice_ref) đọc edge theo ngôn ngữ — viXTTS là
     # finetune tiếng Việt, clone sang ngôn ngữ khác méo giọng. Sig đổi → tự đọc lại.
+    pt = prosody_transfer.sig_tag()   # mức 3 bật/tắt → mọi câu tự xử lý lại
     if langs.is_vi():
         if seg.get("voice_ref"):
-            return "vix:ref:" + seg["voice_ref"]      # cast clip → luôn viXTTS
+            return "vix:ref:" + seg["voice_ref"] + pt   # cast clip → luôn viXTTS
         nu = seg.get("voice") == "nu"
         if config.TTS_ENGINE == "vixtts":
             # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
             return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
-                    + emotion.sig_tag(seg))
+                    + emotion.sig_tag(seg) + pt)
     # kèm tông giọng (prosody) + nhãn cảm xúc — đổi là câu bị ảnh hưởng tự đọc lại
-    return "edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg)
+    return "edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg) + pt
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -83,10 +84,11 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
                 await asyncio.sleep(2 ** attempt)  # 2s, 4s, 8s
                 continue
             if out.exists() and out.stat().st_size > 0:
+                prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
                 # ghi giọng THỰC tế đã đọc (kèm tông giọng + cảm xúc) — giữ "edge:" tường
                 # minh vì nhánh fallback vixtts→edge cần sig LỆCH _voice_sig để thử lại
                 _write_sig(job, seg, "edge:" + voice + prosody.sig_tag(seg)
-                           + emotion.sig_tag(seg))
+                           + emotion.sig_tag(seg) + prosody_transfer.sig_tag())
                 return
             if attempt == RETRIES:
                 raise RuntimeError(
@@ -147,6 +149,7 @@ def _tts_vixtts(job: Job, segments: list[dict]) -> None:
         out = _seg_path(job, seg["id"])
         out.unlink(missing_ok=True)   # xoá mp3 giọng cũ (nếu có) trước khi đọc lại
         vixtts.synth(seg["text_vi"], _vixtts_ref(seg), str(out))
+        prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
         _write_sig(job, seg, _voice_sig(seg))
 
 

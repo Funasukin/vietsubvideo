@@ -240,8 +240,15 @@ field "emotion" schema S4) → edge-tts CỘNG offset rate/pitch/volume vào pro
 (kẹp trần ±25%/±30Hz/±25%); viXTTS chọn clip mẫu voices/ hợp cảm xúc (giận→nhanh,
 buồn→chậm; casting nhân vật vẫn thắng, không đè voice_ref). Nhãn vào chữ ký .sig →
 đổi nhãn/bật tắt là câu bị ảnh hưởng tự đọc lại; nghe thử editor cùng sắc thái.
-Còn để dành: mức 3 prosody transfer (OpenVoice/RVC, GPU) + cắm C/D (ElevenLabs/VBee)
-— nhãn cảm xúc sẵn có làm bệ phóng.
+**Cập nhật 2026-07-04 — MỨC 3 ĐÃ LÀM: PROSODY TRANSFER** (`core/prosody_transfer.py`,
+bật/tắt PROSODY_TRANSFER — mặc định TẮT, thử nghiệm): ép DÁNG đường ngữ điệu câu gốc
+lên giọng đọc bằng Praat PSOLA (praat-parselmouth, CPU cả 2 máy): trích F0 gốc (ưu
+tiên vocals.wav) → dáng 24 điểm chuẩn hóa semitone → ép quanh trung vị giọng đọc,
+w=0.7, kẹp ±7 semitone, neo vào khoảng có tiếng; giữ nguyên độ dài (không phá atempo
+S7). Đo thật: dáng khớp nguồn +0.38→+0.66. GHI CHÚ vì sao KHÔNG dùng OpenVoice/RVC
+như phác thảo cũ: RVC giữ nguyên âm vị nguồn (ra tiếng Trung giọng mới — sai bài),
+OpenVoice chuyển timbre (viXTTS clone đã làm); cái cần chuyển là ngữ điệu → PSOLA.
+Còn để dành: cắm C/D (ElevenLabs/VBee) — nhãn cảm xúc sẵn có làm bệ phóng.
 
 ## 12. Backlog ý tưởng tính năng (chưa làm, xếp theo giá trị)
 
