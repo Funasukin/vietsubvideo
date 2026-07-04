@@ -99,7 +99,9 @@ def vixtts_sample(seg: dict) -> str | None:
     e = label(seg)
     if not e:
         return None
-    g = "nu" if seg.get("voice") == "nu" else "nam"
+    # Chế độ 1 giọng (config.TTS_SINGLE_VOICE): mọi câu lấy clip mẫu NAM để không lòi
+    # giọng nữ ra — khớp với s5_tts._seg_nu.
+    g = "nu" if (seg.get("voice") == "nu" and not config.TTS_SINGLE_VOICE) else "nam"
     for cand in _VIX.get(e, {}).get(g, []):
         for f in _sample_files(g):
             if cand in f:

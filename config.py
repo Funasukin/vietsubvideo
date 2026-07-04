@@ -110,6 +110,10 @@ FPT_VOICE_NAM = os.getenv("FPT_VOICE_NAM", "leminh")
 FPT_VOICE_NU = os.getenv("FPT_VOICE_NU", "banmai")
 TTS_VOICE = os.getenv("TTS_VOICE", "vi-VN-NamMinhNeural")      # nam + mặc định
 TTS_VOICE_NU = os.getenv("TTS_VOICE_NU", "vi-VN-HoaiMyNeural")  # nữ
+# 1 = cả video đọc bằng MỘT giọng (giọng "nam"/chính), bỏ phân biệt nam/nữ theo câu.
+# 0 = 2 giọng: câu nhãn nam đọc giọng nam, nữ đọc giọng nữ. Casting nhân vật (voice_ref,
+# Series) vẫn thắng ở cả hai chế độ. Áp cho MỌI engine (edge/viXTTS/ElevenLabs/VBee/FPT).
+TTS_SINGLE_VOICE = os.getenv("TTS_SINGLE_VOICE", "1").strip().lower() in ("1", "true")
 # Hậu kỳ giọng khi render (S8): off | canbang | amday | rosang | dienanh | toithieu — xem core/voice_fx.py
 VOICE_FX = os.getenv("VOICE_FX", "off").strip().lower()
 # Tông giọng theo audio gốc (PLAN mục 11, mức 1 — core/prosody.py): đo cao độ/tốc độ/

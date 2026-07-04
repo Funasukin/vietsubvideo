@@ -6,6 +6,36 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (10) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đại tu UX trang Cấu hình (6 yêu cầu) + chế độ 1 giọng + tab Nghe thử
+
+1. **Bớt rối mắt**: mọi đoạn mô tả dài (luôn hiện) → thu vào icon **ⓘ** cạnh nhãn,
+   hover/focus mới bung tooltip. `row()/textrow()` sinh `hint(help)` thay cho `.fhelp`;
+   các dòng key (Gemini/HF/ElevenLabs/VBee/FPT/Telegram) cũng chuyển sang ⓘ.
+2. **Ẩn Model Claude khi nhà cung cấp = Gemini** (bọc `#claude-cfg`, `applyProviderUI`
+   toggle) — Claude vẫn là fallback ngầm, chỉ giấu dòng chọn cho đỡ nhầm.
+3. **Thêm model Gemini**: bổ sung `gemini-2.0-flash`, `gemini-2.0-flash-lite`
+   (quota free rộng hơn 2.5) — giờ 5 lựa chọn.
+4. (Giải đáp) **Kiểu nội dung ≠ Phong cách dịch riêng**: CONTENT_STYLE là preset
+   khung dịch (donghua Hán-Việt / chung hiện đại); TRANSLATE_STYLE_EXTRA là chữ tự do
+   cộng THÊM lên trên. Đã ghi rõ trong tooltip.
+5. **Chế độ 1 giọng** (`TTS_SINGLE_VOICE`, mặc định **1** theo ý user): bỏ phân biệt
+   nam/nữ, cả video đọc một giọng; dropdown "Số giọng đọc" (1|2). Chọn 1 → ẩn mọi ô
+   "giọng nữ", nhãn ô chính "…nam" → "…". Áp cho MỌI engine qua `s5_tts._seg_nu()`
+   (1 choke point → sig cache tự đọc lại đúng); `emotion.vixtts_sample` cũng ép clip
+   NAM khi 1 giọng. **Casting nhân vật (voice_ref/Series) vẫn thắng** ở cả 2 chế độ.
+6. **Tách "🔊 Nghe thử"** thành tab riêng (cạnh Series): danh sách clip `voices/` +
+   nghe/mở thư mục/tải lại chuyển khỏi trang Cấu hình sang `loadPreviewTab()`.
+
+Verify sống trong Claude_Preview: 5 model Gemini, 58 tooltip ẩn mặc định, Claude row
+ẩn khi Gemini, 5 ô "giọng nữ" ẩn khi 1 giọng + nhãn đổi đúng, tab Nghe thử 12 clip,
+không tràn ngang, không lỗi console; `_seg_nu` đúng cả 2 chiều.
+
+### Máy khác pull về: `.env` thêm `TTS_SINGLE_VOICE=1` (xem .env.example) — mặc định 1 giọng.
+
+---
+
 ## 2026-07-04 (9) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix: video CÂM (không có track tiếng) báo lỗi rõ ràng thay vì dump ffmpeg

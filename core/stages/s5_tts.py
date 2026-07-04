@@ -23,11 +23,18 @@ def _seg_path(job: Job, seg_id: int):
     return job.dir / "tts" / f"seg_{seg_id:04d}.mp3"
 
 
+def _seg_nu(seg: dict) -> bool:
+    """Câu này đọc giọng NỮ? Chế độ 1 giọng (config.TTS_SINGLE_VOICE) bỏ phân biệt
+    nam/nữ → luôn False: mọi câu KHÔNG cast dùng giọng chính. Câu đã cast (voice_ref)
+    vẫn giữ giọng riêng vì được xử lý trước, không đi qua nhánh nam/nữ này."""
+    return seg.get("voice") == "nu" and not config.TTS_SINGLE_VOICE
+
+
 def _edge_voice(seg: dict) -> str:
     """Giọng edge-tts cho 1 câu theo NGÔN NGỮ ĐÍCH (#16): vi giữ TTS_VOICE/_NU trong
     Cấu hình, ngôn ngữ khác dùng cặp giọng của core/langs.py."""
     nam, nu = langs.edge_voices()
-    return nu if seg.get("voice") == "nu" else nam
+    return nu if _seg_nu(seg) else nam
 
 
 def _voice_sig(seg: dict) -> str:
@@ -40,7 +47,7 @@ def _voice_sig(seg: dict) -> str:
     eng = config.TTS_ENGINE
     if langs.is_vi() and seg.get("voice_ref"):
         return "vix:ref:" + seg["voice_ref"] + pt       # cast clip → luôn viXTTS
-    nu = seg.get("voice") == "nu"
+    nu = _seg_nu(seg)
     # engine trả phí (PLAN 11 C/D): VBee/FPT chỉ tiếng Việt — đích khác rơi về edge
     if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
         nam_v, nu_v = paid_tts.voice_pair(eng)
@@ -130,7 +137,7 @@ def _vixtts_ref(seg: dict) -> str:
         ref = _inside(es)
         if ref:
             return ref
-    name = config.VIXTTS_VOICE_NU if seg.get("voice") == "nu" else config.VIXTTS_VOICE_NAM
+    name = config.VIXTTS_VOICE_NU if _seg_nu(seg) else config.VIXTTS_VOICE_NAM
     ref = _inside(name)
     if ref:
         return ref
@@ -175,7 +182,7 @@ def _tts_paid(job: Job, segments: list[dict]) -> None:
     for seg in todo:
         out = _seg_path(job, seg["id"])
         out.unlink(missing_ok=True)
-        voice = nu_v if seg.get("voice") == "nu" else nam_v
+        voice = nu_v if _seg_nu(seg) else nam_v
         for attempt in range(1, 4):
             try:
                 paid_tts.synth(eng, seg["text_vi"], voice, out)
