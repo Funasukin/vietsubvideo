@@ -37,7 +37,9 @@ import config
 from core.job import Job, Stage
 
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
-SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
+SAFE_ENV_KEYS = ["CLAUDE_MODEL", "TRANSLATE_PROVIDER", "GEMINI_MODEL",
+                 "GEMINI_MIN_INTERVAL", "TRANSLATE_STYLE_EXTRA",
+                 "CONTENT_STYLE", "TARGET_LANG", "MAX_SPEEDUP",
                  "TTS_ENGINE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "VOICE_FX", "EMOTION",
                  "PROSODY_TRANSFER",
@@ -55,7 +57,7 @@ SAFE_ENV_KEYS = ["CLAUDE_MODEL", "CONTENT_STYLE", "TARGET_LANG",
 # Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
 # giống ANTHROPIC_API_KEY. Bot token điều khiển bot của người dùng → coi như credential.
 # HF_TOKEN là token tài khoản HuggingFace (diarization #8) → cũng là credential.
-SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN",
+SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
                    "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"}
 ENV_PATH = config.BASE_DIR / ".env"
 
@@ -1426,7 +1428,7 @@ def glossary_suggest(job_id: str) -> dict:
     aux = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY,
                               timeout=60.0, max_retries=1)
     donghua_vi = config.CONTENT_STYLE == "donghua" and langs.is_vi()
-    pairs = glossary.auto_extract(aux, config.CLAUDE_MODEL, segments,
+    pairs = glossary.auto_extract(aux, segments,
                                   generic=not donghua_vi, lang_name=langs.name())
     out = [{"zh": z, "vi": v} for z, v in pairs]
     if out:
@@ -1724,6 +1726,7 @@ def get_config() -> dict:
         # khóa bí mật: chỉ báo đã đặt hay chưa, KHÔNG trả giá trị
         "telegram_token_set": bool(env.get("TELEGRAM_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN),
         "hf_token_set": bool(env.get("HF_TOKEN") or config.HF_TOKEN),
+        "gemini_key_set": bool(env.get("GEMINI_API_KEY") or config.GEMINI_API_KEY),
         "elevenlabs_key_set": bool(env.get("ELEVENLABS_API_KEY") or config.ELEVENLABS_API_KEY),
         "vbee_token_set": bool(env.get("VBEE_TOKEN") or config.VBEE_TOKEN),
         "fpt_key_set": bool(env.get("FPT_TTS_API_KEY") or config.FPT_TTS_API_KEY),
@@ -1734,7 +1737,9 @@ def get_config() -> dict:
     }
 
 
-_EMPTY_OK = {"VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU"}  # rỗng = "dùng giọng mặc định"
+# rỗng = giá trị hợp lệ (cho phép XÓA), không phải "bỏ qua giữ giá trị cũ"
+_EMPTY_OK = {"VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "TRANSLATE_STYLE_EXTRA",
+             "SUBSCRIBE_TEXT", "TELEGRAM_CHAT_ID", "YOUTUBE_CLIENT_SECRETS"}
 
 
 @app.post("/api/config")

@@ -151,14 +151,10 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
                  + extra_note + "\n"
                  + json.dumps(payload, ensure_ascii=False))
 
-    resp = client.messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=8000,
-        system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": "\n".join(parts)}],
-        output_config={"format": {"type": "json_schema", "schema": schema}},
-    )
-    text = next((b.text for b in resp.content if b.type == "text"), "")
+    from core import llm
+    # 16000: Gemini giải mã theo responseSchema tốn token hơn Claude → tránh cắt JSON
+    # giữa chừng với batch dày (chỉ tính phí token thực sinh nên vô hại cho Claude)
+    text = llm.structured_json(system, "\n".join(parts), schema, max_tokens=16000, client=client)
     try:
         segs = json.loads(text)["segments"]
     except (json.JSONDecodeError, KeyError, TypeError):
@@ -249,28 +245,34 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
     allow_cjk=True khi ngôn ngữ ĐÍCH là zh/ja — chữ Hán trong bản sửa là hợp lệ."""
     payload = [{"id": s["id"], "zh": s["text"], "vi": s["text_vi"],
                 "voice": s.get("voice", "nam")} for s in segments]
-    resp = client.messages.create(
-        model=config.CLAUDE_MODEL,
-        max_tokens=8000,
-        system=[{"type": "text", "text": system,
-                 "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content":
-                   "Soát bản dịch sau:\n" + json.dumps(payload, ensure_ascii=False)}],
-        output_config={"format": {"type": "json_schema", "schema": REVIEW_SCHEMA}},
-    )
-    text = next(b.text for b in resp.content if b.type == "text")
-    result = json.loads(text)
+    from core import llm
+    text = llm.structured_json(
+        system, "Soát bản dịch sau:\n" + json.dumps(payload, ensure_ascii=False),
+        REVIEW_SCHEMA, max_tokens=16000, client=client)
+    try:
+        result = json.loads(text)
+        fixes = result.get("fixes") or []
+        voice_fixes = result.get("voice_fixes") or []
+    except (json.JSONDecodeError, TypeError, AttributeError):
+        # review là bước TINH CHỈNH không bắt buộc — output hỏng/cắt (hay gặp hơn với
+        # Gemini) thì bỏ qua, KHÔNG để chết job đã dịch xong
+        print("  ! Review: output không đọc được, bỏ qua vòng soát")
+        return []
 
     by_id = {s["id"]: s for s in segments}
     changed = []
-    for fix in result["fixes"]:
+    for fix in fixes:
+        if not isinstance(fix, dict) or "id" not in fix or "text_vi" not in fix:
+            continue
         seg = by_id.get(fix["id"])
         # không nhận bản sửa lại đưa ký tự Trung vào (trừ khi đích là zh/ja)
         if seg and fix["text_vi"].strip() and (allow_cjk or not _CJK_RE.search(fix["text_vi"])):
             if seg["text_vi"] != fix["text_vi"]:
                 seg["text_vi"] = fix["text_vi"]
                 changed.append(fix["id"])
-    for vf in result["voice_fixes"]:
+    for vf in voice_fixes:
+        if not isinstance(vf, dict) or vf.get("voice") not in ("nam", "nu"):
+            continue
         seg = by_id.get(vf["id"])
         if seg and seg.get("voice") != vf["voice"]:
             seg["voice"] = vf["voice"]
@@ -328,7 +330,7 @@ def run(job: Job) -> None:
         aux = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY,
                                   timeout=60.0, max_retries=1)
         # prompt donghua (Hán-Việt) chỉ khi nội dung donghua + đích tiếng Việt
-        auto = glossary.auto_extract(aux, config.CLAUDE_MODEL, segments,
+        auto = glossary.auto_extract(aux, segments,
                                      generic=not (donghua and vi_target),
                                      lang_name=lang_name)
         # #15 lưu gợi ý để UI hiện cho người dùng duyệt (không tốn call lại)
@@ -359,6 +361,15 @@ def run(job: Job) -> None:
         print(f"  Casting: {len(cast_names)} nhân vật đã cast giọng — gán câu theo tên")
     if emo_on:   # PLAN 11 mức 2: nhãn cảm xúc → S5 chỉnh giọng/chọn mẫu
         sys_translate += _EMOTION_HINT
+    # "Gem" phong cách tùy biến (chèn vào cả dịch lẫn review) + log nhà cung cấp
+    extra = (config.TRANSLATE_STYLE_EXTRA or "").strip()
+    if extra:
+        note = f"\n\nPHONG CÁCH RIÊNG (bắt buộc theo): {extra}"
+        sys_translate += note
+        sys_review += note
+    from core import llm
+    print(f"  Nhà cung cấp dịch: {'Gemini' if llm.use_gemini() else 'Claude'}"
+          + (f" · phong cách: {extra[:40]}" if extra else ""))
     if gloss:
         print(f"  Glossary: {len(gloss)} tên riêng (tự trích {len(auto)} "
               f"+ thủ công + series {len(series_pairs)})")

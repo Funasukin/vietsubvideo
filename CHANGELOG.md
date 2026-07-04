@@ -6,6 +6,36 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (8) — Desktop (F:\MyProject\vietsubvideo)
+
+### Học 2 ý hay từ combo tool "Gemini Auto Translator Pro + Auto CapCut" (bỏ #1 CapCut export theo ý user; KHÔNG copy phần lách bản quyền)
+
+**#2 — Gemini làm engine dịch bên cạnh Claude** (`core/llm.py` mới):
+- `structured_json(system,user,schema)` điều phối Claude/Gemini, GIỮ NGUYÊN schema
+  → nhãn giọng/cảm xúc/nhân vật y hệt. Gemini gọi bằng urllib (không thêm lib),
+  tự chuyển JSON-Schema → responseSchema (type HOA, strip additionalProperties,
+  propertyOrdering, giữ description/min/max).
+- **Tự fallback về Claude** khi Gemini lỗi/hết quota/timeout → job không chết vì
+  rate limit. Test thật: key giả → HTTP 400 (format request ĐÚNG) → fallback Claude ok.
+- "Gem" phong cách tùy biến `TRANSLATE_STYLE_EXTRA` chèn vào prompt dịch+soát.
+- UI: dropdown Nhà cung cấp (khối Gemini ẩn/hiện), key che như bot token, chọn
+  model + giãn nhịp free tier (~10 req/phút). Config: TRANSLATE_PROVIDER,
+  GEMINI_API_KEY (secret), GEMINI_MODEL, GEMINI_MIN_INTERVAL.
+- **Cần key Gemini THẬT của user để test call thành công** (mình chỉ verify được
+  tới bước 400 "thiếu key").
+
+**#3 — Phơi rõ "Đồng bộ khớp thoại"**: `MAX_SPEEDUP` từ hằng số cứng → tùy chọn
+Cấu hình (1.0×–2.0×, atempo giữ cao độ; 1.0× = không tăng tốc, chấp nhận tràn).
+
+**Review đối kháng (6 agent) → sửa:** review_pass chịu được JSON hỏng/cắt của Gemini
+(bỏ qua thay vì chết job); max_tokens 8000→16000 (Gemini decode tốn token hơn);
+TRANSLATE_STYLE_EXTRA + vài text field XÓA được (thêm _EMPTY_OK); lock init
+anthropic client; giữ description trong schema; bỏ tham số model chết ở auto_extract.
+
+### Máy khác pull về: `.env` thêm TRANSLATE_PROVIDER=claude + GEMINI_* (xem .env.example).
+
+---
+
 ## 2026-07-04 (7) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Trang Cấu hình làm lại: full width + helptext từng tùy chọn + rà default

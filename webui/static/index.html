@@ -448,6 +448,11 @@ const FONTS = ["Arial", "Tahoma", "Verdana", "Segoe UI", "Calibri", "Times New R
 let FONT_LIST = FONTS.map(n => ({ name: n, file: null }));  // nạp lại từ /api/fonts
 const CFG_FIELDS = [
   ["CLAUDE_MODEL", "Model dịch", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"]],
+  ["TRANSLATE_PROVIDER", "Nhà cung cấp dịch", ["claude", "gemini"]],
+  ["GEMINI_MODEL", "Model Gemini", ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"]],
+  ["GEMINI_MIN_INTERVAL", "Giãn nhịp Gemini (giây)", ["0", "6", "7", "10"]],
+  ["TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", []],
+  ["MAX_SPEEDUP", "Đồng bộ khớp thoại (tăng tốc tối đa)", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"]],
   ["CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"]],
   ["TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"]],
   ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"]],
@@ -670,6 +675,7 @@ async function loadConfig() {
   V.KEEP_BGM = (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
   V.DENOISE = (V.DENOISE === "1" || /^true$/i.test(V.DENOISE || "")) ? "1" : "0";
   V.SHORTS_LEN = String(parseInt(V.SHORTS_LEN || "45", 10) || 45);   // "45.0" → "45"
+  V.GEMINI_MIN_INTERVAL = String(parseInt(V.GEMINI_MIN_INTERVAL || "0", 10) || 0);   // "0.0" → "0"
   let v = { voices: [], nam: "", nu: "" };
   try { v = await (await fetch("/api/voices")).json(); } catch (e) {}
   VOICE_LIST = v.voices || [];
@@ -699,10 +705,28 @@ async function loadConfig() {
 
   // ---- Từng nhóm là 1 card (sec) — bố cục 2 cột, mỗi dòng có help mô tả chi tiết ----
 
-  const sDich = row("CLAUDE_MODEL", "Model dịch",
-      ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
+  const sDich = row("TRANSLATE_PROVIDER", "Nhà cung cấp dịch", ["claude", "gemini"],
+      {claude: "Claude (Anthropic) — mặc định, ổn định", gemini: "Gemini (Google) — free tier rẻ"},
+      'onchange="applyProviderUI()"',
+      "LLM dùng để dịch/soát/trích tên riêng. <b>Claude</b> ổn định, có bộ nhớ cache prompt. <b>Gemini</b> free tier gần như $0 nhưng giới hạn ~10 request/phút — <b>lỗi hoặc hết quota giữa chừng sẽ TỰ chuyển về Claude</b> nên job không chết. Giữ nhãn giọng/cảm xúc/nhân vật y như nhau (dùng structured output cả hai).")
+    + `<div id="gemini-cfg">`
+    + `<div class="frow"><label>API key Gemini</label>
+        <input id="cfg-GEMINI_API_KEY" type="password" autocomplete="off"
+          placeholder="${c.gemini_key_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'lấy free ở aistudio.google.com/apikey'}"
+          style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>
+        <div class="fhelp">Key miễn phí ở Google AI Studio. ${c.gemini_key_set ? "✓ Key đã lưu." : "Chưa có key — chọn Gemini mà thiếu key sẽ tự về Claude."}</div>`
+    + row("GEMINI_MODEL", "Model Gemini", ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro"],
+      {"gemini-2.5-flash": "2.5 Flash — cân bằng (khuyên dùng)", "gemini-2.5-flash-lite": "2.5 Flash-Lite — nhanh/rẻ nhất", "gemini-2.5-pro": "2.5 Pro — mượt nhất, quota chặt"},
+      "", "Flash cân bằng chất lượng/tốc độ; Flash-Lite rẻ nhất; Pro mượt nhất nhưng free tier siết chặt.")
+    + row("GEMINI_MIN_INTERVAL", "Giãn nhịp Gemini (giây)", ["0", "6", "7", "10"],
+      {"0": "0 — không giãn (gặp 429 thì tự về Claude)", "6": "6 giây", "7": "7 giây (an toàn free tier)", "10": "10 giây"},
+      "", "Chờ tối thiểu bấy nhiêu giây giữa 2 lần gọi Gemini để né trần ~10 req/phút của free tier. Trả phí thì để 0.")
+    + `</div>`
+    + row("CLAUDE_MODEL", "Model Claude", ["claude-haiku-4-5-20251001", "claude-sonnet-4-6"],
       {"claude-haiku-4-5-20251001": "Haiku 4.5 — rẻ, nhanh", "claude-sonnet-4-6": "Sonnet 4.6 — dịch mượt hơn"},
-      "", "Model Claude dịch thoại. <b>Haiku</b> rẻ (~$0.001/câu), đủ tốt cho thoại thường; <b>Sonnet</b> mượt và giữ văn phong tốt hơn với thoại dày/nhiều thuật ngữ, phí ~10 lần.")
+      "", "Model Claude khi nhà cung cấp = Claude (và khi Gemini fallback). <b>Haiku</b> rẻ (~$0.001/câu), đủ tốt; <b>Sonnet</b> mượt hơn với thoại dày/thuật ngữ, phí ~10 lần.")
+    + textrow("TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", "vd: giọng hài hước, dùng teencode",
+      "«Gem» tùy biến: mô tả tự do được chèn vào prompt dịch + soát (cộng thêm với Kiểu nội dung). Để trống = theo Kiểu nội dung bên dưới.")
     + row("CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"],
       {donghua: "Donghua/cổ trang Trung — Hán-Việt, xưng hô cổ", general: "Chung — mọi thể loại/ngôn ngữ, dịch tự nhiên"},
       "", "Văn phong bản dịch. <b>Donghua</b>: tên riêng ép Hán-Việt (叶凡→Diệp Phàm), xưng hô cổ trang (ngươi/ta/tại hạ). <b>Chung</b>: xưng hô hiện đại, giữ tên gốc — chọn khi làm vlog/tài liệu/phim không phải cổ trang Trung.")
@@ -778,6 +802,10 @@ async function loadConfig() {
     + row("PROSODY_TRANSFER", "Chuyển ngữ điệu gốc", ["0", "1"],
       {"0": "Tắt (mặc định — thử nghiệm)", "1": "Bật — ép dáng ngữ điệu gốc lên giọng đọc"},
       "", "Thử nghiệm: ép cả DÁNG đường lên-xuống giọng của câu gốc lên giọng đọc (Praat PSOLA) — câu gốc lên giọng cuối câu thì bản đọc cũng vậy. Bật rồi chạy thử 1 job để nghe thẩm định; đổi lại chỉ những câu bị ảnh hưởng phải đọc lại.")
+    + row("MAX_SPEEDUP", "Đồng bộ khớp thoại", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"],
+      {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
+       "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
+      "", "Câu tiếng Việt đọc DÀI hơn khoảng trống của câu gốc → tự tăng tốc cho khớp timeline (atempo GIỮ NGUYÊN cao độ, không méo giọng). Đây là mức tăng tốc tối đa cho phép: cao thì khớp timing sát hơn nhưng giọng dồn nhanh; 1.0× = không đụng, câu dài sẽ tràn sang câu sau (ghi vào QC).")
     + `<div id="edge-voices">`
     + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
       "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu).")
@@ -899,7 +927,15 @@ async function loadConfig() {
       : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</span></div>`;
   document.getElementById("cfgform").innerHTML = html;
   applyEngineUI();
+  applyProviderUI();
   cfgDirty = false;   // vừa nạp từ .env = sạch, chưa có thay đổi
+}
+
+// Khối cấu hình Gemini chỉ hiện khi nhà cung cấp dịch = gemini
+function applyProviderUI() {
+  const sel = document.getElementById("cfg-TRANSLATE_PROVIDER");
+  const box = document.getElementById("gemini-cfg");
+  if (box) box.style.display = (sel && sel.value === "gemini") ? "" : "none";
 }
 
 // Nút "↻ Tải lại" nạp lại form từ .env → sẽ mất thay đổi chưa lưu; hỏi trước.
@@ -942,7 +978,7 @@ async function saveConfig() {
     if (el) body[key] = el.value;
   }
   // token bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
-  for (const key of ["TELEGRAM_BOT_TOKEN", "HF_TOKEN",
+  for (const key of ["TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
                      "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"]) {
     const el = document.getElementById("cfg-" + key);
     if (el && el.value.trim()) body[key] = el.value.trim();

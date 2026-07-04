@@ -105,7 +105,7 @@ _AUTO_SCHEMA = {
 }
 
 
-def auto_extract(client: anthropic.Anthropic, model: str,
+def auto_extract(client: anthropic.Anthropic,
                  segments: list[dict], generic: bool = False,
                  lang_name: str = "tiếng Việt") -> list[tuple[str, str]]:
     """Claude đọc transcript → trích tên riêng + bản dịch. Lỗi thì trả [].
@@ -117,15 +117,10 @@ def auto_extract(client: anthropic.Anthropic, model: str,
     system = (_AUTO_SYSTEM_GENERIC.replace("{LANG}", lang_name) if generic
               else _AUTO_SYSTEM)
     try:
-        resp = client.messages.create(
-            model=model,
-            max_tokens=2000,
-            system=[{"type": "text", "text": system}],
-            messages=[{"role": "user", "content":
-                       "Trích danh từ riêng từ transcript sau:\n" + text}],
-            output_config={"format": {"type": "json_schema", "schema": _AUTO_SCHEMA}},
-        )
-        out = next(b.text for b in resp.content if b.type == "text")
+        from core import llm
+        out = llm.structured_json(
+            system, "Trích danh từ riêng từ transcript sau:\n" + text,
+            _AUTO_SCHEMA, max_tokens=2000, client=client)
         terms = json.loads(out)["terms"]
     except Exception as e:
         print(f"  ! auto_extract glossary lỗi (bỏ qua): {e}")

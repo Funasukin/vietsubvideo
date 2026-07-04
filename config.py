@@ -30,6 +30,15 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 
 # Dịch (S4)
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5-20251001")
+# Nhà cung cấp LLM dịch: claude (mặc định) | gemini (Google, free tier rẻ). Gemini lỗi/
+# hết quota giữa chừng thì TỰ fallback về Claude để job không chết. Xem core/llm.py.
+TRANSLATE_PROVIDER = os.getenv("TRANSLATE_PROVIDER", "claude").strip().lower()
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()   # aistudio.google.com/apikey
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+# Free tier ~10 req/phút → chờ tối thiểu bấy nhiêu GIÂY giữa 2 call Gemini (0 = tắt).
+GEMINI_MIN_INTERVAL = float(os.getenv("GEMINI_MIN_INTERVAL", "0"))
+# "Gem" phong cách tùy biến: chèn thêm vào prompt dịch (vd "giọng hài hước, teencode").
+TRANSLATE_STYLE_EXTRA = os.getenv("TRANSLATE_STYLE_EXTRA", "")
 TRANSLATE_BATCH_SIZE = 25   # số segment mỗi lần gọi API
 TRANSLATE_BATCH_OVERLAP = 3  # segment cuối batch trước gửi kèm làm context
 # Kiểu nội dung → chọn văn phong dịch: donghua (Trung cổ trang: Hán-Việt, xưng hô cổ)
@@ -185,8 +194,10 @@ DUCK_GAIN_DB = -14.0
 # Cần GPU + ffmpeg-shared; chậm thêm (~tách bằng ~1/4 thời lượng). Mặc định tắt.
 KEEP_BGM = os.getenv("KEEP_BGM", "0").lower() not in ("0", "false", "")
 
-# Mix (S7): tăng tốc tối đa khi audio dịch dài hơn slot gốc
-MAX_SPEEDUP = 1.4
+# Đồng bộ khớp thoại (S7): câu đọc dài hơn khoảng trống gốc → tăng tốc atempo cho
+# khớp timeline (atempo GIỮ NGUYÊN cao độ). Đây là mức tăng tốc TỐI ĐA cho phép:
+# cao = khớp timing sát hơn nhưng giọng dồn nhanh; 1.0 = KHÔNG tăng tốc (chấp nhận tràn).
+MAX_SPEEDUP = float(os.getenv("MAX_SPEEDUP", "1.4"))
 
 # Nhịp phụ đề (S8): 1 = câu gộp (cho giọng đọc) được TÁCH hiển thị lại theo đúng
 # mốc thời gian từng dòng sub gốc — nhịp như bản gốc | 0 = hiện cả câu gộp.
