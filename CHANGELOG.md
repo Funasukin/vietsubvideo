@@ -6,6 +6,18 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (9) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix: video CÂM (không có track tiếng) báo lỗi rõ ràng thay vì dump ffmpeg
+
+User upload file Douyin tải bằng extension web → chỉ có track HÌNH (web Douyin phát
+hình/tiếng tách rời) → S2 chết "Output file does not contain any stream" khó hiểu.
+`s2_extract` giờ chặn sớm bằng `brand._has_audio()`: báo tiếng Việt rõ nguyên nhân
++ cách sửa (dán LINK để app tự tải đủ, hoặc tải lại bằng tool gộp audio). Verify
+end-to-end trên đúng job lỗi; video có tiếng không bị chặn nhầm.
+
+---
+
 ## 2026-07-04 (8) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Học 2 ý hay từ combo tool "Gemini Auto Translator Pro + Auto CapCut" (bỏ #1 CapCut export theo ý user; KHÔNG copy phần lách bản quyền)

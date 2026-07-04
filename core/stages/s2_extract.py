@@ -17,13 +17,23 @@ def run(job: Job) -> None:
     if source is None:
         raise RuntimeError("Không thấy video nguồn (S1 chưa chạy?)")
 
+    # Chặn sớm video CÂM (chỉ có track hình): hay gặp khi tải bằng extension bắt
+    # video từ web Douyin/Bilibili — web phát hình và tiếng TÁCH RỜI nên tool chỉ
+    # vớ được hình. Không có audio thì không transcribe/lồng tiếng được; báo rõ
+    # thay vì để ffmpeg chết với "Output file does not contain any stream".
+    if not brand._has_audio(source):
+        raise RuntimeError(
+            "Video KHÔNG có luồng âm thanh (file chỉ có hình — thường do tool tải "
+            "từ web chỉ bắt được track hình, thiếu track tiếng). Cách sửa: dán LINK "
+            "video vào ô Thêm video để app tự tải đủ hình+tiếng, hoặc tải lại file "
+            "bằng yt-dlp/tool có gộp sẵn audio rồi upload lại.")
+
     asr_wav = job.dir / "audio_16k.wav"
     full_wav = job.dir / "audio_full.wav"
 
     if not asr_wav.exists():
         args = ["-i", str(source), "-vn", "-ac", "1", "-ar", "16000"]
-        # chỉ khử ồn khi nguồn CÓ audio (afftdn nổ nếu không có luồng audio)
-        if config.DENOISE and brand._has_audio(source):
+        if config.DENOISE:  # nguồn chắc chắn có audio (đã chặn video câm ở trên)
             args += ["-af", _DENOISE_AF]
         ffmpeg.run(*args, str(asr_wav))
     if not full_wav.exists():
