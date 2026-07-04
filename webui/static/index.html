@@ -497,6 +497,7 @@ const CFG_FIELDS = [
   ["SUB_SPLIT", "Nhịp phụ đề", ["1", "0"]],
   ["OCR_WORKERS", "Số worker OCR", ["2", "4", "6", "8"]],
   ["OCR_FPS", "Tốc độ OCR", ["1.0", "1.5", "2.0"]],
+  ["OCR_CROP_TOP", "Vùng quét phụ đề", ["auto", "0.50", "0.60", "0.70", "0.80"]],
   ["AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"]],
   ["DIARIZE", "Nhận diện người nói", ["0", "1"]],
   ["DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"]],
@@ -777,6 +778,10 @@ async function loadConfig() {
     + row("OCR_FPS", "Tốc độ OCR (frame/giây)", ["1.0", "1.5", "2.0"],
       {"1.0": "1 fps — nhanh gấp đôi", "1.5": "1.5 fps", "2.0": "2 fps — kỹ nhất"},
       "", "Số khung hình quét chữ mỗi giây. 2 fps bắt được cả sub hiện cực ngắn; 1 fps nhanh gấp đôi và vẫn đủ cho sub ≥2 giây (đa số phim). Video dài OCR chậm → giảm xuống 1.")
+    + row("OCR_CROP_TOP", "Vùng quét phụ đề", ["auto", "0.50", "0.60", "0.70", "0.80"],
+      {auto: "auto — tự đo dải phụ đề (khuyên dùng)", "0.50": "Từ 50% xuống đáy (nửa dưới)",
+       "0.60": "Từ 60% xuống đáy", "0.70": "Từ 70% xuống đáy", "0.80": "Từ 80% xuống đáy (chỉ đáy)"},
+      "", "OCR chỉ quét dải này (theo chiều cao) để tìm phụ đề. <b>auto</b> tự đo vị trí sub cho từng video — QUAN TRỌNG với video DỌC (Douyin/Shorts) vì sub thường ở ~65% chứ không sát đáy, số cứng sẽ CẮT MẤT sub. Đặt số nhỏ = quét cao hơn (bắt sub ở giữa) nhưng chậm hơn; số lớn = chỉ quét đáy, nhanh, hợp phim ngang 16:9.")
     + row("AUTO_RETRY", "Tự chạy lại khi lỗi", ["0", "1", "2", "3"],
       {"0": "Tắt — lỗi thì dừng", "1": "1 lần (khuyên dùng)", "2": "2 lần", "3": "3 lần"},
       "", "Job lỗi tự xếp lại cuối hàng chạy tiếp từ checkpoint — cứu được lỗi TẠM THỜI (mạng chập chờn, API quá tải). Lỗi cố định (video hỏng, hết quota) vẫn sẽ lỗi lại rồi dừng hẳn.");

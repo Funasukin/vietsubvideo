@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
+import subprocess
 from collections import Counter
 from difflib import SequenceMatcher
 from pathlib import Path
@@ -95,6 +96,67 @@ def _select_lines(lines: list[tuple[str, list[float]]],
     return " ".join(t for t, _ in use), [b for _, b in use]
 
 
+def _duration(video: Path) -> float:
+    r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                        "-of", "default=nw=1:nk=1", str(video)],
+                       capture_output=True, text=True)
+    try:
+        return float((r.stdout or "").strip())
+    except ValueError:
+        return 0.0
+
+
+def _auto_crop_top(video: Path, work_dir: Path, sample: int = 16) -> float | None:
+    """Tự đo mép TRÊN của dải phụ đề: OCR ~sample frame rải đều TOÀN khung, gom vị trí
+    y các dòng chữ trong [0.22, 0.97] (bỏ watermark đỉnh + UI đáy) → crop_top = mép cao
+    nhất ổn định trừ lề. Nhờ vậy video DỌC (sub ~0.65) không bị crop cứng 0.70 cắt mất.
+    Trả None nếu không đủ dữ liệu (→ dùng mặc định)."""
+    dur = _duration(video)
+    if dur <= 1:
+        return None
+    probe = work_dir / "ocr_probe"
+    if probe.exists():
+        shutil.rmtree(probe)
+    probe.mkdir(parents=True)
+    fps = max(0.03, min(2.0, sample / dur))
+    # quét toàn khung (không crop), thu nhỏ về 640px cho nhanh — đủ để ĐỊNH VỊ chữ
+    ffmpeg.run("-i", str(video), "-vf", f"fps={fps},scale=640:-2",
+               "-qscale:v", "3", str(probe / "%04d.jpg"))
+    from rapidocr_onnxruntime import RapidOCR
+    eng = RapidOCR(intra_op_num_threads=2, use_angle_cls=False)
+    tops: list[float] = []
+    for p in sorted(probe.glob("*.jpg")):
+        img = cv2.imread(str(p))
+        if img is None:
+            continue
+        for _x, _text, nbox in _frame_lines(eng, img):  # đã lọc conf + junk
+            if 0.22 <= nbox[1] <= 0.97:
+                tops.append(nbox[1])
+    shutil.rmtree(probe, ignore_errors=True)
+    if len(tops) < 4:
+        return None
+    tops.sort()
+    # phân vị ~15% = mép trên cao nhất mà ổn định (bỏ vài dòng lạc), trừ lề an toàn
+    top = tops[max(0, int(0.15 * len(tops)) - 1)]
+    return max(0.30, min(0.80, round(top - 0.06, 3)))
+
+
+def _resolve_crop_top(video: Path, work_dir: Path) -> float:
+    """Giải nghĩa config.OCR_CROP_TOP: 'auto' → tự đo (fallback 0.70); số → dùng thẳng."""
+    raw = config.OCR_CROP_TOP
+    if isinstance(raw, str) and raw.strip().lower() == "auto":
+        ct = _auto_crop_top(video, work_dir)
+        if ct is None:
+            print("  OCR: không đo được dải phụ đề → dùng crop_top=0.70")
+            return 0.70
+        print(f"  OCR: tự đo dải phụ đề → crop_top={ct} (quét từ {ct * 100:.0f}% xuống đáy)")
+        return ct
+    try:
+        return max(0.0, min(0.95, float(raw)))
+    except (TypeError, ValueError):
+        return 0.70
+
+
 def extract(video: Path, work_dir: Path) -> list[dict]:
     """OCR video → list segment. work_dir dùng chứa frame tạm (tự dọn khi xong)."""
     frames_dir = work_dir / "ocr_frames"
@@ -102,7 +164,7 @@ def extract(video: Path, work_dir: Path) -> list[dict]:
         shutil.rmtree(frames_dir)
     frames_dir.mkdir(parents=True)
 
-    crop_top = config.OCR_CROP_TOP
+    crop_top = _resolve_crop_top(video, work_dir)
     crop_h = 1.0 - crop_top
     ffmpeg.run(
         "-i", str(video),

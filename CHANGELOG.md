@@ -6,6 +6,31 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (12) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix BUG: video DỌC (Douyin/Shorts) OCR chỉ ra 2 câu (đáng lẽ ~100)
+
+Triệu chứng user: video 9:16 xuất ra chỉ 2 dòng sub dù "quét OCR ra 300+".
+Chẩn đoán: "300+" là số KHUNG (2fps×158s≈316), không phải dòng. Thật ra OCR chỉ
+bắt chữ ở 8/316 khung → 2 câu.
+
+**Nguyên nhân gốc:** `OCR_CROP_TOP=0.70` (cứng) chỉ quét dải 70%→đáy — hợp phim
+ngang 16:9 (sub sát đáy). Video DỌC Douyin đặt sub ở **~65%** → NẰM TRÊN vùng quét
+→ bị crop cắt mất trước khi OCR đọc. Đo thực tế (t=30/55/80/110): sub ở y=0.64–0.69,
+OCR đọc rõ (conf 0.77–0.89) nhưng bị bỏ vì ngoài crop.
+
+**Fix:** `OCR_CROP_TOP="auto"` (mặc định mới) → `ocr_subs._auto_crop_top()` quét thử
+~16 khung TOÀN màn hình, đo mép trên dải phụ đề, đặt crop ôm đúng dải (trừ lề). Video
+này tự chọn 0.583 → **OCR ra 101 câu** (từ 2). Phim ngang vẫn tự ra ~0.80 như cũ.
+Vẫn đặt số tay được (Cấu hình → Nhận dạng thoại → "Vùng quét phụ đề": auto/0.5–0.8).
+
+Liên quan [[app-scope-multi-genre-language]] — app giờ nhận cả video dọc, đừng giả
+định layout phim ngang. Job cũ user (chỉ 2 câu) đã reset để OCR lại từ đầu.
+
+### Máy khác pull về: `.env` thêm `OCR_CROP_TOP=auto` (xem .env.example).
+
+---
+
 ## 2026-07-04 (11) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Gom mọi khóa API/token/mã vào 1 nhóm "🔑 Khóa API & Token" (đầu trang Cấu hình)

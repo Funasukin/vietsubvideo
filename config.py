@@ -67,7 +67,9 @@ WHISPER_COMPUTE = os.getenv("WHISPER_COMPUTE", "int8")  # int8 (cpu) | float16 (
 
 # OCR phụ đề hardsub (S3)
 OCR_FPS = float(os.getenv("OCR_FPS", "2.0"))   # frame lấy mẫu/giây (giảm = nhanh hơn)
-OCR_CROP_TOP = 0.70    # vùng quét: từ 70% chiều cao xuống đáy
+# Vùng quét phụ đề: "auto" = tự đo dải phụ đề (video dọc Douyin sub ở ~0.65, phim
+# ngang ở ~0.85 — 1 con số cứng bỏ sót). Hoặc đặt số 0..1 (vd 0.70 = từ 70% xuống đáy).
+OCR_CROP_TOP = os.getenv("OCR_CROP_TOP", "auto").strip().lower()
 OCR_MIN_CONF = 0.55    # bỏ kết quả OCR dưới ngưỡng tin cậy này
 OCR_WORKERS = int(os.getenv("OCR_WORKERS", "6"))  # số tiến trình OCR song song (mỗi cái 2 luồng)
 # auto mode: video DÀI hơn ngưỡng này (phút) thì bỏ OCR, dùng thẳng Whisper —
