@@ -57,7 +57,7 @@ SAFE_ENV_KEYS = ["CLAUDE_MODEL", "TRANSLATE_PROVIDER", "GEMINI_MODEL",
 # Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
 # giống ANTHROPIC_API_KEY. Bot token điều khiển bot của người dùng → coi như credential.
 # HF_TOKEN là token tài khoản HuggingFace (diarization #8) → cũng là credential.
-SECRET_ENV_KEYS = {"TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
+SECRET_ENV_KEYS = {"ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
                    "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"}
 ENV_PATH = config.BASE_DIR / ".env"
 
@@ -1722,7 +1722,7 @@ def get_config() -> dict:
     defaults = {k: str(getattr(config, k, "")) for k in SAFE_ENV_KEYS}
     return {
         "values": {k: env.get(k, defaults[k]) for k in SAFE_ENV_KEYS},
-        "api_key_set": bool(env.get("ANTHROPIC_API_KEY")),
+        "api_key_set": bool(env.get("ANTHROPIC_API_KEY") or config.ANTHROPIC_API_KEY),
         # khóa bí mật: chỉ báo đã đặt hay chưa, KHÔNG trả giá trị
         "telegram_token_set": bool(env.get("TELEGRAM_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN),
         "hf_token_set": bool(env.get("HF_TOKEN") or config.HF_TOKEN),

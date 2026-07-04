@@ -733,10 +733,7 @@ async function loadConfig() {
       'onchange="applyProviderUI()"',
       "LLM dùng để dịch/soát/trích tên riêng. <b>Claude</b> ổn định, có bộ nhớ cache prompt. <b>Gemini</b> free tier gần như $0 nhưng giới hạn ~10 request/phút — <b>lỗi hoặc hết quota giữa chừng sẽ TỰ chuyển về Claude</b> nên job không chết. Giữ nhãn giọng/cảm xúc/nhân vật y như nhau (dùng structured output cả hai).")
     + `<div id="gemini-cfg">`
-    + `<div class="frow"><label>API key Gemini${hint("Key miễn phí ở Google AI Studio (aistudio.google.com/apikey). " + (c.gemini_key_set ? "✓ Key đã lưu." : "Chưa có key — chọn Gemini mà thiếu key sẽ tự về Claude."))}</label>
-        <input id="cfg-GEMINI_API_KEY" type="password" autocomplete="off"
-          placeholder="${c.gemini_key_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'lấy free ở aistudio.google.com/apikey'}"
-          style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`
+    + `<div class="fhelp">API key Gemini nhập ở nhóm <b>🔑 Khóa API &amp; Token</b>. ${c.gemini_key_set ? "✓ Đã có key." : "Chưa có key — chọn Gemini mà thiếu key sẽ tự về Claude."}</div>`
     + row("GEMINI_MODEL", "Model Gemini",
       ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-2.0-flash-lite"],
       {"gemini-2.5-flash": "2.5 Flash — cân bằng (khuyên dùng)", "gemini-2.5-flash-lite": "2.5 Flash-Lite — nhanh/rẻ nhất",
@@ -790,10 +787,7 @@ async function loadConfig() {
     + row("DIARIZE_MAX_SPK", "Số người nói tối đa", ["0", "2", "3", "4", "5", "6", "8"],
       {"0": "0 — tự đoán"},
       "", "Biết trước video có mấy người nói thì đặt đúng số đó — phân cụm chính xác hơn hẳn để máy tự đoán.")
-    + `<div class="frow"><label>HuggingFace token${hint("Token cá nhân HuggingFace để tải model pyannote. " + (c.hf_token_set ? "✓ Token đã lưu." : "Chưa lưu token."))}</label>
-      <input id="cfg-HF_TOKEN" type="password" autocomplete="off"
-        placeholder="${c.hf_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'hf_... (huggingface.co/settings/tokens)'}"
-        style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+    + `<div class="fhelp">HuggingFace token nhập ở nhóm <b>🔑 Khóa API &amp; Token</b>. ${c.hf_token_set ? "✓ Đã có token." : "Chưa lưu token — diarization sẽ không chạy được."}</div>`;
 
   // Bộ giọng edge (chỉ hiện khi engine = edge)
   const vopt = (sel) => `<option value="">(giọng mặc định model)</option>` + VOICE_LIST.map(x =>
@@ -848,20 +842,19 @@ async function loadConfig() {
       <div class="fhelp">Thả clip 6–10 giây (.wav/.mp3) vào thư mục <code>voices/</code> làm giọng mẫu; nghe thử &amp; mở thư mục ở tab <b>🔊 Nghe thử</b>.</div>
     </div>`
     + `<div id="elevenlabs-voices">
-      <div class="frow"><label>API key ElevenLabs${hint("~$22/tháng (gói Creator ≈ 7–8 tập). Giống người nhất, đọc được đa ngôn ngữ. " + (c.elevenlabs_key_set ? "✓ Key đã lưu." : "Chưa có key."))}</label>${keyInput("ELEVENLABS_API_KEY", c.elevenlabs_key_set, "xi-api-key từ elevenlabs.io")}</div>`
+      <div class="fhelp">~$22/tháng, giống người nhất, đa ngôn ngữ. API key nhập ở nhóm <b>🔑 Khóa API &amp; Token</b>. ${c.elevenlabs_key_set ? "✓ Đã có key." : "Chưa có key."}</div>`
     + textrow("ELEVENLABS_VOICE_NAM", "Voice ID nam", "vd pNInz6obpgDQGcFmaJgB (Adam)",
       "Voice ID lấy ở elevenlabs.io → Voices (mặc định sẵn Adam). Chế độ 1 giọng dùng voice này cho cả video.")
     + `<div class="nu-only">` + textrow("ELEVENLABS_VOICE_NU", "Voice ID nữ", "vd 21m00Tcm4TlvDq8ikWAM (Rachel)",
       "Mặc định sẵn Rachel — đổi voice id bất kỳ trong tài khoản của bạn.") + `</div>`
     + `</div>`
     + `<div id="vbee-voices">
-      <div class="frow"><label>VBee token${hint("Dịch vụ VN chuyên giọng đọc truyện/thuyết minh (chỉ tiếng Việt). " + (c.vbee_token_set ? "✓ Token đã lưu." : "Chưa có token."))}</label>${keyInput("VBEE_TOKEN", c.vbee_token_set, "Bearer token từ vbee.vn/console")}</div>`
-    + textrow("VBEE_APP_ID", "VBee App ID", "app id trong console VBee", "Lấy trong console vbee.vn cùng chỗ với token.")
+      <div class="fhelp">Dịch vụ VN chuyên giọng đọc truyện/thuyết minh (chỉ tiếng Việt). VBee token + App ID nhập ở nhóm <b>🔑 Khóa API &amp; Token</b>. ${c.vbee_token_set ? "✓ Đã có token." : "Chưa có token."}</div>`
     + textrow("VBEE_VOICE_NAM", "Voice code nam", "vd hn_male_manhdung_news_48k-fhg", "Mã giọng nam — xem danh sách giọng trong tài liệu VBee. Chế độ 1 giọng dùng mã này cho cả video.")
     + `<div class="nu-only">` + textrow("VBEE_VOICE_NU", "Voice code nữ", "vd hn_female_ngochuyen_full_48k-fhg", "Mã giọng nữ VBee.") + `</div>`
     + `</div>`
     + `<div id="fpt-voices">
-      <div class="frow"><label>API key FPT.AI${hint("Rẻ nhất nhóm trả phí (chỉ tiếng Việt). Lấy key ở fpt.ai → Text to Speech. " + (c.fpt_key_set ? "✓ Key đã lưu." : "Chưa có key."))}</label>${keyInput("FPT_TTS_API_KEY", c.fpt_key_set, "api-key từ fpt.ai (TTS)")}</div>`
+      <div class="fhelp">Rẻ nhất nhóm trả phí (chỉ tiếng Việt). API key nhập ở nhóm <b>🔑 Khóa API &amp; Token</b>. ${c.fpt_key_set ? "✓ Đã có key." : "Chưa có key."}</div>`
     + textrow("FPT_VOICE_NAM", "Giọng nam", "leminh | minhquang | thanhtung", "Các giọng nam FPT: leminh, minhquang, thanhtung. Chế độ 1 giọng dùng giọng này cho cả video.")
     + `<div class="nu-only">` + textrow("FPT_VOICE_NU", "Giọng nữ", "banmai | thuminh | myan | giahuy...", "Các giọng nữ FPT: banmai, thuminh, myan, ngoclam, lannhi...") + `</div>`
     + `</div>`;
@@ -919,15 +912,33 @@ async function loadConfig() {
       {private: "Riêng tư (an toàn nhất)", unlisted: "Không công khai (chỉ ai có link)", public: "Công khai"},
       "", "Trạng thái video khi đăng thẳng bằng nút ▶ Đăng YouTube. Để <b>Riêng tư</b> rồi tự công khai sau khi duyệt là an toàn nhất.");
 
-  const sTele = textrow("TELEGRAM_CHAT_ID", "Chat ID", "vd 123456789",
-      "ID cuộc trò chuyện nhận thông báo — nhắn bot của bạn 1 tin rồi mở api.telegram.org/bot&lt;token&gt;/getUpdates để thấy chat id.")
-    + `<div class="frow"><label>Bot token${hint("Tạo bot với @BotFather để lấy token. " + (c.telegram_token_set ? "✓ Token đã lưu." : "Chưa lưu token.") + " Báo khi job xong/lỗi (kèm thông báo desktop 🔔 ở đầu trang).")}</label>
-      <input id="cfg-TELEGRAM_BOT_TOKEN" type="password" autocomplete="off"
-        placeholder="${c.telegram_token_set ? '•••• đã đặt (để trống = giữ nguyên)' : 'dán bot token của bạn'}"
-        style="flex:1;min-width:180px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font:inherit"></div>`;
+  // 1 dòng khóa bí mật (ô mật khẩu). Trạng thái đã-đặt hiện ở placeholder ••••; mô tả trong ⓘ.
+  const keyrow = (id, label, isSet, ph, help) =>
+    `<div class="frow"><label>${esc(label)}${hint((isSet ? "✓ Đã lưu. " : "Chưa lưu. ") + help)}</label>${keyInput(id, isSet, ph)}</div>`;
+  // #Gom mọi khóa/token/mã vào 1 nhóm — chỉ điền dịch vụ nào bạn dùng.
+  const sKeys = `<div class="fhelp">Chỉ điền khóa của dịch vụ bạn dùng — để trống = không dùng. Khóa lưu trong <code>.env</code>, KHÔNG hiện lại (đã đặt = ô ghi <b>••••</b>; để trống khi lưu = giữ khóa cũ).</div>`
+    + keyrow("ANTHROPIC_API_KEY", "Claude API key", c.api_key_set, "sk-ant-… (console.anthropic.com)",
+      "Bắt buộc để dịch bằng Claude, và cho fallback khi Gemini lỗi. Lấy ở console.anthropic.com → API Keys.")
+    + keyrow("GEMINI_API_KEY", "Gemini API key", c.gemini_key_set, "lấy free ở aistudio.google.com/apikey",
+      "Miễn phí ở Google AI Studio. Cần khi nhà cung cấp dịch = Gemini.")
+    + keyrow("ELEVENLABS_API_KEY", "ElevenLabs API key", c.elevenlabs_key_set, "xi-api-key từ elevenlabs.io",
+      "Cho engine đọc ElevenLabs (trả phí, giống người nhất).")
+    + keyrow("VBEE_TOKEN", "VBee token", c.vbee_token_set, "Bearer token từ vbee.vn/console",
+      "Cho engine đọc VBee (trả phí, tiếng Việt).")
+    + textrow("VBEE_APP_ID", "VBee App ID", "app id trong console VBee",
+      "Mã ứng dụng VBee — đi kèm token để xác thực (cùng chỗ với token trong console vbee.vn).")
+    + keyrow("FPT_TTS_API_KEY", "FPT.AI API key", c.fpt_key_set, "api-key từ fpt.ai (TTS)",
+      "Cho engine đọc FPT.AI (trả phí, tiếng Việt, rẻ nhất).")
+    + keyrow("HF_TOKEN", "HuggingFace token", c.hf_token_set, "hf_… (huggingface.co/settings/tokens)",
+      "Để tải model pyannote cho Nhận diện người nói (diarization).")
+    + keyrow("TELEGRAM_BOT_TOKEN", "Telegram bot token", c.telegram_token_set, "token từ @BotFather",
+      "Bot báo job xong/lỗi (kèm thông báo desktop 🔔). Tạo bot với @BotFather để lấy token.")
+    + textrow("TELEGRAM_CHAT_ID", "Telegram Chat ID", "vd 123456789",
+      "ID cuộc trò chuyện nhận thông báo — nhắn bot 1 tin rồi mở api.telegram.org/bot&lt;token&gt;/getUpdates để thấy.");
 
   let html = `<h3 style="margin-bottom:2px">⚙️ Cấu hình <span class="meta" style="font-weight:400">(.env) — áp dụng cho job chạy mới; bấm tiêu đề nhóm để gập/mở</span></h3>`;
   html += `<div class="cfgcols">`;
+  html += sec("🔑 Khóa API &amp; Token", true, sKeys);
   html += sec("Dịch &amp; phụ đề", true, sDich);
   html += sec("Nhận dạng thoại (transcript)", true, sTrans);
   html += sec("Lồng tiếng (TTS)", true, sTts);
@@ -936,13 +947,10 @@ async function loadConfig() {
   html += sec("Shorts tự động", false, sShorts);
   html += sec("Khử ồn &amp; Nhắc Đăng ký", V.DENOISE === "1" || V.SUBSCRIBE === "on", sMisc);
   html += sec("Đăng YouTube", !!c.youtube_ready, sYt);
-  html += sec("Thông báo Telegram", !!c.telegram_token_set, sTele);
   html += `</div>`;
   html += `<div class="cfgfoot"><button onclick="saveConfig()">💾 Lưu cấu hình</button>
     <span id="cfgmsg"></span>
-    <span class="meta" style="margin-left:auto">API key Claude: ${c.api_key_set
-      ? "✓ đã thiết lập (đổi thì sửa file .env)"
-      : "✗ CHƯA có — pipeline sẽ lỗi ở bước dịch"}</span></div>`;
+    <span class="meta" style="margin-left:auto">Khóa/token nhập ở nhóm 🔑 đầu trang · lưu vào .env</span></div>`;
   document.getElementById("cfgform").innerHTML = html;
   applyEngineUI();
   applyProviderUI();
@@ -1045,7 +1053,7 @@ async function saveConfig() {
     if (el) body[key] = el.value;
   }
   // token bí mật: chỉ gửi khi người dùng thực sự nhập (để trống = giữ token cũ)
-  for (const key of ["TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
+  for (const key of ["ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
                      "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"]) {
     const el = document.getElementById("cfg-" + key);
     if (el && el.value.trim()) body[key] = el.value.trim();

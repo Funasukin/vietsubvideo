@@ -6,6 +6,25 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-04 (11) — Desktop (F:\MyProject\vietsubvideo)
+
+### Gom mọi khóa API/token/mã vào 1 nhóm "🔑 Khóa API & Token" (đầu trang Cấu hình)
+
+Trước đây key rải rác: Gemini ở nhóm Dịch, HF ở Diarization, ElevenLabs/VBee/FPT ở
+Lồng tiếng, Telegram ở nhóm riêng. Giờ gộp hết vào MỘT card đầu trang:
+Claude, Gemini, ElevenLabs, VBee token + App ID, FPT, HuggingFace, Telegram bot token
++ Chat ID. Các nhóm cũ chỉ còn dòng nhắc "nhập ở nhóm 🔑".
+
+- **Claude API key giờ NHẬP ĐƯỢC trong UI** (thêm `ANTHROPIC_API_KEY` vào
+  `SECRET_ENV_KEYS`; `api_key_set` cũng xét `config.ANTHROPIC_API_KEY`). Trước chỉ
+  hiện trạng thái ở footer + bắt sửa tay `.env`.
+- Ô mật khẩu, đã đặt = placeholder `••••`, để trống khi lưu = giữ khóa cũ (secret
+  không bao giờ trả giá trị về). Bỏ nhóm "Thông báo Telegram" (2 field đã dời qua 🔑).
+- Verify sống: nhóm 🔑 đứng đầu, đủ 9 ô, không trùng/không thiếu field, lưu 1 khóa
+  vô hại KHÔNG xoá secret cũ (api_key_set/gemini_key_set giữ True), không lỗi console.
+
+---
+
 ## 2026-07-04 (10) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đại tu UX trang Cấu hình (6 yêu cầu) + chế độ 1 giọng + tab Nghe thử
