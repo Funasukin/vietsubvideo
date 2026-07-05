@@ -1956,6 +1956,7 @@ async function scanTrending() {
 
 /* ---------- Editor lời thoại ---------- */
 let edJobId = null, edSegs = [], edCurIdx = -1, edDirty = new Set(), edVoices = [], edHadFinal = false;
+let edOvOrig = {};   // ⚙️ override theo job lúc MỞ editor — so sánh để biết nhóm nào bị đổi
 let edCastNames = [];   // nhân vật đã cast của series (nếu có) → gợi ý gán câu trong editor
 let edMuteState = new Set();   // chỉ số dòng đang Mute (không lồng tiếng Việt)
 let edRenderWatch = null;      // {id, ttsBase, armGen}: edSave đang render → theo dõi để mở lại editor khi xong
@@ -2032,6 +2033,7 @@ async function openEditor(id) {
   }
 
   edJobId = id; edSegs = data.segments; edCurIdx = -1; edDirty = new Set();
+  edOvOrig = data.env_overrides || {};
   edCastNames = data.cast_names || [];   // series có casting → hiện ô gán nhân vật
   edMuteState = new Set();
   edSegs.forEach((s, i) => { if (s.mute) edMuteState.add(i); });
@@ -2335,49 +2337,93 @@ function edSettingsPanel(data) {
 
 // ⚙️ Tùy chọn cấu hình THEO VIDEO NÀY (đè cấu hình chung): output không vừa ý thì
 // chỉnh tại đây rồi 💾 Lưu & render lại — không đụng cấu hình chung, không ảnh
-// hưởng video khác. Server whitelist khóa (_JOB_OVERRIDE_KEYS) + reset đúng stage.
+// hưởng video khác. Server whitelist khóa + tự chạy lại từ stage SÂU NHẤT bị đổi
+// (nhóm "group" phải khớp _OV_* trong server.py). opts=null → ô nhập chữ tự do.
 const ED_OV_FIELDS = [
-  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]]],
-  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]]],
-  ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]]],
-  ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]]],
-  ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]]],
-  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]]],
+  // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
+  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "mix"],
+  ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix"],
+  // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)
+  ["TTS_ENGINE", "🗣 Engine giọng", [["edge", "edge — miễn phí"], ["vixtts", "viXTTS — nhân bản (GPU)"], ["elevenlabs", "ElevenLabs (trả phí)"], ["vbee", "VBee (trả phí)"], ["fpt", "FPT.AI (trả phí)"]], "tts"],
+  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]], "tts"],
+  ["TTS_VOICE", "👨 Giọng nam/chính (edge)", [["vi-VN-NamMinhNeural", "NamMinh (nam)"], ["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"]], "tts"],
+  ["TTS_VOICE_NU", "👩 Giọng nữ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts"],
+  ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
+  ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
+  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
+  // nhóm DỊCH — DỊCH LẠI toàn bộ (tốn phí API, MẤT chỉnh tay câu)
+  ["TRANSLATE_PROVIDER", "🌐 Nhà cung cấp dịch", [["claude", "Claude"], ["gemini", "Gemini"]], "translate"],
+  ["CLAUDE_MODEL", "Model Claude", [["claude-haiku-4-5-20251001", "Haiku 4.5 — rẻ"], ["claude-sonnet-4-6", "Sonnet 4.6 — mượt hơn"]], "translate"],
+  ["GEMINI_MODEL", "Model Gemini", [["gemini-2.5-flash", "2.5 Flash"], ["gemini-2.5-flash-lite", "2.5 Flash-Lite"], ["gemini-2.5-pro", "2.5 Pro"], ["gemini-2.0-flash", "2.0 Flash"], ["gemini-2.0-flash-lite", "2.0 Flash-Lite"]], "translate"],
+  ["CONTENT_STYLE", "Kiểu nội dung", [["donghua", "Donghua/cổ trang — Hán-Việt"], ["general", "Chung — dịch tự nhiên"]], "translate"],
+  ["TARGET_LANG", "Ngôn ngữ lồng tiếng", [["vi", "Tiếng Việt"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"], ["es", "Español"], ["fr", "Français"], ["id", "Indonesia"], ["th", "ไทย"], ["pt", "Português"]], "translate"],
+  ["TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", null, "translate"],
+  // nhóm NHẬN DẠNG — làm lại từ transcript (LÂU NHẤT, mất bản dịch + chỉnh tay)
+  ["TRANSCRIPT_SOURCE", "📝 Nguồn transcript", [["auto", "auto — tự chọn"], ["ocr", "ocr — đọc hardsub"], ["whisper", "whisper — nghe tiếng"]], "transcript"],
+  ["WHISPER_MODEL", "Model whisper", [["tiny", "tiny"], ["base", "base"], ["small", "small"], ["medium", "medium"], ["large-v3", "large-v3"]], "transcript"],
+  ["OCR_FPS", "Tốc độ OCR", [["1.0", "1 fps — nhanh"], ["1.5", "1.5 fps"], ["2.0", "2 fps — kỹ"]], "transcript"],
+  ["OCR_CROP_TOP", "Vùng quét phụ đề", [["auto", "auto — tự đo"], ["0.50", "Từ 50%"], ["0.60", "Từ 60%"], ["0.70", "Từ 70%"], ["0.80", "Từ 80%"]], "transcript"],
 ];
+const ED_OV_GROUPS = [
+  ["mix", "🎛 Trộn âm", "đổi xong: chỉ trộn + render lại (NHANH, giọng giữ nguyên)"],
+  ["tts", "🔊 Giọng đọc", "đổi xong: đọc lại các câu bị ảnh hưởng rồi trộn + render (vài phút)"],
+  ["translate", "🌐 Dịch", "⚠️ đổi xong: DỊCH LẠI TOÀN BỘ — tốn phí API, MẤT các câu đã sửa tay"],
+  ["transcript", "📝 Nhận dạng thoại", "⚠️ đổi xong: làm lại TỪ TRANSCRIPT — lâu nhất, mất bản dịch + mọi chỉnh tay"],
+];
+function edOvNorm(k, v) {   // bool từ config có thể là "True"/"False" → chuẩn về mã option
+  v = String(v ?? "").trim();
+  if (/^true$/i.test(v)) return "1";
+  if (/^false$/i.test(v)) return "0";
+  if (k === "MAX_SPEEDUP" && v && !v.includes(".")) return v + ".0";
+  return v;
+}
 function edOverridePanel(data) {
   const ov = data.env_overrides || {};
   const cfg = data.cfg_defaults || {};
-  const norm = (k, v) => {   // bool từ config có thể là "True"/"False" → chuẩn về mã option
-    v = String(v ?? "").trim();
-    if (/^true$/i.test(v)) return "1";
-    if (/^false$/i.test(v)) return "0";
-    if (k === "MAX_SPEEDUP" && v && !v.includes(".")) return v + ".0";
-    return v;
-  };
-  const rows = ED_OV_FIELDS.map(([key, label, opts]) => {
+  const field = ([key, label, opts]) => {
     const cur = ov[key] ?? "";
-    const defLabel = (opts.find(([v]) => v === norm(key, cfg[key])) || [])[1] || norm(key, cfg[key]) || "?";
+    if (!opts)   // ô chữ tự do (vd phong cách dịch); trống = theo cấu hình chung
+      return `<label style="display:flex;align-items:center;gap:6px">${label}:
+        <input type="text" id="ov-${key}" class="ed-bulkvoice" value="${esc(cur)}"
+          placeholder="— theo cấu hình chung (${esc(cfg[key] || "trống")}) —" style="min-width:230px"></label>`;
+    const defLabel = (opts.find(([v]) => v === edOvNorm(key, cfg[key])) || [])[1] || edOvNorm(key, cfg[key]) || "?";
     return `<label style="display:flex;align-items:center;gap:6px">${label}:
       <select id="ov-${key}" class="ed-bulkvoice">
         <option value="">— theo cấu hình chung (${esc(defLabel)}) —</option>
         ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("")}
       </select></label>`;
-  }).join("");
+  };
+  const groups = ED_OV_GROUPS.map(([g, title, cost]) => `
+    <div style="margin:10px 0 2px;font-size:12px"><b style="color:var(--accent)">${title}</b>
+      <span class="meta" style="margin:0"> — ${cost}</span></div>
+    <div class="opts" style="gap:12px">${ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
   return `<details class="ed-settings" ${Object.keys(ov).length ? "open" : ""}>
     <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
-    <div class="opts" style="gap:14px">${rows}</div>
+    ${groups}
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
-    💾 Lưu &amp; render lại để áp dụng: câu bị ảnh hưởng tự đọc lại, nền/trộn dựng lại.
-    Chọn "— theo cấu hình chung —" để bỏ đè.</div>
+    💾 Lưu &amp; render lại để áp dụng; hệ thống tự chạy lại từ đúng khâu bị ảnh hưởng
+    (nhóm sâu nhất thắng). Chọn "— theo cấu hình chung —" / xoá trống ô chữ để bỏ đè.</div>
   </details>`;
 }
 function edCollectOverrides() {
   const out = {};
   for (const [key] of ED_OV_FIELDS) {
     const el = document.getElementById("ov-" + key);
-    if (el && el.value !== "") out[key] = el.value;
+    if (el && el.value.trim() !== "") out[key] = el.value.trim();
   }
   return out;
+}
+// nhóm sâu nhất bị ĐỔI so với override đang lưu — để cảnh báo trước khi Lưu
+function edOvDepth(newOv) {
+  const old = edOvOrig || {};
+  const diff = new Set();
+  for (const k of new Set([...Object.keys(old), ...Object.keys(newOv)]))
+    if ((old[k] ?? "") !== (newOv[k] ?? "")) diff.add(k);
+  const g = k => (ED_OV_FIELDS.find(f => f[0] === k) || [])[3];
+  if ([...diff].some(k => g(k) === "transcript")) return "transcript";
+  if ([...diff].some(k => g(k) === "translate")) return "translate";
+  if ([...diff].some(k => g(k) === "tts")) return "tts";
+  return diff.size ? "mix" : null;
 }
 
 // #5: xem trước CHÍNH XÁC 1 khung bằng FFmpeg (che + kiểu chữ + phụ đề thật) — tái dùng
@@ -2688,6 +2734,10 @@ async function edSave() {
     const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
     // ⚙️ override theo job: gửi cả {} (= xóa hết đè, về theo cấu hình chung)
     const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
+    // đổi nhóm SÂU (dịch lại / nhận dạng lại) phá nhiều thứ → xác nhận trước
+    const depth = env_overrides !== null ? edOvDepth(env_overrides) : null;
+    if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
+    if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render, bed_gain_db, env_overrides }) });
     const raw = await res.text();

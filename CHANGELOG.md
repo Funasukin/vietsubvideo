@@ -6,6 +6,26 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (7) — Desktop (F:\MyProject\vietsubvideo)
+
+### "⚙️ Tùy chọn video này" mở rộng 19 option, chia 4 NHÓM theo độ sâu làm lại
+
+User muốn test hết cấu hình trên 1 video. Panel giờ gồm 4 nhóm (server tự chạy lại
+từ stage SÂU NHẤT bị đổi — nhóm `_OV_*` trong server.py phải khớp `ED_OV_FIELDS`):
+
+| Nhóm | Option | Làm lại gì |
+|---|---|---|
+| 🎛 Trộn âm | MAX_SPEEDUP, KEEP_BGM | chỉ nền+trộn+render (NHANH, giọng giữ nguyên) |
+| 🔊 Giọng đọc | TTS_ENGINE, TTS_SINGLE_VOICE, TTS_VOICE(_NU), PROSODY, EMOTION, PROSODY_TRANSFER | đọc lại câu bị ảnh hưởng (.sig) + trộn + render |
+| 🌐 Dịch | TRANSLATE_PROVIDER, CLAUDE/GEMINI_MODEL, CONTENT_STYLE, TARGET_LANG, TRANSLATE_STYLE_EXTRA (ô chữ) | DỊCH LẠI toàn bộ — xóa transcript_vi/tts/metadata (confirm ⚠️ mất sửa tay) |
+| 📝 Nhận dạng | TRANSCRIPT_SOURCE, WHISPER_MODEL, OCR_FPS, OCR_CROP_TOP | làm lại từ transcript — xóa cả transcript_zh/ocr_raw/sub_boxes (confirm ⚠️) |
+
+Editor cảnh báo confirm trước khi Lưu nếu đổi nhóm Dịch/Nhận dạng. Verify sống:
+19/19 field, depth logic đúng 4 tầng; override MAX_SPEEDUP=1.8 trên job 8691dd →
+CHỈ reset bgm/mixing/rendering (tts+translating giữ nguyên), render nhanh.
+
+---
+
 ## 2026-07-05 (6) — Desktop (F:\MyProject\vietsubvideo)
 
 ### "⚙️ Tùy chọn video này" trong editor + đổi tên "Chỉnh sửa" + fix đường gạch nút

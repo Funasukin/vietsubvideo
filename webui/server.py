@@ -1116,9 +1116,15 @@ class SegmentEdits(BaseModel):
     env_overrides: dict | None = None
 
 
-# Khóa cấu hình cho phép đè THEO JOB từ editor — nhóm ảnh hưởng giọng/âm thanh output
-_JOB_OVERRIDE_KEYS = {"TTS_SINGLE_VOICE", "PROSODY", "EMOTION", "PROSODY_TRANSFER",
-                      "MAX_SPEEDUP", "KEEP_BGM", "TTS_VOICE", "TTS_VOICE_NU"}
+# Khóa cấu hình cho phép đè THEO JOB từ editor, chia NHÓM theo độ sâu phải làm lại:
+# đổi khóa nhóm nào thì pipeline chạy lại từ stage tương ứng (nhóm sâu nhất thắng).
+_OV_TRANSCRIPT = {"TRANSCRIPT_SOURCE", "WHISPER_MODEL", "OCR_FPS", "OCR_CROP_TOP"}
+_OV_TRANSLATE = {"TRANSLATE_PROVIDER", "CLAUDE_MODEL", "GEMINI_MODEL",
+                 "TRANSLATE_STYLE_EXTRA", "CONTENT_STYLE", "TARGET_LANG"}
+_OV_TTS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
+           "PROSODY", "EMOTION", "PROSODY_TRANSFER"}
+_OV_MIX = {"MAX_SPEEDUP", "KEEP_BGM"}
+_JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX
 
 
 def _unlink_quiet(path: Path, retries: int = 8) -> bool:
@@ -1181,12 +1187,20 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     # đổi âm nền gốc (dB): kẹp [-40, 0]; chỉ tính là ĐỔI khi khác giá trị đang lưu
     bed_change = (body.bed_gain_db is not None
                   and max(-40.0, min(0.0, float(body.bed_gain_db))) != job.bed_gain_db)
-    # override cấu hình theo job: lọc theo whitelist, so với bản đang lưu
+    # override cấu hình theo job: lọc theo whitelist, so với bản đang lưu.
+    # Nhóm SÂU NHẤT trong các khóa bị đổi quyết định chạy lại từ stage nào.
     new_ov = None
     if body.env_overrides is not None:
         new_ov = {k: str(v).strip() for k, v in body.env_overrides.items()
-                  if k in _JOB_OVERRIDE_KEYS and str(v).strip() and len(str(v)) <= 60}
-    env_change = new_ov is not None and new_ov != (job.env_overrides or {})
+                  if k in _JOB_OVERRIDE_KEYS and str(v).strip() and len(str(v)) <= 200}
+    old_ov = job.env_overrides or {}
+    env_change = new_ov is not None and new_ov != old_ov
+    ov_diff = ({k for k in set(old_ov) | set(new_ov or {})
+                if old_ov.get(k) != (new_ov or {}).get(k)} if env_change else set())
+    ov_depth = ("transcript" if ov_diff & _OV_TRANSCRIPT
+                else "translate" if ov_diff & _OV_TRANSLATE
+                else "tts" if ov_diff & _OV_TTS
+                else "mix") if env_change else None
     if not changed and not has_render and not bed_change and not env_change:
         return {"changed": 0, **(_job_summary(job.dir) or {})}
 
@@ -1199,6 +1213,8 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
         gating += ["dubbed_audio.wav", "sub_vi.srt", "final.mp4"]
     if bed_change or env_change:
         gating += ["dubbed_audio.wav", "final.mp4"]
+    if env_change and ov_depth in ("transcript", "translate"):
+        gating += ["sub_vi.srt"]   # phụ đề dựng từ bản dịch → dịch/nhận dạng lại là phải xóa
     if has_render:
         gating += ["sub_vi.srt", "final.mp4"]
     locked = [n for n in dict.fromkeys(gating) if not _unlink_quiet(job.dir / n)]
@@ -1231,12 +1247,27 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
                                 if s not in ("bgm", "mixing", "rendering")]
 
     if env_change:
-        # override theo job đổi → chạy lại từ TTS: .sig tự phát hiện câu bị ảnh hưởng
-        # (đổi giọng/prosody/transfer chỉ đọc lại đúng câu đó), nền dựng lại theo
-        # ducked.mode, rồi trộn + render với cấu hình mới.
         job.env_overrides = new_ov
-        job.completed_stages = [s for s in job.completed_stages
-                                if s not in ("tts", "bgm", "mixing", "rendering")]
+        # Chạy lại từ stage SÂU NHẤT bị ảnh hưởng (xem _OV_* group):
+        # - mix: chỉ dựng nền + trộn + render (nhanh, không đọc lại giọng)
+        # - tts: đọc lại câu bị ảnh hưởng (.sig tự phát hiện) + trộn + render
+        # - translate: DỊCH LẠI toàn bộ (mất chỉnh tay câu) + đọc + trộn + render
+        # - transcript: NHẬN DẠNG LẠI từ đầu (mất bản dịch + chỉnh tay) + toàn bộ sau
+        drop = {"bgm", "mixing", "rendering"}
+        if ov_depth in ("tts", "translate", "transcript"):
+            drop.add("tts")
+        if ov_depth in ("translate", "transcript"):
+            drop.add("translating")
+            _unlink_quiet(job.dir / "transcript_vi.json")
+            _unlink_quiet(job.dir / "metadata.json")   # title/desc theo bản dịch cũ
+            _unlink_quiet(job.dir / "mix_report.json")
+            shutil.rmtree(job.dir / "tts", ignore_errors=True)  # text đổi → mp3 cũ sai
+        if ov_depth == "transcript":
+            drop.add("transcribing")
+            for name in ("transcript_zh.json", "ocr_raw.json", "sub_boxes.json",
+                         "glossary_auto.json", "stage_progress.json"):
+                _unlink_quiet(job.dir / name)
+        job.completed_stages = [s for s in job.completed_stages if s not in drop]
 
     if has_render:
         # áp dụng cài đặt phụ đề/che rồi dựng lại CHỈ khâu render (S8). Giữ nguyên
