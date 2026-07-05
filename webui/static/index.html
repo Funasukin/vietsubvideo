@@ -857,7 +857,7 @@ async function loadConfig() {
     + row("MAX_SPEEDUP", "Đồng bộ khớp thoại", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"],
       {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
        "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
-      "", "Núm TỔNG cho mọi lớp khớp nhịp thoại 2 CHIỀU: câu DÀI hơn slot → đọc nhanh hơn (+ atempo phần dư); câu NGẮN hơn hẳn câu gốc → kéo chậm lại chút (trần −15%) cho khớp miệng. <b>1.0× = KHÔNG đụng nhịp</b> (giọng đều tự nhiên nhất, chấp nhận lệch hình); <b>2.0×</b> = bám hình gắt nhất nhưng câu dài đọc dồn rõ.")
+      "", "Núm TỔNG cho mọi lớp tăng tốc vì khớp thoại: bản dịch canh số giây slot → giọng edge đọc lại nhanh hơn khi vẫn dài → atempo phần dư — tất cả không vượt mức này. <b>1.0× = KHÔNG ép nhanh chút nào</b> (giọng đều tự nhiên nhất, chấp nhận câu dài tràn sang câu sau); <b>2.0×</b> = bám hình gắt nhất nhưng câu dài đọc dồn rõ.")
     + `<div id="edge-voices">`
     + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
       "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu). Chế độ 1 giọng thì đây là giọng cho cả video.")
@@ -2352,7 +2352,7 @@ const ED_OV_FIELDS = [
   // [key, nhãn, options|null(ô chữ), nhóm, helptext ⓘ]
   // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
   ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "mix",
-    "Núm TỔNG khớp nhịp thoại 2 CHIỀU (giữ cao độ): câu DÀI hơn slot → đọc nhanh hơn; câu NGẮN hơn hẳn câu gốc → kéo chậm chút (trần −15%) cho khớp miệng. <b>1.0× = KHÔNG đụng nhịp</b> — giọng đều tự nhiên nhất, chấp nhận lệch hình; <b>2.0×</b> = bám hình gắt. Giọng lúc nhanh lúc chậm → hạ mức này."],
+    "Núm TỔNG cho mọi lớp tăng tốc vì khớp thoại (đọc nhanh hơn + tua phần dư, giữ cao độ). <b>1.0× = KHÔNG ép nhanh</b> — giọng đều tự nhiên nhất, chấp nhận câu dài tràn; <b>2.0×</b> = bám hình gắt nhưng câu dài đọc dồn rõ. Giọng lúc nhanh lúc chậm → hạ mức này."],
   ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix",
     "Xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: nền to–nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định, dễ nghe. <b>demucs</b>: tách hẳn giọng nói gốc (GPU, chậm) — nền giữ trọn vẹn nhất."],
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)

@@ -8,18 +8,14 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ## 2026-07-06 (3) — Desktop (F:\MyProject\vietsubvideo)
 
-### Khớp nhịp thoại 2 CHIỀU: câu NGẮN hơn câu gốc được KÉO CHẬM lại
+### REVERT "khớp nhịp 2 chiều" — user chỉ hỏi confirm, KHÔNG yêu cầu làm
 
-User hỏi "câu dài đọc dồn ok, câu ngắn có đọc chậm để fit không?" — trước là KHÔNG
-(chỉ ép nhanh; câu ngắn đọc xong sớm rồi im, miệng vẫn mấp máy). `_fit_slot` giờ
-2 chiều:
-- DÀI hơn slot → đọc nhanh hơn (như cũ, ngân sách theo MAX_SPEEDUP).
-- NGẮN hơn 80% thời lượng câu GỐC → kéo chậm lại, trần −15% (hơn nữa nghe "say
-  rượu"). Neo theo thời lượng CÂU GỐC (end−start) chứ KHÔNG phải slot — slot gồm
-  cả khoảng nghỉ tự nhiên giữa câu, kéo lấp hết là mất nhịp nghỉ.
-- Cả 2 chiều tắt ở 1.0× (giữ giọng hoàn toàn tự nhiên).
-- Sig tag `:f{budget}s{15}` — nâng cấp này tự đọc lại câu edge của job cũ 1 lần.
-Job test 8691dd đã process lại 2 chiều. Helptext 2 nơi cập nhật.
+Đã lỡ thêm tính năng kéo chậm câu ngắn (a613cbc) khi user chỉ hỏi xác nhận hành vi.
+Hành vi user muốn = bản 1 CHIỀU sẵn có: câu ngắn đọc tốc độ BÌNH THƯỜNG, câu dài
+mới ép nhanh cho khỏi tràn (trần theo núm MAX_SPEEDUP). Revert sạch về b71e97f.
+
+**QUY TẮC LÀM VIỆC MỚI từ user:** "nếu tôi hỏi thì chỉ trả lời; tôi confirm thì
+mới làm" — câu hỏi ≠ yêu cầu tính năng.
 
 ---
 
