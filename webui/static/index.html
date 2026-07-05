@@ -1976,6 +1976,7 @@ async function scanTrending() {
 let edJobId = null, edSegs = [], edCurIdx = -1, edDirty = new Set(), edVoices = [], edHadFinal = false;
 let edOvOrig = {};   // ⚙️ override theo job lúc MỞ editor — so sánh để biết nhóm nào bị đổi
 let edOvCfg = {};    // giá trị cấu hình CHUNG hiện tại — nền cho ẩn/hiện field phụ thuộc
+let edBedOrig = null; // 🎚 âm nền đang lưu của job — biết user có đổi hay không
 let edCastNames = [];   // nhân vật đã cast của series (nếu có) → gợi ý gán câu trong editor
 let edMuteState = new Set();   // chỉ số dòng đang Mute (không lồng tiếng Việt)
 let edRenderWatch = null;      // {id, ttsBase, armGen}: edSave đang render → theo dõi để mở lại editor khi xong
@@ -2054,6 +2055,7 @@ async function openEditor(id) {
   edJobId = id; edSegs = data.segments; edCurIdx = -1; edDirty = new Set();
   edOvOrig = data.env_overrides || {};
   edOvCfg = data.cfg_defaults || {};
+  edBedOrig = data.bed_gain_db ?? null;
   edCastNames = data.cast_names || [];   // series có casting → hiện ô gán nhân vật
   edMuteState = new Set();
   edSegs.forEach((s, i) => { if (s.mute) edMuteState.add(i); });
@@ -2118,8 +2120,8 @@ async function openEditor(id) {
     </div>
     ${edSettingsPanel(data)}
     <div class="ed-actionbar">
-      <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Đọc lại các câu đã sửa + trộn lại lồng tiếng (chưa render) để nghe ngay trong editor">🔁 Áp dụng câu đã sửa (đọc lại)</button>
-      <button onclick="edSave()" id="edsavebtn">💾 Lưu & render lại</button>
+      <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Áp câu đã sửa + ⚙️ tùy chọn + 🎚 âm nền vào lồng tiếng rồi DỪNG trước render — nghe thử ngay trong editor. Panel 🎨 phụ đề/che/khung chỉ áp khi render.">🔁 Áp dụng & nghe thử (không render)</button>
+      <button onclick="edSave()" id="edsavebtn" title="Chốt TẤT CẢ thay đổi (câu + ⚙️ + 🎨 + 🎚) và render ra video final hoàn chỉnh">💾 Lưu & render lại</button>
       <span class="meta" id="edmsg" style="margin:0"></span>
     </div>`;
   for (const t of ["over", "jobs", "cfg"]) document.getElementById("pane-" + t).style.display = "none";
@@ -2459,8 +2461,9 @@ function edOverridePanel(data) {
     <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
     ${groups}
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
-    💾 Lưu &amp; render lại để áp dụng; hệ thống tự chạy lại từ đúng khâu bị ảnh hưởng
-    (nhóm sâu nhất thắng). Chọn "— theo cấu hình chung —" / xoá trống ô chữ để bỏ đè.</div>
+    🔁 Áp dụng để NGHE THỬ (không render) hoặc 💾 Lưu &amp; render lại để xuất video;
+    hệ thống tự chạy lại từ đúng khâu bị ảnh hưởng (nhóm sâu nhất thắng).
+    Chọn "— theo cấu hình chung —" / xoá trống ô chữ để bỏ đè.</div>
   </details>`;
 }
 // Giá trị HIỆU LỰC của 1 khóa: override đang chọn, không thì giá trị cấu hình chung
@@ -2866,16 +2869,29 @@ async function edSave() {
   }
 }
 
-// #3: Áp dụng giọng đã sửa vào CẢ video — đọc lại câu sửa + trộn lại lồng tiếng, DỪNG
-// trước render, rồi nạp lại dub để nhấp đúp nghe ngay với giọng mới (không xuất final).
+// #3: Áp dụng thay đổi (câu sửa + ⚙️ config + 🎚 âm nền) vào lồng tiếng — DỪNG trước
+// render để nghe thử ngay trong editor (không xuất final). Panel 🎨 (phụ đề/che/khung)
+// KHÔNG áp ở đây vì chỉ có nghĩa khi render.
 async function edApplyVoices() {
   const edits = edCollectEdits();
   const msg = document.getElementById("edmsg");
-  if (!edits.length) { msg.textContent = "Chưa sửa câu nào để áp dụng."; return; }
+  // thay đổi config ⚙️ / âm nền cũng áp được qua nút này (không cần sửa câu)
+  const bedSel = document.getElementById("ed-bedvol"), bedWrap = document.getElementById("ovf-BEDVOL");
+  const bedHidden = bedWrap && bedWrap.style.display === "none";
+  const bed_gain_db = bedSel && bedSel.value !== "" && !bedHidden ? parseFloat(bedSel.value) : null;
+  const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
+  const depth = env_overrides !== null ? edOvDepth(env_overrides) : null;
+  const bedChanged = bed_gain_db !== null && String(bed_gain_db) !== String(edBedOrig ?? "");
+  if (!edits.length && !depth && !bedChanged) {
+    msg.textContent = "Chưa có thay đổi nào (câu / ⚙️ tùy chọn / 🎚 âm nền) để áp dụng."; return;
+  }
+  // đổi nhóm SÂU phá nhiều thứ → xác nhận như nút 💾 (áp dụng cũng dịch/nhận dạng lại thật)
+  if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) return;
+  if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) return;
   // job đã render xong: đọc lại sẽ xoá bản final hiện tại (phải render lại sau) → hỏi trước
-  if (edHadFinal && !confirm("Áp dụng giọng sẽ xoá bản video đã render (final) và cần render lại sau khi ưng. Tiếp tục?")) return;
+  if (edHadFinal && !confirm("Áp dụng sẽ xoá bản video đã render (final) và cần render lại sau khi ưng. Tiếp tục?")) return;
   const btn = document.getElementById("edapplybtn");
-  btn.disabled = true; btn.textContent = "⏳ Đang đọc lại...";
+  btn.disabled = true; btn.textContent = "⏳ Đang áp dụng...";
   const v = document.getElementById("edvideo");
   const resumeAt = v ? v.currentTime : 0;
   // PHẢI nhả dub trước khi server xoá/trộn lại (Windows khoá dubbed_audio.wav đang phát →
@@ -2884,21 +2900,24 @@ async function edApplyVoices() {
   edReleaseDub();
   if (edHadFinal && v) { v.src = `/api/jobs/${edJobId}/source`; edHadFinal = false; }
   try {
-    const bedSel = document.getElementById("ed-bedvol"), bedWrap = document.getElementById("ovf-BEDVOL");
-    const bedHidden = bedWrap && bedWrap.style.display === "none";
-    const bed_gain_db = bedSel && bedSel.value !== "" && !bedHidden ? parseFloat(bedSel.value) : null;
-    const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ edits, render: null, rebuild_only: true, bed_gain_db, env_overrides }) });
     const raw = await res.text();
     if (!res.ok) { msg.textContent = "Lỗi: " + _errDetail(raw, res.status); edReloadDub(); refresh(); return; }
     const r = raw ? JSON.parse(raw) : {};
-    if (!r.changed) { msg.textContent = "Không có thay đổi để áp dụng (trùng bản đã lưu)."; edReloadDub(); return; }
-    msg.textContent = "Đang đọc lại + trộn lồng tiếng — xem tiến độ ngay bên dưới…";
+    if (!r.changed && !depth && !bedChanged) { msg.textContent = "Không có thay đổi để áp dụng (trùng bản đã lưu)."; edReloadDub(); return; }
+    if (env_overrides !== null) edOvOrig = env_overrides;   // chốt bản mới làm mốc so sánh
+    if (bedChanged) edBedOrig = bed_gain_db;
+    msg.textContent = "Đang áp dụng + trộn lồng tiếng — xem tiến độ ngay bên dưới…";
     const j = await edWaitRebuild(edJobId);
     if (!j) { msg.textContent = "Đọc lại lâu hơn dự kiến — kiểm tra tab Jobs rồi mở lại."; return; }
     if (j.stage === "failed") { msg.textContent = "Đọc lại lỗi: " + (j.error || "(xem tab Jobs)"); edReloadDub(); return; }
+    if (depth === "translate" || depth === "transcript") {
+      // bản dịch/transcript đã THAY HOÀN TOÀN → nạp lại editor với dữ liệu mới
+      await openEditor(edJobId);
+      return;
+    }
     // áp dụng xong: cập nhật edSegs theo nội dung đã lưu, bỏ đánh dấu sửa
     for (const e of edits) {
       const seg = edSegs.find(s => s.id === e.id);
@@ -2913,7 +2932,7 @@ async function edApplyVoices() {
   } catch (e) {
     msg.textContent = "Lỗi: " + e;
   } finally {
-    btn.disabled = false; btn.textContent = "🔁 Áp dụng câu đã sửa (đọc lại)";
+    btn.disabled = false; btn.textContent = "🔁 Áp dụng & nghe thử (không render)";
   }
 }
 // Chờ worker đọc lại + trộn xong (job rời khỏi trạng thái chạy/hàng đợi). Trả job hoặc null.
