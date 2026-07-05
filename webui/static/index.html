@@ -298,6 +298,12 @@
     color: var(--text); border: 1px solid var(--border); border-radius: 8px;
     padding: 6px 10px; font: inherit; font-size: 13px; }
   @media (max-width: 720px) { .ov-grid { grid-template-columns: 1fr; } }
+  /* thanh hành động Lưu/Áp dụng DÍNH ĐÁY màn Chỉnh sửa — cuộn tới đâu cũng bấm được */
+  .ed-actionbar { position: sticky; bottom: 12px; display: flex; align-items: center;
+    gap: 12px; margin-top: 12px; padding: 10px 16px;
+    background: color-mix(in srgb, var(--card2) 92%, transparent);
+    backdrop-filter: blur(8px); border: 1px solid var(--border2);
+    border-radius: var(--radius); box-shadow: var(--shadow); z-index: 60; }
 </style>
 </head>
 <body>
@@ -2081,26 +2087,7 @@ async function openEditor(id) {
     <div class="ed-top">
       <button class="ghost" onclick="closeEditor()">← Quay lại</button>
       <b>Chỉnh sửa</b>
-      <span class="meta">${edSegs.length} câu · chỉ câu sửa mới được đọc lại</span>
-      <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Đọc lại các câu đã sửa + trộn lại lồng tiếng (chưa render) để nghe ngay trong editor">🔁 Áp dụng câu đã sửa (đọc lại)</button>
-      <button onclick="edSave()" id="edsavebtn">💾 Lưu & render lại</button>
-      <select id="edbulkvoice" class="ed-bulkvoice" title="Giọng áp cho TẤT CẢ câu">
-        <option value="nam">Nam — mặc định (${esc(data.voices.nam)})</option>
-        <option value="nu">Nữ — mặc định (${esc(data.voices.nu)})</option>
-        ${edVoices.map(v => `<option value="ref:${esc(v.file)}">🎙 ${esc(v.name)}</option>`).join("")}
-      </select>
-      <button class="ghost" onclick="edApplyAllVoice()" title="Đặt giọng đã chọn cho TẤT CẢ câu, rồi bấm Áp dụng / Lưu & render để đọc lại">↪ Đổi toàn bộ</button>
-      <span class="meta">🎙 Xử lý giọng:</span>
-      <select id="fx-ed" class="ed-bulkvoice" title="Hậu kỳ giọng (EQ/nén/chuẩn độ to) — áp khi 💾 Lưu & render lại">${fxOptionsHtml((data.render || {}).fx || "off")}</select>
-      <span class="meta">🎚 Âm nền gốc:</span>
-      <select id="ed-bedvol" class="ed-bulkvoice"
-        title="Âm lượng audio GỐC dưới giọng đọc — output quá to/nhỏ thì chỉnh rồi 💾 Lưu & render lại (chỉ trộn lại, KHÔNG đọc lại giọng)">
-        ${[["", "— giữ nguyên —"], ["-8", "To hơn (-8dB)"], ["-14", "Vừa (-14dB, mặc định)"],
-           ["-20", "Nhỏ (-20dB)"], ["-26", "Rất nhỏ (-26dB)"], ["-34", "Gần tắt (-34dB)"]]
-          .map(([v, l]) => `<option value="${v}" ${String(data.bed_gain_db ?? "") === v ? "selected" : ""}>${l}</option>`).join("")}
-      </select>
-      ${data.single_voice ? '<span class="meta" title="TTS_SINGLE_VOICE=1 trong Cấu hình">🔊 1 giọng: mọi câu đọc giọng chính — nhãn nam/nữ chỉ để casting</span>' : ""}
-      <span class="meta" id="edmsg"></span>
+      <span class="meta">${edSegs.length} câu · chỉ câu sửa mới được đọc lại · nút Lưu/Áp dụng ở thanh DƯỚI cùng</span>
     </div>
     <div class="ed-prog" id="edprogress"></div>
     <div class="ed-split">
@@ -2129,7 +2116,12 @@ async function openEditor(id) {
       <div class="ed-list" id="edlist">${rows}</div>
       <datalist id="ed-castnames">${edCastNames.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
     </div>
-    ${edSettingsPanel(data)}`;
+    ${edSettingsPanel(data)}
+    <div class="ed-actionbar">
+      <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Đọc lại các câu đã sửa + trộn lại lồng tiếng (chưa render) để nghe ngay trong editor">🔁 Áp dụng câu đã sửa (đọc lại)</button>
+      <button onclick="edSave()" id="edsavebtn">💾 Lưu & render lại</button>
+      <span class="meta" id="edmsg" style="margin:0"></span>
+    </div>`;
   for (const t of ["over", "jobs", "cfg"]) document.getElementById("pane-" + t).style.display = "none";
   document.getElementById("pane-edit").style.display = "";
   const ev = document.getElementById("edvideo");
@@ -2407,12 +2399,39 @@ function edOverridePanel(data) {
     return `<div class="ov-field" id="ovf-${key}">
       <span class="ov-label" id="ovl-${key}">${label}</span>${inner}</div>`;
   };
+  // control KHÔNG phải env-override nhưng cùng ngữ cảnh — nhét vào đúng nhóm:
+  // 🎚 Âm nền gốc (bed_gain_db, nhóm Trộn — CHỈ hiện khi Nhạc/SFX = hạ đều, xem applyOvDeps),
+  // 🎙 giọng tất cả câu + Xử lý giọng (nhóm Giọng đọc)
+  const extras = {
+    mix: `<div class="ov-field" id="ovf-BEDVOL">
+      <span class="ov-label" title="Mức hạ audio GỐC dưới giọng đọc — chỉ trộn lại, KHÔNG đọc lại giọng">🎚 Âm nền gốc</span>
+      <select id="ed-bedvol">
+        ${[["", "— giữ nguyên —"], ["-8", "To hơn (-8dB)"], ["-14", "Vừa (-14dB, mặc định)"],
+           ["-20", "Nhỏ (-20dB)"], ["-26", "Rất nhỏ (-26dB)"], ["-34", "Gần tắt (-34dB)"]]
+          .map(([v, l]) => `<option value="${v}" ${String(data.bed_gain_db ?? "") === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select></div>`,
+    tts: `<div class="ov-field">
+      <span class="ov-label" title="Đặt giọng cho TẤT CẢ câu rồi bấm Áp dụng / Lưu & render">🎙 Giọng tất cả câu</span>
+      <span style="display:flex;gap:6px;min-width:0">
+        <select id="edbulkvoice" style="flex:1;min-width:0">
+          <option value="nam">Nam — mặc định (${esc(data.voices.nam)})</option>
+          <option value="nu">Nữ — mặc định (${esc(data.voices.nu)})</option>
+          ${edVoices.map(v => `<option value="ref:${esc(v.file)}">🎙 ${esc(v.name)}</option>`).join("")}
+        </select>
+        <button class="ghost" type="button" onclick="edApplyAllVoice()">↪ Đổi toàn bộ</button>
+      </span></div>
+    <div class="ov-field">
+      <span class="ov-label" title="Hậu kỳ giọng (EQ/nén/chuẩn độ to) — áp khi render">🎛 Xử lý giọng</span>
+      <select id="fx-ed">${fxOptionsHtml((data.render || {}).fx || "off")}</select></div>`,
+  };
+  const hint = data.single_voice
+    ? ' <span class="meta" style="margin:0">· 🔊 1 giọng: mọi câu đọc giọng chính — nhãn nam/nữ chỉ để casting</span>' : "";
   const groups = ED_OV_GROUPS.map(([g, title, cost]) => `
     <div class="ov-group"><b style="color:var(--accent)">${title}</b>
-      <span class="meta" style="margin:0"> — ${cost}</span></div>
-    <div class="ov-grid">${ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
+      <span class="meta" style="margin:0"> — ${cost}</span>${g === "tts" ? hint : ""}</div>
+    <div class="ov-grid">${(extras[g] || "") + ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
   // onchange nổi bọt từ mọi select bên trong → cập nhật ẩn/hiện field phụ thuộc
-  return `<details class="ed-settings" ${Object.keys(ov).length ? "open" : ""} onchange="applyOvDeps()">
+  return `<details class="ed-settings" open onchange="applyOvDeps()">
     <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
     ${groups}
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
@@ -2449,6 +2468,8 @@ function applyOvDeps() {
   show("WHISPER_MODEL", ts !== "ocr");
   show("OCR_FPS", ts !== "whisper");
   show("OCR_CROP_TOP", ts !== "whisper");
+  // 🎚 Âm nền gốc: theo yêu cầu user, chỉ hiện khi Nhạc/SFX gốc = "hạ ĐỀU suốt video"
+  show("BEDVOL", edOvEff("KEEP_BGM") === "flat");
 }
 function edCollectOverrides() {
   const out = {};
@@ -2778,8 +2799,9 @@ async function edSave() {
   if (sv) { sv.pause(); sv.removeAttribute("src"); try { sv.load(); } catch (e) {} }
   const reset = () => { btn.disabled = false; btn.textContent = "💾 Lưu & render lại"; };
   try {
-    const bedSel = document.getElementById("ed-bedvol");
-    const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
+    const bedSel = document.getElementById("ed-bedvol"), bedWrap = document.getElementById("ovf-BEDVOL");
+    const bedHidden = bedWrap && bedWrap.style.display === "none";   // chỉ áp khi chế độ hạ đều
+    const bed_gain_db = bedSel && bedSel.value !== "" && !bedHidden ? parseFloat(bedSel.value) : null;
     // ⚙️ override theo job: gửi cả {} (= xóa hết đè, về theo cấu hình chung)
     const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     // đổi nhóm SÂU (dịch lại / nhận dạng lại) phá nhiều thứ → xác nhận trước
@@ -2834,8 +2856,9 @@ async function edApplyVoices() {
   edReleaseDub();
   if (edHadFinal && v) { v.src = `/api/jobs/${edJobId}/source`; edHadFinal = false; }
   try {
-    const bedSel = document.getElementById("ed-bedvol");
-    const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
+    const bedSel = document.getElementById("ed-bedvol"), bedWrap = document.getElementById("ovf-BEDVOL");
+    const bedHidden = bedWrap && bedWrap.style.display === "none";
+    const bed_gain_db = bedSel && bedSel.value !== "" && !bedHidden ? parseFloat(bedSel.value) : null;
     const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" },
