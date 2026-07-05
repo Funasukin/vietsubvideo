@@ -920,6 +920,9 @@ def get_segments(job_id: str) -> dict:
              "voice": s.get("voice", "nam"), "voice_ref": s.get("voice_ref", ""),
              "character": s.get("character", ""),
              "emotion": s.get("emotion", ""),
+             # mốc các dòng sub gốc bị gộp — editor tách phụ đề XEM TRƯỚC đúng nhịp
+             # như make_srt (sub_split), khỏi hiện nguyên câu gộp dài
+             "pieces": s.get("pieces") or [],
              "mute": bool(s.get("mute", False))}
             for s in data["segments"]]
     # Giọng mặc định nam/nữ theo ĐÚNG engine đang dùng (để editor hiển thị khớp Cấu hình)

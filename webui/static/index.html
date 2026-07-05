@@ -2465,15 +2465,70 @@ function edRowPlay(e, i) {
   edHighlight();
 }
 
+// Port của s8_render._split_text: chia text thành weights.length phần theo tỉ trọng,
+// cắt tại dấu câu khi đủ vế (không đủ thì cắt theo từ). null nếu quá ít từ để chia.
+const _CLAUSE_SPLIT_RE = /(?<=[,;:.!?…—])\s+|(?<=[。？！、；：])\s*/;
+function edSplitText(text, weights) {
+  const n = weights.length;
+  let parts = text.split(_CLAUSE_SPLIT_RE).filter(p => p && p.trim());
+  if (parts.length < n) {
+    parts = text.split(/\s+/).filter(Boolean);
+    if (parts.length < n) return null;
+  }
+  const totW = weights.reduce((a, b) => a + b, 0) || 1.0;
+  const totLen = parts.reduce((a, p) => a + p.length + 1, 0);
+  const out = []; let ci = 0;
+  for (let i = 0; i < n; i++) {
+    const leftParts = parts.length - ci;
+    let take;
+    if (i === n - 1) take = leftParts;
+    else {
+      const target = totLen * weights[i] / totW;
+      take = 0; let ln = 0;
+      while (take < leftParts - (n - 1 - i)) {         // chừa đủ mỗi phần sau ≥1 vế
+        const nxt = parts[ci + take].length + 1;
+        if (take > 0 && ln + nxt / 2 > target) break;  // vượt quá nửa vế kế thì dừng
+        ln += nxt; take += 1;
+      }
+      take = Math.max(1, take);
+    }
+    out.push(parts.slice(ci, ci + take).join(" "));
+    ci += take;
+  }
+  return out;
+}
+
+// Phụ đề XEM TRƯỚC tại thời điểm t của câu idx — cùng logic tách nhịp với make_srt
+// (sub_split): câu gộp từ nhiều dòng sub gốc → chỉ hiện ĐÚNG mảnh đang tới nhịp,
+// khỏi lòi nguyên câu dài che màn hình (điều kiện, tỉ trọng y hệt bản render).
+function edSubAt(idx, t) {
+  const seg = edSegs[idx];
+  const txt = document.getElementById("edvi-" + idx).value;
+  const sspl = document.getElementById("sspl");
+  const splitOn = sspl ? sspl.value === "1" : true;
+  const pieces = seg.pieces || [];
+  if (!splitOn || pieces.length < 2 || txt.split(/\s+/).filter(Boolean).length < 2 * pieces.length)
+    return txt;
+  const texts = edSplitText(txt, pieces.map(p => Math.max(1.0, p.len || 1)));
+  if (!texts) return txt;
+  for (let k = 0; k < pieces.length; k++) {
+    const end = (k + 1 < pieces.length) ? pieces[k + 1].start : pieces[k].end;
+    if (t < end) return texts[k];
+  }
+  return texts[texts.length - 1];
+}
+
 function edHighlight() {
   const t = document.getElementById("edvideo").currentTime;
   let idx = -1;
   for (let i = 0; i < edSegs.length; i++)
     if (t >= edSegs[i].start && t < edSegs[i].end) { idx = i; break; }
+  const subSpan = document.querySelector("#ed-sub-ov span");
+  // phụ đề xem trước cập nhật theo TỪNG mảnh (không chỉ khi đổi câu) — nhịp sub gốc
+  if (subSpan && idx >= 0) { subSpan.textContent = edSubAt(idx, t); edStyleSub(); }
   if (idx === edCurIdx) return;
   if (edCurIdx >= 0) document.getElementById("edrow-" + edCurIdx)?.classList.remove("cur");
   edCurIdx = idx;
-  const subSpan = document.querySelector("#ed-sub-ov span");
   if (idx >= 0) {
     const row = document.getElementById("edrow-" + idx);
     row.classList.add("cur");
@@ -2481,9 +2536,7 @@ function edHighlight() {
     const ae = document.activeElement;
     if (!(ae && document.getElementById("edlist").contains(ae)))
       row.scrollIntoView({ block: "center", behavior: "smooth" });
-    const txt = document.getElementById("edvi-" + idx).value;
-    document.getElementById("ednow").textContent = txt;
-    if (subSpan) { subSpan.textContent = txt; edStyleSub(); }   // phụ đề xem trước theo câu
+    document.getElementById("ednow").textContent = document.getElementById("edvi-" + idx).value;
   } else if (subSpan) {
     subSpan.textContent = ""; edStyleSub();   // ngoài câu → ẩn phụ đề xem trước
   }

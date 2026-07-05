@@ -6,6 +6,23 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix: phụ đề XEM TRƯỚC trong editor hiện nguyên câu gộp dài (sub thật đã tách)
+
+User soi ảnh: sub gốc 1 dòng ngắn (吴经理负责二楼) mà overlay editor lòi cả câu gộp
+5 dòng. `sub_vi.srt`/final.mp4 THẬT đã tách đúng (91 block) — chỉ overlay preview
+(`edHighlight`) hiển thị nguyên textarea, không qua logic tách nhịp.
+
+- server `get_segments` trả thêm `pieces` (trước bị strip).
+- JS port `edSplitText()` = `s8_render._split_text` (cùng regex dấu câu, cùng tỉ
+  trọng, cùng điều kiện ≥2 từ/mảnh) + `edSubAt(idx,t)` chọn đúng mảnh theo nhịp;
+  overlay cập nhật theo TỪNG mảnh (mỗi timeupdate), tôn trọng select "sspl".
+- Verify parity trên seg 4 job 40de66: JS tách y hệt Python từng ký tự; t=24.3s
+  hiện đúng "Quản lý Ngô phụ trách tầng hai mà," khớp sub gốc trong ảnh user.
+
+---
+
 ## 2026-07-05 (1) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix 3 vấn đề user nghe/thấy trên video dọc Douyin (job 40de66)
