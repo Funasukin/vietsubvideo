@@ -58,9 +58,12 @@ def sig_tag(seg: dict) -> str:
 
 def edge_kwargs(seg: dict) -> dict:
     """Tham số edge_tts.Communicate = prosody (đo audio) + offset cảm xúc, kẹp trần.
-    Thay thế prosody.edge_kwargs trong S5 — nhãn tắt/bình thường thì y hệt bản cũ."""
+    Thay thế prosody.edge_kwargs trong S5 — nhãn tắt/bình thường thì y hệt bản cũ.
+    Pitch prosody lấy qua prosody.pitch_hz() (chế độ 1 giọng → 0, giữ giọng đồng nhất);
+    pitch CẢM XÚC nhỏ vẫn cộng (diễn cảm theo câu, không đổi "danh tính" giọng)."""
+    from core import prosody as _pro
     p = seg.get("prosody") or {}
-    r, pi, v = p.get("rate_pct", 0), p.get("pitch_hz", 0), p.get("vol_pct", 0)
+    r, pi, v = p.get("rate_pct", 0), _pro.pitch_hz(seg), p.get("vol_pct", 0)
     e = label(seg)
     if e:
         er, ep, ev = _EDGE[e]

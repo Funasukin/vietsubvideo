@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import os
 
 import edge_tts
 
@@ -76,6 +78,50 @@ def _write_sig(job: Job, seg: dict, sig: str) -> None:
     _seg_path(job, seg["id"]).with_suffix(".sig").write_text(sig, encoding="utf-8")
 
 
+_FIT_TOL = 1.02          # dung sai 2%: dài hơn slot cỡ này mới phải đọc lại
+_FIT_RATE_MAX = 50       # trần TỔNG rate edge (%) — nhanh hơn nữa nghe máy móc
+
+
+def _mp3_dur_s(path) -> float | None:
+    """Thời lượng mp3 (giây) — decode bằng pydub (đã là dependency của S7)."""
+    try:
+        from pydub import AudioSegment
+        return len(AudioSegment.from_file(path)) / 1000.0
+    except Exception:
+        return None
+
+
+async def _fit_slot(seg: dict, voice: str, out) -> None:
+    """Chống tràn thoại (#3): bản đọc DÀI hơn slot (khoảng trống tới câu kế) → đọc
+    lại MỘT lần với rate cộng thêm đúng phần vượt — edge rate giữ cao độ và tự nhiên
+    hơn atempo hậu kỳ. S7 vẫn atempo phần dư còn lại → cộng 2 lớp là giọng đọc khớp
+    hoặc hụt hơn giọng gốc một chút. Lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
+    slot = seg.get("_slot_s")
+    if not slot:
+        return
+    dur = _mp3_dur_s(out)
+    if not dur or dur <= slot * _FIT_TOL:
+        return
+    kw = emotion.edge_kwargs(seg)
+    base = int(kw.get("rate", "+0%").rstrip("%"))
+    total = min(_FIT_RATE_MAX, base + math.ceil((dur / slot - 1) * 100))
+    if total <= base:
+        return
+    kw["rate"] = f"{total:+d}%"
+    tmp = out.with_suffix(".fit.mp3")
+    try:
+        await asyncio.wait_for(
+            edge_tts.Communicate(seg["text_vi"], voice, **kw).save(str(tmp)),
+            timeout=config.TTS_TIMEOUT_S)
+        if tmp.exists() and tmp.stat().st_size > 0:
+            os.replace(tmp, out)
+            print(f"  ↳ câu {seg['id']}: {dur:.1f}s > slot {slot:.1f}s → đọc lại rate {total:+d}%")
+    except Exception:
+        pass
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
     out = _seg_path(job, seg["id"])
     # bỏ qua nếu mp3 còn đúng giọng (khớp .sig); 0 byte/khác giọng → đọc lại
@@ -97,6 +143,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
                 await asyncio.sleep(2 ** attempt)  # 2s, 4s, 8s
                 continue
             if out.exists() and out.stat().st_size > 0:
+                await _fit_slot(seg, voice, out)        # chống tràn: dài quá slot → đọc lại nhanh hơn
                 prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
                 # ghi giọng THỰC tế đã đọc (kèm tông giọng + cảm xúc) — giữ "edge:" tường
                 # minh vì nhánh fallback vixtts→edge cần sig LỆCH _voice_sig để thử lại
@@ -217,6 +264,13 @@ def run(job: Job) -> None:
         print(f"  Tông giọng (audio): chỉnh {n_pro} câu theo giọng gốc")
     (job.dir / "transcript_vi.json").write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Gắn slot GIÂY cho từng câu (đến start câu KẾ, kể cả câu mute — cùng công thức
+    # với S7) → edge-tts tự đọc lại nhanh hơn khi bản đọc dài quá slot (_fit_slot).
+    # Gắn SAU khi ghi transcript: khóa "_slot_s" chỉ sống trong RAM, không vào file.
+    full = sorted(data["segments"], key=lambda s: s["start"])
+    for k, s in enumerate(full):
+        nxt = full[k + 1]["start"] if k + 1 < len(full) else None
+        s["_slot_s"] = max(0.3, nxt - s["start"]) if nxt is not None else None
     # bỏ câu rỗng và câu bị "Mute" (không lồng tiếng Việt, giữ tiếng gốc)
     segments = [s for s in data["segments"] if s["text_vi"].strip() and not s.get("mute")]
     if not segments:

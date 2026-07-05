@@ -19,10 +19,23 @@ from core import audio_np, ffmpeg
 from core.job import Job
 
 
+def _trim_silence(a: np.ndarray, rate: int, thresh: int = 300, pad_ms: int = 40) -> np.ndarray:
+    """Cắt khoảng LẶNG 2 đầu file TTS (edge hay đệm ~0.3–0.7s im lặng cuối file) —
+    hết "tràn giả" do đuôi câm và giọng không đè rớt sang câu sau. Giữ pad_ms đệm."""
+    if not len(a):
+        return a
+    nz = np.nonzero(np.abs(a).max(axis=1) > thresh)[0]
+    if not len(nz):
+        return a
+    pad = int(pad_ms / 1000 * rate)
+    return a[max(0, int(nz[0]) - pad): min(len(a), int(nz[-1]) + pad)]
+
+
 def _load_voice(path, rate: int) -> np.ndarray:
-    """Decode mp3/wav TTS → mảng int16 (n, 2) cùng sample rate với nền."""
+    """Decode mp3/wav TTS → mảng int16 (n, 2) cùng sample rate với nền, đã cắt lặng 2 đầu."""
     seg = AudioSegment.from_file(path).set_frame_rate(rate).set_channels(2)
-    return np.array(seg.get_array_of_samples(), dtype=np.int16).reshape(-1, 2)
+    a = np.array(seg.get_array_of_samples(), dtype=np.int16).reshape(-1, 2)
+    return _trim_silence(a, rate)
 
 
 def run(job: Job) -> None:
@@ -56,8 +69,10 @@ def run(job: Job) -> None:
         if len(voice) > slot:
             factor = min(config.MAX_SPEEDUP, len(voice) / slot)
             sped = job.dir / "tts" / f"seg_{seg['id']:04d}_sped.wav"
-            if not sped.exists():
-                ffmpeg.run("-i", str(mp3), "-filter:a", f"atempo={factor:.4f}", str(sped))
+            # LUÔN tạo lại: factor phụ thuộc slot + mp3 hiện tại — bản _sped của lần
+            # chạy trước (text/slot khác) mà tái dùng là sai tốc độ âm thầm
+            sped.unlink(missing_ok=True)
+            ffmpeg.run("-i", str(mp3), "-filter:a", f"atempo={factor:.4f}", str(sped))
             voice = _load_voice(sped, rate)
             if len(voice) > slot:
                 warnings.append({

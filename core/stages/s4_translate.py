@@ -29,6 +29,7 @@ SYSTEM = """Bạn là dịch giả chuyên nghiệp chuyên dịch phim/truyện
 
 Quy tắc:
 - Dịch tự nhiên như lời nói, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ được đọc bằng TTS theo timing gốc.
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch TỐI ĐA ≈ 4×max_s âm tiết (tiếng). Vượt thì LƯỢC từ đệm, diễn đạt gọn hơn nhưng GIỮ TRỌN ý; thà ngắn hơn một chút còn hơn dài (dài quá giọng đọc sẽ lệch khỏi hình).
 - XƯNG HÔ: bối cảnh cổ trang/tu tiên dùng nhất quán "ngươi/ta" (ngang hàng), "ngài/tại hạ" (kính trọng), "huynh/đệ/muội". TUYỆT ĐỐI không dùng "bạn/tôi/anh ấy" trong bối cảnh cổ trang.
 - Tên riêng Trung Quốc chuyển sang âm Hán-Việt (叶凡 → Diệp Phàm, 萧炎 → Tiêu Viêm, 萧公子 → Tiêu công tử).
 - Tên phiên âm pinyin trong sub tiếng Anh cũng chuyển về Hán-Việt quen thuộc: Wukong → Ngộ Không, Tang Monk/Tang Seng → Đường Tăng, Bajie → Bát Giới, Wujing → Ngộ Tĩnh, Nezha → Na Tra, Erlang → Nhị Lang.
@@ -43,6 +44,7 @@ GENERAL_SYSTEM = """Bạn là dịch giả chuyên nghiệp, dịch phụ đề/
 
 Quy tắc:
 - Dịch TỰ NHIÊN như lời nói người Việt, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch TỐI ĐA ≈ 4×max_s âm tiết (tiếng). Vượt thì LƯỢC từ đệm, diễn đạt gọn hơn nhưng GIỮ TRỌN ý; thà ngắn hơn một chút còn hơn dài (dài quá giọng đọc sẽ lệch khỏi hình).
 - Xưng hô HIỆN ĐẠI, phù hợp ngữ cảnh (tôi/bạn/anh/chị/em/ông/bà/mình/cậu...), suy từ quan hệ nhân vật. Chỉ dùng lối cổ trang/kiếm hiệp nếu nội dung RÕ RÀNG là cổ trang.
 - Tên riêng, thương hiệu, địa danh, thuật ngữ nước ngoài: giữ NGUYÊN gốc hoặc phiên âm quen thuộc với người Việt; KHÔNG ép sang Hán-Việt.
 - Dịch đúng nghĩa thuật ngữ chuyên ngành; giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -58,6 +60,7 @@ def _lang_system(lang_name: str) -> str:
 Quy tắc:
 - TOÀN BỘ trường "text_vi" phải là {lang_name} (tên trường giữ nguyên vì lý do kỹ thuật).
 - Dịch TỰ NHIÊN như lời nói bản xứ, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu — bản dịch phải ĐỌC XONG trong chừng đó giây ở tốc độ nói tự nhiên. Vượt thì lược từ đệm, diễn đạt gọn hơn nhưng giữ trọn ý; thà ngắn hơn một chút còn hơn dài.
 - Xưng hô/văn phong phù hợp ngữ cảnh và văn hóa của {lang_name}.
 - Tên riêng, thương hiệu, địa danh: dùng dạng quen thuộc trong {lang_name} (tên quốc tế thường giữ nguyên).
 - Giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -76,7 +79,7 @@ Soát 5 lỗi:
 4. Còn sót NGUYÊN câu chưa dịch sang {lang_name}.
 5. Nhãn voice sai rõ ràng so với ngữ cảnh.
 
-Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa bằng {lang_name}, ngắn gọn (đọc TTS). Không có gì cần sửa → mảng rỗng."""
+Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa bằng {lang_name}, ngắn gọn (đọc TTS) và KHÔNG DÀI HƠN câu đang có. Không có gì cần sửa → mảng rỗng."""
 
 
 def _batch_schema(with_character: bool = False, with_emotion: bool = False) -> dict:
@@ -143,8 +146,10 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
     if context:
         ctx = "\n".join(f"- {src} → {vi}" for src, vi in context)
         parts.append(f"Ngữ cảnh (các câu ngay trước, đã dịch):\n{ctx}\n")
-    # kèm nhãn người nói (nếu diarize gán được) — Claude gán character/voice nhất quán
+    # kèm nhãn người nói (nếu diarize gán được) — Claude gán character/voice nhất quán.
+    # max_s = ngân sách GIÂY của slot gốc → model tự canh độ dài bản dịch (chống tràn slot)
     payload = [{"id": s["id"], "text": s["text"],
+                "max_s": round(max(0.5, s["end"] - s["start"]), 1),
                 **({"speaker": s["speaker"]} if s.get("speaker") else {})}
                for s in batch]
     parts.append("Dịch các segment sau sang tiếng Việt:"
@@ -192,7 +197,7 @@ Soát 5 lỗi:
 4. Còn sót ký tự Trung/Anh (trừ tên cấp bậc E, SSS...).
 5. Nhãn voice sai rõ ràng so với ngữ cảnh (lời rõ ràng của nữ mà gắn "nam"...).
 
-Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa phải thuần Việt, ngắn gọn vì sẽ đọc TTS. Không có gì cần sửa thì trả mảng rỗng."""
+Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa phải thuần Việt, ngắn gọn vì sẽ đọc TTS và KHÔNG DÀI HƠN câu đang có. Không có gì cần sửa thì trả mảng rỗng."""
 
 # Review CHUNG (mọi thể loại/ngôn ngữ)
 GENERAL_REVIEW_SYSTEM = """Bạn là biên tập bản dịch thuyết minh video (mọi thể loại, mọi ngôn ngữ nguồn). Bạn nhận toàn bộ bản dịch một video (dịch theo từng đoạn nên có thể lệch nhau) và chỉ trả về những segment CẦN SỬA.
@@ -204,7 +209,7 @@ Soát 5 lỗi:
 4. Còn sót NGUYÊN câu tiếng nước ngoài chưa dịch.
 5. Nhãn voice sai rõ ràng so với ngữ cảnh.
 
-Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa thuần Việt, ngắn gọn (đọc TTS). Không có gì cần sửa → mảng rỗng."""
+Quy tắc: KHÔNG đổi nghĩa, không gộp/tách câu, không sửa câu đã ổn. Câu sửa thuần Việt, ngắn gọn (đọc TTS), KHÔNG DÀI HƠN câu đang có. Không có gì cần sửa → mảng rỗng."""
 
 REVIEW_SCHEMA = {
     "type": "object",

@@ -44,10 +44,22 @@ def enabled() -> bool:
     return str(config.PROSODY).strip().lower() not in ("0", "false", "")
 
 
+def pitch_hz(seg: dict) -> int:
+    """Pitch prosody THỰC ÁP cho câu. Chế độ 1 giọng (TTS_SINGLE_VOICE): luôn 0 —
+    pitch bám cao độ NGƯỜI NÓI GỐC (nữ cao/nam trầm, baseline chung khi không diarize)
+    làm MỘT giọng đọc bị bẻ thành "nhiều giọng" khi video có nhiều người nói.
+    Rate/volume vẫn giữ (khớp nhịp + độ to, không đổi màu giọng). Nhãn pitch_hz vẫn
+    được đo/lưu trong transcript → tắt 1-giọng là dùng lại ngay, không phải đo lại."""
+    if config.TTS_SINGLE_VOICE:
+        return 0
+    return int((seg.get("prosody") or {}).get("pitch_hz", 0))
+
+
 def sig_tag(seg: dict) -> str:
-    """Đuôi chữ ký TTS: prosody đổi → .sig đổi → tự đọc lại câu đó."""
+    """Đuôi chữ ký TTS: prosody đổi → .sig đổi → tự đọc lại câu đó.
+    Dùng pitch_hz() (đã gate 1-giọng) → bật/tắt 1-giọng tự đọc lại đúng câu bị ảnh hưởng."""
     p = seg.get("prosody") or {}
-    return f":r{p.get('rate_pct', 0)}p{p.get('pitch_hz', 0)}v{p.get('vol_pct', 0)}"
+    return f":r{p.get('rate_pct', 0)}p{pitch_hz(seg)}v{p.get('vol_pct', 0)}"
 
 
 def edge_kwargs(seg: dict) -> dict:
@@ -56,8 +68,8 @@ def edge_kwargs(seg: dict) -> dict:
     kw = {}
     if p.get("rate_pct"):
         kw["rate"] = f"{p['rate_pct']:+d}%"
-    if p.get("pitch_hz"):
-        kw["pitch"] = f"{p['pitch_hz']:+d}Hz"
+    if pitch_hz(seg):
+        kw["pitch"] = f"{pitch_hz(seg):+d}Hz"
     if p.get("vol_pct"):
         kw["volume"] = f"{p['vol_pct']:+d}%"
     return kw

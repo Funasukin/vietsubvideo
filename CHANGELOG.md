@@ -6,6 +6,39 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (1) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix 3 vấn đề user nghe/thấy trên video dọc Douyin (job 40de66)
+
+**#1 "1 giọng mà nghe ra nhiều giọng"** — TTS đúng là chỉ dùng NamMinh (30/30 .sig)
+nhưng PROSODY ép PITCH theo cao độ giọng GỐC từng câu (baseline chung khi không
+diarize; video có cả diễn viên nam+nữ) → pitch bị bẻ −19..+23Hz → nghe như người
+khác. Fix: `prosody.pitch_hz(seg)` = 0 khi `TTS_SINGLE_VOICE` (gate lúc ĐỌC —
+sig_tag/edge_kwargs/emotion đi qua đây) → .sig tự đổi, chỉ câu bị ảnh hưởng đọc
+lại; nhãn pitch vẫn đo/lưu nên tắt 1-giọng là dùng lại ngay. Rate/volume + pitch
+CẢM XÚC nhỏ vẫn giữ (diễn cảm, không đổi danh tính giọng). Verify: sig tags còn
+đúng `p0` toàn bộ.
+
+**#2 "SUB_SPLIT không tách"** — KHÔNG phải bug: user xem output của bản OCR hỏng cũ
+(2 câu khổng lồ, không có nhịp để tách). Data mới: `pieces` sống đủ 23/30 segment,
+make_srt tách 30 câu → **101 dòng hiển thị** đúng nhịp sub gốc. Re-render là thấy.
+
+**#3 "giọng đọc lê sang câu sau"** (24/30 câu tràn, max 5715ms) — fix 3 lớp:
+1. S4: payload dịch thêm `max_s` (giây slot) + prompt "≈4 âm tiết/giây, thà ngắn
+   hơn"; review không được kéo dài câu. Bản dịch job này ngắn đi 31% (5731→3937 ký tự).
+2. S5: `_fit_slot()` — đọc xong đo mp3, dài quá slot (tới start câu kế) → đọc lại
+   MỘT lần với edge rate cộng đúng phần vượt (trần tổng +50%; rate TTS tự nhiên
+   hơn atempo). Chỉ nhánh edge; slot gắn `_slot_s` in-RAM, không vào transcript.
+3. S7: `_trim_silence()` cắt khoảng lặng 2 đầu file TTS (edge đệm ~0.3–0.7s câm ở
+   đuôi = "tràn giả") + fix bug file `_sped.wav` cũ bị tái dùng sai tốc độ.
+
+Kết quả job thật: tràn 24→16 câu, trong đó 13 câu ≤282ms (không nghe ra); 3 câu
+còn tràn nặng là **đoạn QUẢNG CÁO app thuê nhà chèn giữa video** — chữ UI app dày
+đặc bị OCR coi là thoại (60–76 chữ Hán/slot 1.5–5s, vật lý không đọc kịp) → đúng
+chỗ user Mute trong editor. 27 câu được S5 tự fit rate.
+
+---
+
 ## 2026-07-04 (12) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix BUG: video DỌC (Douyin/Shorts) OCR chỉ ra 2 câu (đáng lẽ ~100)

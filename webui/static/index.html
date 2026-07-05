@@ -834,7 +834,7 @@ async function loadConfig() {
     + row("MAX_SPEEDUP", "Đồng bộ khớp thoại", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"],
       {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
        "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
-      "", "Câu tiếng Việt đọc DÀI hơn khoảng trống của câu gốc → tự tăng tốc cho khớp timeline (atempo GIỮ NGUYÊN cao độ, không méo giọng). Đây là mức tăng tốc tối đa cho phép: cao thì khớp timing sát hơn nhưng giọng dồn nhanh; 1.0× = không đụng, câu dài sẽ tràn sang câu sau (ghi vào QC).")
+      "", "Câu tiếng Việt đọc DÀI hơn khoảng trống của câu gốc → tự tăng tốc cho khớp timeline (atempo GIỮ NGUYÊN cao độ, không méo giọng). Trước bước này app đã tự chống tràn 2 lớp: bản dịch canh theo số giây slot + giọng edge tự đọc lại nhanh hơn khi vẫn dài — atempo chỉ xử phần dư. Đây là mức tăng tốc tối đa cho phép; 1.0× = không đụng, câu dài sẽ tràn sang câu sau (ghi vào QC).")
     + `<div id="edge-voices">`
     + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
       "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu). Chế độ 1 giọng thì đây là giọng cho cả video.")
