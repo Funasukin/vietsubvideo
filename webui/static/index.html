@@ -484,7 +484,7 @@ const CFG_FIELDS = [
   ["VBEE_VOICE_NU", "Voice code nữ VBee", []],
   ["FPT_VOICE_NAM", "Giọng nam FPT", []],
   ["FPT_VOICE_NU", "Giọng nữ FPT", []],
-  ["KEEP_BGM", "Giữ nhạc nền (demucs)", ["0", "1"]],
+  ["KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "flat", "1"]],
   ["VOICE_FX", "Xử lý giọng", ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"]],
   ["PROSODY", "Tông giọng theo audio gốc", ["1", "0"]],
   ["EMOTION", "Nhãn cảm xúc khi dịch", ["1", "0"]],
@@ -695,7 +695,8 @@ async function loadConfig() {
   const V = c.values || {};
   // KEEP_BGM về từ config có thể là "False"/"True" (bool) — chuẩn hoá về "0"/"1"
   // để khớp option, khỏi lòi thêm dòng "False" vào dropdown.
-  V.KEEP_BGM = (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
+  V.KEEP_BGM = V.KEEP_BGM === "flat" ? "flat"
+    : (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
   V.DENOISE = (V.DENOISE === "1" || /^true$/i.test(V.DENOISE || "")) ? "1" : "0";
   V.TTS_SINGLE_VOICE = (V.TTS_SINGLE_VOICE === "1" || /^true$/i.test(V.TTS_SINGLE_VOICE || "")) ? "1" : "0";
   V.SHORTS_LEN = String(parseInt(V.SHORTS_LEN || "45", 10) || 45);   // "45.0" → "45"
@@ -814,9 +815,10 @@ async function loadConfig() {
       {"1": "1 giọng — cả video một giọng", "0": "2 giọng — nam & nữ riêng"},
       'onchange="applySingleVoiceUI()"',
       "<b>1 giọng</b>: bỏ phân biệt nam/nữ, mọi câu đọc cùng một giọng (bên dưới chỉ cần chọn 1 giọng). <b>2 giọng</b>: câu của nhân vật nam đọc giọng nam, nữ đọc giọng nữ (Claude + đo audio tự gán nhãn nam/nữ từng câu). Nhân vật đã cast riêng trong Series vẫn giữ giọng của mình dù chọn kiểu nào.")
-    + row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "1"],
-      {"0": "Tắt — hạ nhỏ audio gốc khi có thoại", "1": "Bật — tách giọng gốc bằng demucs (GPU)"},
-      "", "Bật: tách hẳn giọng nói gốc ra khỏi nhạc/hiệu ứng (demucs, cần GPU + chậm thêm ~¼ thời lượng) → nền giữ trọn vẹn, đo tông giọng cũng chính xác hơn. Tắt: chỉ hạ nhỏ toàn bộ audio gốc lúc có thoại — nhanh, không cần GPU.")
+    + row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "flat", "1"],
+      {"0": "Hạ audio gốc KHI CÓ thoại (duck)", "flat": "Hạ audio gốc ĐỀU suốt video",
+       "1": "Tách giọng gốc bằng demucs (GPU)"},
+      "", "Cách xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: chỉ hạ lúc có lồng tiếng, chỗ trống giữ nguyên — nền to nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định từ đầu tới cuối, dễ nghe, khỏi render lại vì bơm nền. <b>demucs</b>: tách hẳn giọng nói gốc khỏi nhạc/hiệu ứng (GPU, chậm thêm ~¼ thời lượng) — nền giữ trọn vẹn nhất. Mức hạ chỉnh tiếp được trong Sửa lời thoại (🎚 Âm nền gốc).")
     + row("VOICE_FX", "Xử lý giọng",
       ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
       {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
@@ -2071,6 +2073,14 @@ async function openEditor(id) {
       <button class="ghost" onclick="edApplyAllVoice()" title="Đặt giọng đã chọn cho TẤT CẢ câu, rồi bấm Áp dụng / Lưu & render để đọc lại">↪ Đổi toàn bộ</button>
       <span class="meta">🎙 Xử lý giọng:</span>
       <select id="fx-ed" class="ed-bulkvoice" title="Hậu kỳ giọng (EQ/nén/chuẩn độ to) — áp khi 💾 Lưu & render lại">${fxOptionsHtml((data.render || {}).fx || "off")}</select>
+      <span class="meta">🎚 Âm nền gốc:</span>
+      <select id="ed-bedvol" class="ed-bulkvoice"
+        title="Âm lượng audio GỐC dưới giọng đọc — output quá to/nhỏ thì chỉnh rồi 💾 Lưu & render lại (chỉ trộn lại, KHÔNG đọc lại giọng)">
+        ${[["", "— giữ nguyên —"], ["-8", "To hơn (-8dB)"], ["-14", "Vừa (-14dB, mặc định)"],
+           ["-20", "Nhỏ (-20dB)"], ["-26", "Rất nhỏ (-26dB)"], ["-34", "Gần tắt (-34dB)"]]
+          .map(([v, l]) => `<option value="${v}" ${String(data.bed_gain_db ?? "") === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select>
+      ${data.single_voice ? '<span class="meta" title="TTS_SINGLE_VOICE=1 trong Cấu hình">🔊 1 giọng: mọi câu đọc giọng chính — nhãn nam/nữ chỉ để casting</span>' : ""}
       <span class="meta" id="edmsg"></span>
     </div>
     <div class="ed-prog" id="edprogress"></div>
@@ -2104,6 +2114,15 @@ async function openEditor(id) {
   for (const t of ["over", "jobs", "cfg"]) document.getElementById("pane-" + t).style.display = "none";
   document.getElementById("pane-edit").style.display = "";
   const ev = document.getElementById("edvideo");
+  // #UX: danh sách câu cao BẰNG video bên cạnh (video dọc rất cao mà list bị kẹp 78vh
+  // thì thừa khoảng trống). Đo lại khi có metadata / đổi cỡ cửa sổ.
+  const fitList = () => {
+    const l = document.getElementById("edlist"), st = document.getElementById("ed-stage");
+    if (l && st && st.offsetHeight > 250) l.style.maxHeight = st.offsetHeight + "px";
+  };
+  ev.addEventListener("loadedmetadata", fitList);
+  window.addEventListener("resize", fitList);
+  setTimeout(fitList, 50);
   ev.addEventListener("timeupdate", edHighlight);
   ev.addEventListener("timeupdate", edUpdatePlayer);
   ev.addEventListener("loadedmetadata", () => { edStyleSub(); edUpdatePlayer(); });
@@ -2615,8 +2634,10 @@ async function edSave() {
   if (sv) { sv.pause(); sv.removeAttribute("src"); try { sv.load(); } catch (e) {} }
   const reset = () => { btn.disabled = false; btn.textContent = "💾 Lưu & render lại"; };
   try {
+    const bedSel = document.getElementById("ed-bedvol");
+    const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render, bed_gain_db }) });
     const raw = await res.text();
     if (!res.ok) {
       msg.textContent = "Lỗi: " + _errDetail(raw, res.status);
@@ -2663,9 +2684,11 @@ async function edApplyVoices() {
   edReleaseDub();
   if (edHadFinal && v) { v.src = `/api/jobs/${edJobId}/source`; edHadFinal = false; }
   try {
+    const bedSel = document.getElementById("ed-bedvol");
+    const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edits, render: null, rebuild_only: true }) });
+      body: JSON.stringify({ edits, render: null, rebuild_only: true, bed_gain_db }) });
     const raw = await res.text();
     if (!res.ok) { msg.textContent = "Lỗi: " + _errDetail(raw, res.status); edReloadDub(); refresh(); return; }
     const r = raw ? JSON.parse(raw) : {};

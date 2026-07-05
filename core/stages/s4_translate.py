@@ -29,7 +29,7 @@ SYSTEM = """Bạn là dịch giả chuyên nghiệp chuyên dịch phim/truyện
 
 Quy tắc:
 - Dịch tự nhiên như lời nói, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ được đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch TỐI ĐA ≈ 4×max_s âm tiết (tiếng). Vượt thì LƯỢC từ đệm, diễn đạt gọn hơn nhưng GIỮ TRỌN ý; thà ngắn hơn một chút còn hơn dài (dài quá giọng đọc sẽ lệch khỏi hình).
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch NHẮM ≈ 3–4×max_s âm tiết (tiếng), CÂN ĐỐI với nhịp câu gốc: TUYỆT ĐỐI không vượt (dài quá giọng đọc lệch khỏi hình, phải tăng tốc nghe gấp gáp); cũng đừng ngắn hơn hẳn ngân sách (đọc xong quá sớm nghe hụt so với môi nhân vật). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - XƯNG HÔ: bối cảnh cổ trang/tu tiên dùng nhất quán "ngươi/ta" (ngang hàng), "ngài/tại hạ" (kính trọng), "huynh/đệ/muội". TUYỆT ĐỐI không dùng "bạn/tôi/anh ấy" trong bối cảnh cổ trang.
 - Tên riêng Trung Quốc chuyển sang âm Hán-Việt (叶凡 → Diệp Phàm, 萧炎 → Tiêu Viêm, 萧公子 → Tiêu công tử).
 - Tên phiên âm pinyin trong sub tiếng Anh cũng chuyển về Hán-Việt quen thuộc: Wukong → Ngộ Không, Tang Monk/Tang Seng → Đường Tăng, Bajie → Bát Giới, Wujing → Ngộ Tĩnh, Nezha → Na Tra, Erlang → Nhị Lang.
@@ -44,7 +44,7 @@ GENERAL_SYSTEM = """Bạn là dịch giả chuyên nghiệp, dịch phụ đề/
 
 Quy tắc:
 - Dịch TỰ NHIÊN như lời nói người Việt, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch TỐI ĐA ≈ 4×max_s âm tiết (tiếng). Vượt thì LƯỢC từ đệm, diễn đạt gọn hơn nhưng GIỮ TRỌN ý; thà ngắn hơn một chút còn hơn dài (dài quá giọng đọc sẽ lệch khỏi hình).
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch NHẮM ≈ 3–4×max_s âm tiết (tiếng), CÂN ĐỐI với nhịp câu gốc: TUYỆT ĐỐI không vượt (dài quá giọng đọc lệch khỏi hình, phải tăng tốc nghe gấp gáp); cũng đừng ngắn hơn hẳn ngân sách (đọc xong quá sớm nghe hụt so với môi nhân vật). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - Xưng hô HIỆN ĐẠI, phù hợp ngữ cảnh (tôi/bạn/anh/chị/em/ông/bà/mình/cậu...), suy từ quan hệ nhân vật. Chỉ dùng lối cổ trang/kiếm hiệp nếu nội dung RÕ RÀNG là cổ trang.
 - Tên riêng, thương hiệu, địa danh, thuật ngữ nước ngoài: giữ NGUYÊN gốc hoặc phiên âm quen thuộc với người Việt; KHÔNG ép sang Hán-Việt.
 - Dịch đúng nghĩa thuật ngữ chuyên ngành; giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -60,7 +60,7 @@ def _lang_system(lang_name: str) -> str:
 Quy tắc:
 - TOÀN BỘ trường "text_vi" phải là {lang_name} (tên trường giữ nguyên vì lý do kỹ thuật).
 - Dịch TỰ NHIÊN như lời nói bản xứ, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu — bản dịch phải ĐỌC XONG trong chừng đó giây ở tốc độ nói tự nhiên. Vượt thì lược từ đệm, diễn đạt gọn hơn nhưng giữ trọn ý; thà ngắn hơn một chút còn hơn dài.
+- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu — bản dịch phải ĐỌC XONG trong chừng đó giây ở tốc độ nói tự nhiên, CÂN ĐỐI với nhịp câu gốc: không vượt, cũng đừng ngắn hơn hẳn (đọc xong quá sớm nghe hụt). Cần cắt thì lược từ đệm, giữ trọn ý.
 - Xưng hô/văn phong phù hợp ngữ cảnh và văn hóa của {lang_name}.
 - Tên riêng, thương hiệu, địa danh: dùng dạng quen thuộc trong {lang_name} (tên quốc tế thường giữ nguyên).
 - Giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.

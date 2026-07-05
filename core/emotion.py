@@ -51,9 +51,13 @@ def label(seg: dict) -> str:
 
 
 def sig_tag(seg: dict) -> str:
-    """Đuôi chữ ký TTS: đổi nhãn cảm xúc → .sig lệch → tự đọc lại câu đó."""
+    """Đuôi chữ ký TTS: đổi nhãn cảm xúc → .sig lệch → tự đọc lại câu đó.
+    Chế độ 1 giọng bỏ PITCH cảm xúc (xem edge_kwargs) → thêm hậu tố "1" cho câu có
+    nhãn để bật/tắt 1-giọng là câu đó tự đọc lại đúng biến thể."""
     e = label(seg)
-    return f":e{e}" if e else ""
+    if not e:
+        return ""
+    return f":e{e}" + ("1" if config.TTS_SINGLE_VOICE else "")
 
 
 def edge_kwargs(seg: dict) -> dict:
@@ -67,6 +71,9 @@ def edge_kwargs(seg: dict) -> dict:
     e = label(seg)
     if e:
         er, ep, ev = _EDGE[e]
+        if config.TTS_SINGLE_VOICE:
+            ep = 0   # 1 giọng: pitch cảm xúc cũng bỏ — cao độ TUYỆT ĐỐI ổn định,
+                     # rate/volume vẫn diễn cảm (gấp/nhanh, thì thầm/nhỏ...)
         r, pi, v = r + er, pi + ep, v + ev
     r = max(-_R_MAX, min(_R_MAX, r))
     pi = max(-_P_MAX, min(_P_MAX, pi))

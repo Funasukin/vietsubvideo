@@ -6,6 +6,32 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (4) — Desktop (F:\MyProject\vietsubvideo)
+
+### 4 yêu cầu: nền hạ đều, chỉnh âm nền trong editor, list cao bằng video, fix "vẫn nhiều giọng"
+
+1. **"Giữ nhạc/SFX gốc" thêm chế độ "Hạ audio gốc ĐỀU suốt video"** (`KEEP_BGM=flat`,
+   `config.DUCK_ALL`): hết kiểu nền "bơm" to–nhỏ theo thoại gây khó chịu. s6 ghi
+   marker `ducked.mode` (demucs?/all|speech/gain) → đổi chế độ/gain là tự dựng lại
+   nền, không kẹt bản cũ. `.env` user đã đặt flat.
+2. **Editor thêm 🎚 "Âm nền gốc"** (−8/−14/−20/−26/−34 dB): chỉnh âm nền THEO JOB
+   sau khi nghe output — `Job.bed_gain_db` (field mới, thắng DUCK_GAIN_DB), gửi qua
+   `SegmentEdits.bed_gain_db`; đổi giá trị → chỉ dựng lại nền+trộn+render, KHÔNG
+   đọc lại giọng.
+3. **Danh sách câu editor cao BẰNG video** (fitList theo `#ed-stage`, đo lại khi
+   loadedmetadata/resize) — video dọc không còn thừa khoảng trống.
+4. **Fix "vẫn nghe nhiều giọng khi 1 giọng"** — dubbed audio thực tế ĐÃ 1 giọng
+   (23/23 NamMinh p0); nguồn lệch là: (a) nút 🔊 nghe thử đọc theo NHÃN nam/nữ →
+   câu "Nữ" ra HoaiMy trong khi render NamMinh — `tts_preview` giờ gate theo
+   `TTS_SINGLE_VOICE` (cả edge lẫn engine trả phí); (b) pitch CẢM XÚC (±4–10Hz)
+   giờ cũng =0 khi 1 giọng (rate/volume giữ diễn cảm), sig `:e<label>1` → tự đọc
+   lại đúng câu có nhãn; (c) editor hiện chú thích "1 giọng: mọi câu đọc giọng chính".
+5. Prompt dịch: cân đối 2 CHIỀU với nhịp câu gốc (không vượt, không ngắn hơn hẳn).
+
+Job 8691dd (AI donghua) đã process lại: 7 câu cảm xúc đọc lại pitch-0 + nền flat + render.
+
+---
+
 ## 2026-07-05 (3) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix OCR video nhiều chữ trên hình (vlog quán ăn) — crop dải TRỘI + trần gộp 4 dòng

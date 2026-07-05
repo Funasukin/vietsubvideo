@@ -198,7 +198,11 @@ TTS_TIMEOUT_S = 90    # mỗi lần gọi edge-tts; tránh treo vô hạn khi đ
 DUCK_GAIN_DB = -14.0
 # Giữ nhạc+SFX gốc bằng demucs (tách giọng Trung ra hẳn) thay vì hạ nhỏ cả audio.
 # Cần GPU + ffmpeg-shared; chậm thêm (~tách bằng ~1/4 thời lượng). Mặc định tắt.
-KEEP_BGM = os.getenv("KEEP_BGM", "0").lower() not in ("0", "false", "")
+# KEEP_BGM: "0" = hạ audio gốc KHI CÓ thoại (duck) | "flat" = hạ ĐỀU suốt video
+# (không bơm to-nhỏ theo thoại) | "1" = demucs tách hẳn giọng gốc (GPU)
+_KEEP_BGM_RAW = os.getenv("KEEP_BGM", "0").strip().lower()
+KEEP_BGM = _KEEP_BGM_RAW in ("1", "true")
+DUCK_ALL = _KEEP_BGM_RAW == "flat"
 
 # Đồng bộ khớp thoại (S7): câu đọc dài hơn khoảng trống gốc → tăng tốc atempo cho
 # khớp timeline (atempo GIỮ NGUYÊN cao độ). Đây là mức tăng tốc TỐI ĐA cho phép:

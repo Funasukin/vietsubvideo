@@ -60,6 +60,8 @@ class Job:
     pause_before_render: bool = False
     glossary: str = ""  # bảng tên riêng "中文=Hán-Việt" cho Whisper + Claude
     series: str = ""    # tên series (nhiều tập cùng phim) → dùng chung glossary + casting
+    # override âm lượng NỀN GỐC (dB, vd -20.0) chỉnh từ editor; None = theo DUCK_GAIN_DB
+    bed_gain_db: float | None = None
 
     @property
     def dir(self) -> Path:
@@ -111,6 +113,7 @@ class Job:
             "pause_before_render": self.pause_before_render,
             "glossary": self.glossary,
             "series": self.series,
+            "bed_gain_db": self.bed_gain_db,
         }
         # ghi nguyên tử: file tạm (tên duy nhất) rồi os.replace → không để state.json bị
         # torn/nửa vời khi bị kill giữa lúc ghi (đọc lại sẽ JSONDecodeError, mất job khỏi UI)

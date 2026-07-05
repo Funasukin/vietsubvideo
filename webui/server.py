@@ -951,9 +951,18 @@ def get_segments(job_id: str) -> dict:
             job_series = json.loads(sp.read_text(encoding="utf-8")).get("series", "") or ""
         except (json.JSONDecodeError, OSError):
             job_series = ""
+    job_state = {}
+    if sp.exists():
+        try:
+            job_state = json.loads(sp.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            job_state = {}
     return {"segments": segs,
             "engine": config.TTS_ENGINE,
             "voices": {"nam": nam_v, "nu": nu_v},
+            # 1 giọng: editor hiện chú thích + nghe thử đọc giọng chính bất kể nhãn
+            "single_voice": config.TTS_SINGLE_VOICE,
+            "bed_gain_db": job_state.get("bed_gain_db"),
             "render": render,
             "frames": frames.list_png(),
             "series": job_series,
@@ -1083,6 +1092,9 @@ class SegmentEdits(BaseModel):
     render: RenderOptions | None = None   # cài đặt phụ đề/che từ editor (None = giữ nguyên)
     rebuild_only: bool = False            # True = chỉ đọc lại + trộn dub rồi DỪNG trước render
                                           # (để nghe lại trong editor); False = render thẳng final
+    # chỉnh âm lượng NỀN GỐC của job (dB, vd -20; kẹp [-40, 0]) — None = giữ nguyên.
+    # Đổi giá trị → dựng lại nền (s6) + trộn (s7) + render, KHÔNG phải đọc lại giọng.
+    bed_gain_db: float | None = None
 
 
 def _unlink_quiet(path: Path, retries: int = 8) -> bool:
@@ -1142,7 +1154,10 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
             s["mute"] = e.mute
 
     has_render = body.render is not None
-    if not changed and not has_render:
+    # đổi âm nền gốc (dB): kẹp [-40, 0]; chỉ tính là ĐỔI khi khác giá trị đang lưu
+    bed_change = (body.bed_gain_db is not None
+                  and max(-40.0, min(0.0, float(body.bed_gain_db))) != job.bed_gain_db)
+    if not changed and not has_render and not bed_change:
         return {"changed": 0, **(_job_summary(job.dir) or {})}
 
     # XOÁ TRƯỚC các file mà stage sau "có thì bỏ qua" (s7: dubbed_audio.wav; s8: final.mp4,
@@ -1152,6 +1167,8 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     gating = []
     if changed:
         gating += ["dubbed_audio.wav", "sub_vi.srt", "final.mp4"]
+    if bed_change:
+        gating += ["dubbed_audio.wav", "final.mp4"]
     if has_render:
         gating += ["sub_vi.srt", "final.mp4"]
     locked = [n for n in dict.fromkeys(gating) if not _unlink_quiet(job.dir / n)]
@@ -1176,6 +1193,12 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
         if mute_changed:   # vùng hạ nhạc (s6) phụ thuộc câu nào có lồng tiếng → dựng lại nền
             (job.dir / "ducked.wav").unlink(missing_ok=True)
             job.completed_stages = [s for s in job.completed_stages if s != "bgm"]
+
+    if bed_change:
+        # âm nền mới → dựng lại nền (s6 tự phát hiện gain đổi qua ducked.mode) + trộn + render
+        job.bed_gain_db = max(-40.0, min(0.0, float(body.bed_gain_db)))
+        job.completed_stages = [s for s in job.completed_stages
+                                if s not in ("bgm", "mixing", "rendering")]
 
     if has_render:
         # áp dụng cài đặt phụ đề/che rồi dựng lại CHỈ khâu render (S8). Giữ nguyên
@@ -1256,6 +1279,9 @@ def tts_preview(body: TtsPreviewBody):
     # engine trả phí (PLAN 11 C/D): nghe thử bằng CHÍNH dịch vụ đó (tốn phí ~1 câu)
     from core import langs, paid_tts
     eng = config.TTS_ENGINE
+    # nghe thử phải khớp giọng SẼ render: chế độ 1 giọng đọc mọi câu bằng giọng chính
+    # (cùng logic s5_tts._seg_nu) — kẻo nhãn "nữ" nghe thử ra HoaiMy mà render NamMinh
+    nu = body.voice == "nu" and not config.TTS_SINGLE_VOICE
     if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
         ok, why = paid_tts.ready(eng)
         if not ok:
@@ -1265,7 +1291,7 @@ def tts_preview(body: TtsPreviewBody):
         pout = config.DATA_DIR / f"_tts_preview_{_u.uuid4().hex}.mp3"
         pout.parent.mkdir(parents=True, exist_ok=True)
         try:
-            paid_tts.synth(eng, text, nu_v if body.voice == "nu" else nam_v, pout)
+            paid_tts.synth(eng, text, nu_v if nu else nam_v, pout)
             data = pout.read_bytes()
         except RuntimeError as e:
             raise HTTPException(502, f"{eng} lỗi: {e}")
@@ -1277,7 +1303,7 @@ def tts_preview(body: TtsPreviewBody):
     # giọng theo NGÔN NGỮ ĐÍCH (#16) — nghe thử đúng giọng sẽ render
     from core import emotion as emo
     _nam, _nu = langs.edge_voices()
-    voice = _nu if body.voice == "nu" else _nam
+    voice = _nu if nu else _nam
     # nhãn cảm xúc như lúc render (prosody đo audio thì bỏ — nghe thử lẻ không có audio)
     emo_kw = emo.edge_kwargs({"voice": body.voice, "emotion": body.emotion})
 
