@@ -6,6 +6,31 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (6) — Desktop (F:\MyProject\vietsubvideo)
+
+### "⚙️ Tùy chọn video này" trong editor + đổi tên "Chỉnh sửa" + fix đường gạch nút
+
+1. **Đổi tên nút "✏️ Sửa lời thoại" → "✏️ Chỉnh sửa"** (thẻ job + tiêu đề editor +
+   các chỗ nhắc).
+2. **Fix "đường gạch" trên nút Soát/Xuất bản**: rule `details` toàn cục (border-top
+   + margin-top, dùng cho separator) đánh cả vào `details.btnmenu` → vẽ vạch + lệch
+   hàng. Đè margin/border/padding=0 cho `.btnmenu`.
+3. **Override cấu hình THEO JOB** — panel "⚙️ Tùy chọn video này" trong editor:
+   Số giọng, Đồng bộ khớp thoại, Nhạc/SFX gốc, Tông giọng, Cảm xúc, Chuyển ngữ điệu.
+   Output không vừa ý → chỉnh tại đây rồi 💾 Lưu & render lại, KHÔNG đụng cấu hình
+   chung/video khác. Cơ chế: `Job.env_overrides` {ENV_KEY: value} → worker truyền
+   `FLOWAPP_JOB_OVERRIDES` (JSON) khi spawn cli.py → config.py áp SAU .env. Server
+   whitelist `_JOB_OVERRIDE_KEYS`, đổi → reset tts/bgm/mixing/rendering (sig cache
+   chỉ đọc lại câu bị ảnh hưởng; nền theo ducked.mode). Option trống = "theo cấu
+   hình chung (giá trị hiện tại)"; {} = bỏ hết đè.
+4. Fix nhỏ: `edSubAt` đọc nhầm id `sspl` → `sspl-ed` (overlay giờ tôn trọng select
+   "Nhịp" trong editor).
+
+Verify: subprocess với FLOWAPP_JOB_OVERRIDES ra đúng giá trị đè; UI 6 field nhãn
+"theo cấu hình chung (X)" đúng .env; endpoint no-op không enqueue; console sạch.
+
+---
+
 ## 2026-07-05 (5) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix BUG NỀN TẢNG: Cấu hình lưu qua UI âm thầm KHÔNG áp dụng tới khi restart server

@@ -183,9 +183,19 @@ def _worker() -> None:
             out_target = log_f
         except OSError:
             out_target = None             # không mở được log → về console như cũ
+        # Override cấu hình THEO JOB (editor "⚙️ Tùy chọn video này"): truyền qua env
+        # FLOWAPP_JOB_OVERRIDES — config.py của tiến trình con áp SAU .env.
+        child_env = None
+        try:
+            _ov = Job.load(job_id).env_overrides or {}
+            if _ov:
+                child_env = dict(os.environ)
+                child_env["FLOWAPP_JOB_OVERRIDES"] = json.dumps(_ov)
+        except Exception:
+            pass
         proc = subprocess.Popen(
             [sys.executable, str(config.BASE_DIR / "cli.py"), "--resume", job_id],
-            cwd=config.BASE_DIR,
+            cwd=config.BASE_DIR, env=child_env,
             stdout=out_target, stderr=subprocess.STDOUT if out_target else None,
         )
         with _lock:
@@ -963,6 +973,11 @@ def get_segments(job_id: str) -> dict:
             # 1 giọng: editor hiện chú thích + nghe thử đọc giọng chính bất kể nhãn
             "single_voice": config.TTS_SINGLE_VOICE,
             "bed_gain_db": job_state.get("bed_gain_db"),
+            # ⚙️ Tùy chọn video này: override đang lưu + giá trị cấu hình CHUNG hiện tại
+            # (đọc .env trực tiếp — config của server có thể nạp từ lúc khởi động)
+            "env_overrides": job_state.get("env_overrides") or {},
+            "cfg_defaults": {k: _read_env().get(k, str(getattr(config, k, "")))
+                             for k in sorted(_JOB_OVERRIDE_KEYS)},
             "render": render,
             "frames": frames.list_png(),
             "series": job_series,
@@ -1095,6 +1110,15 @@ class SegmentEdits(BaseModel):
     # chỉnh âm lượng NỀN GỐC của job (dB, vd -20; kẹp [-40, 0]) — None = giữ nguyên.
     # Đổi giá trị → dựng lại nền (s6) + trộn (s7) + render, KHÔNG phải đọc lại giọng.
     bed_gain_db: float | None = None
+    # override cấu hình THEO JOB ("⚙️ Tùy chọn video này"): {ENV_KEY: value}, chỉ nhận
+    # khóa trong _JOB_OVERRIDE_KEYS. {} = xóa hết override (về theo cấu hình chung);
+    # None = không đụng. Đổi → đọc lại câu bị ảnh hưởng (sig) + dựng nền + trộn + render.
+    env_overrides: dict | None = None
+
+
+# Khóa cấu hình cho phép đè THEO JOB từ editor — nhóm ảnh hưởng giọng/âm thanh output
+_JOB_OVERRIDE_KEYS = {"TTS_SINGLE_VOICE", "PROSODY", "EMOTION", "PROSODY_TRANSFER",
+                      "MAX_SPEEDUP", "KEEP_BGM", "TTS_VOICE", "TTS_VOICE_NU"}
 
 
 def _unlink_quiet(path: Path, retries: int = 8) -> bool:
@@ -1157,7 +1181,13 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     # đổi âm nền gốc (dB): kẹp [-40, 0]; chỉ tính là ĐỔI khi khác giá trị đang lưu
     bed_change = (body.bed_gain_db is not None
                   and max(-40.0, min(0.0, float(body.bed_gain_db))) != job.bed_gain_db)
-    if not changed and not has_render and not bed_change:
+    # override cấu hình theo job: lọc theo whitelist, so với bản đang lưu
+    new_ov = None
+    if body.env_overrides is not None:
+        new_ov = {k: str(v).strip() for k, v in body.env_overrides.items()
+                  if k in _JOB_OVERRIDE_KEYS and str(v).strip() and len(str(v)) <= 60}
+    env_change = new_ov is not None and new_ov != (job.env_overrides or {})
+    if not changed and not has_render and not bed_change and not env_change:
         return {"changed": 0, **(_job_summary(job.dir) or {})}
 
     # XOÁ TRƯỚC các file mà stage sau "có thì bỏ qua" (s7: dubbed_audio.wav; s8: final.mp4,
@@ -1167,7 +1197,7 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     gating = []
     if changed:
         gating += ["dubbed_audio.wav", "sub_vi.srt", "final.mp4"]
-    if bed_change:
+    if bed_change or env_change:
         gating += ["dubbed_audio.wav", "final.mp4"]
     if has_render:
         gating += ["sub_vi.srt", "final.mp4"]
@@ -1199,6 +1229,14 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
         job.bed_gain_db = max(-40.0, min(0.0, float(body.bed_gain_db)))
         job.completed_stages = [s for s in job.completed_stages
                                 if s not in ("bgm", "mixing", "rendering")]
+
+    if env_change:
+        # override theo job đổi → chạy lại từ TTS: .sig tự phát hiện câu bị ảnh hưởng
+        # (đổi giọng/prosody/transfer chỉ đọc lại đúng câu đó), nền dựng lại theo
+        # ducked.mode, rồi trộn + render với cấu hình mới.
+        job.env_overrides = new_ov
+        job.completed_stages = [s for s in job.completed_stages
+                                if s not in ("tts", "bgm", "mixing", "rendering")]
 
     if has_render:
         # áp dụng cài đặt phụ đề/che rồi dựng lại CHỈ khâu render (S8). Giữ nguyên

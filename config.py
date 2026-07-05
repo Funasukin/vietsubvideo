@@ -28,6 +28,17 @@ FONTS_DIR = BASE_DIR / "fonts"   # font tùy biến: thả .ttf/.otf vào đây 
 # âm thầm KHÔNG có tác dụng cho tới khi restart server. override sửa tận gốc.
 load_dotenv(BASE_DIR / ".env", override=True)
 
+# Override THEO JOB (editor "⚙️ Tùy chọn video này"): worker đặt FLOWAPP_JOB_OVERRIDES
+# = JSON {ENV_KEY: value} khi spawn cli.py. Áp SAU dotenv → thắng cấu hình chung,
+# chỉ sống trong tiến trình của job đó.
+_job_ov = os.environ.get("FLOWAPP_JOB_OVERRIDES", "")
+if _job_ov:
+    try:
+        import json as _json
+        os.environ.update({str(k): str(v) for k, v in _json.loads(_job_ov).items()})
+    except (ValueError, TypeError):
+        pass
+
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

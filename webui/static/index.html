@@ -132,8 +132,11 @@
   .meta { color: var(--dim); font-size: 12px; margin: 8px 0; }
   video, img.preview { width: 100%; border-radius: 8px; margin-top: 10px; background: #000; }
   .row { display: flex; gap: 8px; margin-top: 10px; align-items: center; flex-wrap: wrap; }
-  /* menu thả xuống cho cụm nút thẻ job (Soát & sửa / Xuất bản) */
-  details.btnmenu { position: relative; display: inline-block; }
+  /* menu thả xuống cho cụm nút thẻ job (Soát & sửa / Xuất bản).
+     margin/border/padding: 0 — đè rule `details` toàn cục (border-top làm lòi
+     "đường gạch" trên nút + margin đẩy lệch hàng so với nút thường) */
+  details.btnmenu { position: relative; display: inline-block;
+    margin-top: 0; border-top: 0; padding-top: 0; }
   details.btnmenu > summary { list-style: none; cursor: pointer; }
   details.btnmenu > summary::-webkit-details-marker { display: none; }
   details.btnmenu > .menu { position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
@@ -818,7 +821,7 @@ async function loadConfig() {
     + row("KEEP_BGM", "Giữ nhạc/SFX gốc", ["0", "flat", "1"],
       {"0": "Hạ audio gốc KHI CÓ thoại (duck)", "flat": "Hạ audio gốc ĐỀU suốt video",
        "1": "Tách giọng gốc bằng demucs (GPU)"},
-      "", "Cách xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: chỉ hạ lúc có lồng tiếng, chỗ trống giữ nguyên — nền to nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định từ đầu tới cuối, dễ nghe, khỏi render lại vì bơm nền. <b>demucs</b>: tách hẳn giọng nói gốc khỏi nhạc/hiệu ứng (GPU, chậm thêm ~¼ thời lượng) — nền giữ trọn vẹn nhất. Mức hạ chỉnh tiếp được trong Sửa lời thoại (🎚 Âm nền gốc).")
+      "", "Cách xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: chỉ hạ lúc có lồng tiếng, chỗ trống giữ nguyên — nền to nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định từ đầu tới cuối, dễ nghe, khỏi render lại vì bơm nền. <b>demucs</b>: tách hẳn giọng nói gốc khỏi nhạc/hiệu ứng (GPU, chậm thêm ~¼ thời lượng) — nền giữ trọn vẹn nhất. Mức hạ chỉnh tiếp được trong Chỉnh sửa (🎚 Âm nền gốc).")
     + row("VOICE_FX", "Xử lý giọng",
       ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
       {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",
@@ -1210,7 +1213,7 @@ function cardHtml(j) {
   if (j.queued && !j.running)   // đang chờ → cho nhảy lên đầu hàng
     html += `<button class="ghost" onclick="prioritizeJob('${j.id}')" title="Chạy ngay sau job hiện tại">⬆ Ưu tiên</button>`;
   if (j.seg_total && !j.queued && !j.running)
-    html += `<button class="ghost" onclick="openEditor('${j.id}')">✏️ Sửa lời thoại</button>`;
+    html += `<button class="ghost" onclick="openEditor('${j.id}')">✏️ Chỉnh sửa</button>`;
 
   // Cụm "🔎 Soát ▾": QC + tên riêng + log — gọn thẻ job (9 nút → 2 menu + nút chính)
   const soat = [];
@@ -1474,7 +1477,7 @@ async function openLog(id) {
 }
 
 async function cleanJob(id) {
-  if (!confirm("Dọn file âm thanh trung gian của job này?\n\nGiữ nguyên: video final, phụ đề, bản dịch, giọng đã đọc, video nguồn.\nSau này nếu 'Sửa lời thoại', app sẽ tự tách audio lại từ nguồn (chậm hơn một chút)."))
+  if (!confirm("Dọn file âm thanh trung gian của job này?\n\nGiữ nguyên: video final, phụ đề, bản dịch, giọng đã đọc, video nguồn.\nSau này nếu 'Chỉnh sửa', app sẽ tự tách audio lại từ nguồn (chậm hơn một chút)."))
     return;
   try {
     const r = await fetch(`/api/jobs/${id}/clean`, { method: "POST" });
@@ -2061,7 +2064,7 @@ async function openEditor(id) {
   document.getElementById("pane-edit").innerHTML = `
     <div class="ed-top">
       <button class="ghost" onclick="closeEditor()">← Quay lại</button>
-      <b>Sửa lời thoại</b>
+      <b>Chỉnh sửa</b>
       <span class="meta">${edSegs.length} câu · chỉ câu sửa mới được đọc lại</span>
       <button class="ghost" onclick="edApplyVoices()" id="edapplybtn" title="Đọc lại các câu đã sửa + trộn lại lồng tiếng (chưa render) để nghe ngay trong editor">🔁 Áp dụng câu đã sửa (đọc lại)</button>
       <button onclick="edSave()" id="edsavebtn">💾 Lưu & render lại</button>
@@ -2327,7 +2330,54 @@ function edSettingsPanel(data) {
     </div>
     <img class="preview" id="ed-preview-frame" style="display:none">
     </div>
+  </details>` + edOverridePanel(data);
+}
+
+// ⚙️ Tùy chọn cấu hình THEO VIDEO NÀY (đè cấu hình chung): output không vừa ý thì
+// chỉnh tại đây rồi 💾 Lưu & render lại — không đụng cấu hình chung, không ảnh
+// hưởng video khác. Server whitelist khóa (_JOB_OVERRIDE_KEYS) + reset đúng stage.
+const ED_OV_FIELDS = [
+  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]]],
+  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]]],
+  ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]]],
+  ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]]],
+  ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]]],
+  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]]],
+];
+function edOverridePanel(data) {
+  const ov = data.env_overrides || {};
+  const cfg = data.cfg_defaults || {};
+  const norm = (k, v) => {   // bool từ config có thể là "True"/"False" → chuẩn về mã option
+    v = String(v ?? "").trim();
+    if (/^true$/i.test(v)) return "1";
+    if (/^false$/i.test(v)) return "0";
+    if (k === "MAX_SPEEDUP" && v && !v.includes(".")) return v + ".0";
+    return v;
+  };
+  const rows = ED_OV_FIELDS.map(([key, label, opts]) => {
+    const cur = ov[key] ?? "";
+    const defLabel = (opts.find(([v]) => v === norm(key, cfg[key])) || [])[1] || norm(key, cfg[key]) || "?";
+    return `<label style="display:flex;align-items:center;gap:6px">${label}:
+      <select id="ov-${key}" class="ed-bulkvoice">
+        <option value="">— theo cấu hình chung (${esc(defLabel)}) —</option>
+        ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select></label>`;
+  }).join("");
+  return `<details class="ed-settings" ${Object.keys(ov).length ? "open" : ""}>
+    <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
+    <div class="opts" style="gap:14px">${rows}</div>
+    <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
+    💾 Lưu &amp; render lại để áp dụng: câu bị ảnh hưởng tự đọc lại, nền/trộn dựng lại.
+    Chọn "— theo cấu hình chung —" để bỏ đè.</div>
   </details>`;
+}
+function edCollectOverrides() {
+  const out = {};
+  for (const [key] of ED_OV_FIELDS) {
+    const el = document.getElementById("ov-" + key);
+    if (el && el.value !== "") out[key] = el.value;
+  }
+  return out;
 }
 
 // #5: xem trước CHÍNH XÁC 1 khung bằng FFmpeg (che + kiểu chữ + phụ đề thật) — tái dùng
@@ -2523,7 +2573,7 @@ function edSplitText(text, weights) {
 function edSubAt(idx, t) {
   const seg = edSegs[idx];
   const txt = document.getElementById("edvi-" + idx).value;
-  const sspl = document.getElementById("sspl");
+  const sspl = document.getElementById("sspl-ed");   // select "Nhịp" trong panel 🎨 của editor
   const splitOn = sspl ? sspl.value === "1" : true;
   const pieces = seg.pieces || [];
   if (!splitOn || pieces.length < 2 || txt.split(/\s+/).filter(Boolean).length < 2 * pieces.length)
@@ -2636,8 +2686,10 @@ async function edSave() {
   try {
     const bedSel = document.getElementById("ed-bedvol");
     const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
+    // ⚙️ override theo job: gửi cả {} (= xóa hết đè, về theo cấu hình chung)
+    const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
-      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render, bed_gain_db }) });
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render, bed_gain_db, env_overrides }) });
     const raw = await res.text();
     if (!res.ok) {
       msg.textContent = "Lỗi: " + _errDetail(raw, res.status);
@@ -2686,9 +2738,10 @@ async function edApplyVoices() {
   try {
     const bedSel = document.getElementById("ed-bedvol");
     const bed_gain_db = bedSel && bedSel.value !== "" ? parseFloat(bedSel.value) : null;
+    const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ edits, render: null, rebuild_only: true, bed_gain_db }) });
+      body: JSON.stringify({ edits, render: null, rebuild_only: true, bed_gain_db, env_overrides }) });
     const raw = await res.text();
     if (!res.ok) { msg.textContent = "Lỗi: " + _errDetail(raw, res.status); edReloadDub(); refresh(); return; }
     const r = raw ? JSON.parse(raw) : {};

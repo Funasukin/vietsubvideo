@@ -62,6 +62,9 @@ class Job:
     series: str = ""    # tên series (nhiều tập cùng phim) → dùng chung glossary + casting
     # override âm lượng NỀN GỐC (dB, vd -20.0) chỉnh từ editor; None = theo DUCK_GAIN_DB
     bed_gain_db: float | None = None
+    # override cấu hình THEO JOB (editor "⚙️ Tùy chọn video này"): {ENV_KEY: value}.
+    # Worker truyền qua FLOWAPP_JOB_OVERRIDES → config.py áp SAU .env → thắng cấu hình chung.
+    env_overrides: dict = field(default_factory=dict)
 
     @property
     def dir(self) -> Path:
@@ -114,6 +117,7 @@ class Job:
             "glossary": self.glossary,
             "series": self.series,
             "bed_gain_db": self.bed_gain_db,
+            "env_overrides": self.env_overrides,
         }
         # ghi nguyên tử: file tạm (tên duy nhất) rồi os.replace → không để state.json bị
         # torn/nửa vời khi bị kill giữa lúc ghi (đọc lại sẽ JSONDecodeError, mất job khỏi UI)
