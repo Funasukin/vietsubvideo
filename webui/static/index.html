@@ -286,6 +286,18 @@
   #ed-stage:fullscreen .ed-player { padding: 10px 18px; }
   .ed-settings { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
   .ed-settings summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+  /* panel ⚙️: lưới 2 CỘT, mỗi field = nhãn (cột cố định) + input (giãn hết) — nhãn/input
+     thẳng hàng dọc trong từng cột, không còn dính chùm lệch lạc */
+  .ov-group { margin: 12px 0 4px; font-size: 12px; }
+  .ov-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+             gap: 8px 32px; }
+  .ov-field { display: grid; grid-template-columns: 180px minmax(0, 1fr);
+              align-items: center; gap: 8px; font-size: 13px; }
+  .ov-field .ov-label { color: var(--dim); }
+  .ov-field select, .ov-field input { width: 100%; min-width: 0; background: var(--bg2);
+    color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 10px; font: inherit; font-size: 13px; }
+  @media (max-width: 720px) { .ov-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -1957,6 +1969,7 @@ async function scanTrending() {
 /* ---------- Editor lời thoại ---------- */
 let edJobId = null, edSegs = [], edCurIdx = -1, edDirty = new Set(), edVoices = [], edHadFinal = false;
 let edOvOrig = {};   // ⚙️ override theo job lúc MỞ editor — so sánh để biết nhóm nào bị đổi
+let edOvCfg = {};    // giá trị cấu hình CHUNG hiện tại — nền cho ẩn/hiện field phụ thuộc
 let edCastNames = [];   // nhân vật đã cast của series (nếu có) → gợi ý gán câu trong editor
 let edMuteState = new Set();   // chỉ số dòng đang Mute (không lồng tiếng Việt)
 let edRenderWatch = null;      // {id, ttsBase, armGen}: edSave đang render → theo dõi để mở lại editor khi xong
@@ -2034,6 +2047,7 @@ async function openEditor(id) {
 
   edJobId = id; edSegs = data.segments; edCurIdx = -1; edDirty = new Set();
   edOvOrig = data.env_overrides || {};
+  edOvCfg = data.cfg_defaults || {};
   edCastNames = data.cast_names || [];   // series có casting → hiện ô gán nhân vật
   edMuteState = new Set();
   edSegs.forEach((s, i) => { if (s.mute) edMuteState.add(i); });
@@ -2128,6 +2142,7 @@ async function openEditor(id) {
   ev.addEventListener("loadedmetadata", fitList);
   window.addEventListener("resize", fitList);
   setTimeout(fitList, 50);
+  applyOvDeps();   // ẩn/hiện field ⚙️ phụ thuộc theo giá trị hiệu lực ban đầu
   ev.addEventListener("timeupdate", edHighlight);
   ev.addEventListener("timeupdate", edUpdatePlayer);
   ev.addEventListener("loadedmetadata", () => { edStyleSub(); edUpdatePlayer(); });
@@ -2382,22 +2397,22 @@ function edOverridePanel(data) {
   const cfg = data.cfg_defaults || {};
   const field = ([key, label, opts]) => {
     const cur = ov[key] ?? "";
-    if (!opts)   // ô chữ tự do (vd phong cách dịch); trống = theo cấu hình chung
-      return `<label style="display:flex;align-items:center;gap:6px">${label}:
-        <input type="text" id="ov-${key}" class="ed-bulkvoice" value="${esc(cur)}"
-          placeholder="— theo cấu hình chung (${esc(cfg[key] || "trống")}) —" style="min-width:230px"></label>`;
-    const defLabel = (opts.find(([v]) => v === edOvNorm(key, cfg[key])) || [])[1] || edOvNorm(key, cfg[key]) || "?";
-    return `<label style="display:flex;align-items:center;gap:6px">${label}:
-      <select id="ov-${key}" class="ed-bulkvoice">
-        <option value="">— theo cấu hình chung (${esc(defLabel)}) —</option>
-        ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("")}
-      </select></label>`;
+    const inner = !opts   // ô chữ tự do (vd phong cách dịch); trống = theo cấu hình chung
+      ? `<input type="text" id="ov-${key}" value="${esc(cur)}"
+           placeholder="— theo cấu hình chung (${esc(cfg[key] || "trống")}) —">`
+      : `<select id="ov-${key}">
+           <option value="">— theo cấu hình chung (${esc((opts.find(([v]) => v === edOvNorm(key, cfg[key])) || [])[1] || edOvNorm(key, cfg[key]) || "?")}) —</option>
+           ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("")}
+         </select>`;
+    return `<div class="ov-field" id="ovf-${key}">
+      <span class="ov-label" id="ovl-${key}">${label}</span>${inner}</div>`;
   };
   const groups = ED_OV_GROUPS.map(([g, title, cost]) => `
-    <div style="margin:10px 0 2px;font-size:12px"><b style="color:var(--accent)">${title}</b>
+    <div class="ov-group"><b style="color:var(--accent)">${title}</b>
       <span class="meta" style="margin:0"> — ${cost}</span></div>
-    <div class="opts" style="gap:12px">${ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
-  return `<details class="ed-settings" ${Object.keys(ov).length ? "open" : ""}>
+    <div class="ov-grid">${ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
+  // onchange nổi bọt từ mọi select bên trong → cập nhật ẩn/hiện field phụ thuộc
+  return `<details class="ed-settings" ${Object.keys(ov).length ? "open" : ""} onchange="applyOvDeps()">
     <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
     ${groups}
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
@@ -2405,11 +2420,44 @@ function edOverridePanel(data) {
     (nhóm sâu nhất thắng). Chọn "— theo cấu hình chung —" / xoá trống ô chữ để bỏ đè.</div>
   </details>`;
 }
+// Giá trị HIỆU LỰC của 1 khóa: override đang chọn, không thì giá trị cấu hình chung
+function edOvEff(key) {
+  const el = document.getElementById("ov-" + key);
+  return el && el.value !== "" ? el.value : edOvNorm(key, (edOvCfg || {})[key]);
+}
+// Ẩn/hiện field PHỤ THUỘC nhau trong panel ⚙️ (và đổi nhãn cho khớp ngữ cảnh):
+// - 1 giọng → ẩn "Giọng nữ", nhãn giọng chính bỏ chữ "nam"
+// - engine ≠ edge / ngôn ngữ ≠ vi → ẩn cặp giọng edge (giọng do engine/ngôn ngữ quyết)
+// - Nhà cung cấp dịch: claude ẩn Model Gemini, gemini ẩn Model Claude
+// - Nguồn transcript: ocr ẩn Model whisper; whisper ẩn 2 option OCR
+function applyOvDeps() {
+  const show = (key, on) => {
+    const w = document.getElementById("ovf-" + key);
+    if (w) w.style.display = on ? "" : "none";
+  };
+  if (!document.getElementById("ovf-TTS_VOICE")) return;
+  const edgeVi = edOvEff("TTS_ENGINE") === "edge" && edOvEff("TARGET_LANG") === "vi";
+  const single = edOvEff("TTS_SINGLE_VOICE") === "1";
+  show("TTS_VOICE", edgeVi);
+  show("TTS_VOICE_NU", edgeVi && !single);
+  const lb = document.getElementById("ovl-TTS_VOICE");
+  if (lb) lb.textContent = single ? "👤 Giọng đọc (edge)" : "👨 Giọng nam/chính (edge)";
+  const prov = edOvEff("TRANSLATE_PROVIDER");
+  show("CLAUDE_MODEL", prov !== "gemini");
+  show("GEMINI_MODEL", prov === "gemini");
+  const ts = edOvEff("TRANSCRIPT_SOURCE");
+  show("WHISPER_MODEL", ts !== "ocr");
+  show("OCR_FPS", ts !== "whisper");
+  show("OCR_CROP_TOP", ts !== "whisper");
+}
 function edCollectOverrides() {
   const out = {};
   for (const [key] of ED_OV_FIELDS) {
     const el = document.getElementById("ov-" + key);
-    if (el && el.value.trim() !== "") out[key] = el.value.trim();
+    const wrap = document.getElementById("ovf-" + key);
+    // field đang ẨN (không áp trong ngữ cảnh hiện tại) → không gửi, override cũ tự rơi
+    if (!el || (wrap && wrap.style.display === "none")) continue;
+    if (el.value.trim() !== "") out[key] = el.value.trim();
   }
   return out;
 }
