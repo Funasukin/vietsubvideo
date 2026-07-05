@@ -2347,29 +2347,49 @@ function edSettingsPanel(data) {
 // hưởng video khác. Server whitelist khóa + tự chạy lại từ stage SÂU NHẤT bị đổi
 // (nhóm "group" phải khớp _OV_* trong server.py). opts=null → ô nhập chữ tự do.
 const ED_OV_FIELDS = [
+  // [key, nhãn, options|null(ô chữ), nhóm, helptext ⓘ]
   // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
-  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "mix"],
-  ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix"],
+  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "mix",
+    "Câu đọc DÀI hơn khoảng trống câu gốc → tự tăng tốc tối đa bấy nhiêu (giữ nguyên cao độ). Cao = bám hình sát hơn nhưng giọng dồn nhanh; 1.0× = không đụng, câu dài sẽ tràn sang câu sau."],
+  ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix",
+    "Xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: nền to–nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định, dễ nghe. <b>demucs</b>: tách hẳn giọng nói gốc (GPU, chậm) — nền giữ trọn vẹn nhất."],
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)
-  ["TTS_ENGINE", "🗣 Engine giọng", [["edge", "edge — miễn phí"], ["vixtts", "viXTTS — nhân bản (GPU)"], ["elevenlabs", "ElevenLabs (trả phí)"], ["vbee", "VBee (trả phí)"], ["fpt", "FPT.AI (trả phí)"]], "tts"],
-  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]], "tts"],
-  ["TTS_VOICE", "👨 Giọng nam/chính (edge)", [["vi-VN-NamMinhNeural", "NamMinh (nam)"], ["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"]], "tts"],
-  ["TTS_VOICE_NU", "👩 Giọng nữ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts"],
-  ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
-  ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
-  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]], "tts"],
+  ["TTS_ENGINE", "🗣 Engine giọng", [["edge", "edge — miễn phí"], ["vixtts", "viXTTS — nhân bản (GPU)"], ["elevenlabs", "ElevenLabs (trả phí)"], ["vbee", "VBee (trả phí)"], ["fpt", "FPT.AI (trả phí)"]], "tts",
+    "Bộ máy đọc giọng. <b>edge/viXTTS miễn phí nhưng license KHÔNG cho dùng video bật kiếm tiền</b>; 3 engine trả phí cần API key (nhập ở Cấu hình → 🔑). Câu đã cast giọng nhân vật vẫn đọc viXTTS clone bất kể engine."],
+  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]], "tts",
+    "<b>1 giọng</b>: mọi câu đọc cùng một giọng, bỏ phân biệt nam/nữ. <b>2 giọng</b>: câu nhân vật nam đọc giọng nam, nữ đọc giọng nữ (AI tự gán nhãn). Nhân vật đã cast trong Series vẫn giữ giọng riêng."],
+  ["TTS_VOICE", "👨 Giọng nam/chính (edge)", [["vi-VN-NamMinhNeural", "NamMinh (nam)"], ["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"]], "tts",
+    "Giọng đọc chính: mọi câu khi chọn 1 giọng; các câu nhãn NAM khi chọn 2 giọng."],
+  ["TTS_VOICE_NU", "👩 Giọng nữ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts",
+    "Giọng đọc các câu gắn nhãn NỮ (chỉ áp khi chọn 2 giọng)."],
+  ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
+    "Đo tốc độ/độ to từng câu GỐC so với nền người nói → chỉnh giọng đọc theo (câu quát → đọc dồn, câu trầm → chậm lại). Đo bảo thủ: mơ hồ (nhạc lấn) thì giữ trung tính."],
+  ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]], "tts",
+    "AI gắn nhãn cảm xúc từng câu khi dịch (gấp/giận/buồn/thì thầm) → giọng đọc chỉnh nhịp/âm lượng theo — bắt được sắc thái audio không lộ (mỉa mai, đe dọa nói nhỏ...)."],
+  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
+    "Thử nghiệm: ép DÁNG đường lên–xuống giọng của câu gốc lên giọng đọc (PSOLA) — câu gốc lên giọng cuối câu thì bản đọc cũng vậy, vẫn giữ tầm giọng của giọng đọc. Bật/tắt → toàn bộ câu xử lý lại."],
   // nhóm DỊCH — DỊCH LẠI toàn bộ (tốn phí API, MẤT chỉnh tay câu)
-  ["TRANSLATE_PROVIDER", "🌐 Nhà cung cấp dịch", [["claude", "Claude"], ["gemini", "Gemini"]], "translate"],
-  ["CLAUDE_MODEL", "Model Claude", [["claude-haiku-4-5-20251001", "Haiku 4.5 — rẻ"], ["claude-sonnet-4-6", "Sonnet 4.6 — mượt hơn"]], "translate"],
-  ["GEMINI_MODEL", "Model Gemini", [["gemini-2.5-flash", "2.5 Flash"], ["gemini-2.5-flash-lite", "2.5 Flash-Lite"], ["gemini-2.5-pro", "2.5 Pro"], ["gemini-2.0-flash", "2.0 Flash"], ["gemini-2.0-flash-lite", "2.0 Flash-Lite"]], "translate"],
-  ["CONTENT_STYLE", "Kiểu nội dung", [["donghua", "Donghua/cổ trang — Hán-Việt"], ["general", "Chung — dịch tự nhiên"]], "translate"],
-  ["TARGET_LANG", "Ngôn ngữ lồng tiếng", [["vi", "Tiếng Việt"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"], ["es", "Español"], ["fr", "Français"], ["id", "Indonesia"], ["th", "ไทย"], ["pt", "Português"]], "translate"],
-  ["TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", null, "translate"],
+  ["TRANSLATE_PROVIDER", "🌐 Nhà cung cấp dịch", [["claude", "Claude"], ["gemini", "Gemini"]], "translate",
+    "LLM dịch/soát. <b>Claude</b> ổn định; <b>Gemini</b> free tier gần như $0 nhưng giới hạn request — lỗi/hết quota giữa chừng TỰ chuyển về Claude, job không chết."],
+  ["CLAUDE_MODEL", "Model Claude", [["claude-haiku-4-5-20251001", "Haiku 4.5 — rẻ"], ["claude-sonnet-4-6", "Sonnet 4.6 — mượt hơn"]], "translate",
+    "<b>Haiku</b> rẻ (~$0.001/câu), đủ tốt đa số video; <b>Sonnet</b> mượt hơn với thoại dày/thuật ngữ, phí ~10 lần."],
+  ["GEMINI_MODEL", "Model Gemini", [["gemini-2.5-flash", "2.5 Flash"], ["gemini-2.5-flash-lite", "2.5 Flash-Lite"], ["gemini-2.5-pro", "2.5 Pro"], ["gemini-2.0-flash", "2.0 Flash"], ["gemini-2.0-flash-lite", "2.0 Flash-Lite"]], "translate",
+    "<b>2.5 Flash</b> cân bằng (khuyên dùng); <b>Flash-Lite</b> rẻ/nhanh nhất; <b>2.5 Pro</b> mượt nhất nhưng free tier siết chặt; <b>2.0</b> đời trước, quota free rộng hơn."],
+  ["CONTENT_STYLE", "Kiểu nội dung", [["donghua", "Donghua/cổ trang — Hán-Việt"], ["general", "Chung — dịch tự nhiên"]], "translate",
+    "Văn phong bản dịch. <b>Donghua</b>: tên riêng ép Hán-Việt (叶凡→Diệp Phàm), xưng hô cổ trang (ngươi/ta). <b>Chung</b>: xưng hô hiện đại, giữ tên gốc — hợp vlog/tài liệu/phim hiện đại."],
+  ["TARGET_LANG", "Ngôn ngữ lồng tiếng", [["vi", "Tiếng Việt"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"], ["es", "Español"], ["fr", "Français"], ["id", "Indonesia"], ["th", "ไทย"], ["pt", "Português"]], "translate",
+    "Ngôn ngữ ĐÍCH của bản dịch + giọng đọc + phụ đề. Khác Tiếng Việt: đọc bằng cặp giọng edge của ngôn ngữ đó; viXTTS/casting clone không áp dụng."],
+  ["TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", null, "translate",
+    "Mô tả tự do chèn thêm vào prompt dịch + soát (vd: <b>giọng hài hước, dùng teencode</b>) — cộng thêm lên trên Kiểu nội dung."],
   // nhóm NHẬN DẠNG — làm lại từ transcript (LÂU NHẤT, mất bản dịch + chỉnh tay)
-  ["TRANSCRIPT_SOURCE", "📝 Nguồn transcript", [["auto", "auto — tự chọn"], ["ocr", "ocr — đọc hardsub"], ["whisper", "whisper — nghe tiếng"]], "transcript"],
-  ["WHISPER_MODEL", "Model whisper", [["tiny", "tiny"], ["base", "base"], ["small", "small"], ["medium", "medium"], ["large-v3", "large-v3"]], "transcript"],
-  ["OCR_FPS", "Tốc độ OCR", [["1.0", "1 fps — nhanh"], ["1.5", "1.5 fps"], ["2.0", "2 fps — kỹ"]], "transcript"],
-  ["OCR_CROP_TOP", "Vùng quét phụ đề", [["auto", "auto — tự đo"], ["0.50", "Từ 50%"], ["0.60", "Từ 60%"], ["0.70", "Từ 70%"], ["0.80", "Từ 80%"]], "transcript"],
+  ["TRANSCRIPT_SOURCE", "📝 Nguồn transcript", [["auto", "auto — tự chọn"], ["ocr", "ocr — đọc hardsub"], ["whisper", "whisper — nghe tiếng"]], "transcript",
+    "Cách lấy lời thoại gốc. <b>auto</b>: thử OCR đọc sub cứng trước, không có → Whisper nghe tiếng. Ép <b>ocr</b> khi chắc chắn video có hardsub (chính xác nhất); <b>whisper</b> khi video không sub."],
+  ["WHISPER_MODEL", "Model whisper", [["tiny", "tiny"], ["base", "base"], ["small", "small"], ["medium", "medium"], ["large-v3", "large-v3"]], "transcript",
+    "Model nghe tiếng — to hơn = chính xác hơn + chậm hơn. Máy CPU: <b>small</b> cân bằng; máy GPU: <b>large-v3</b> chính xác nhất."],
+  ["OCR_FPS", "Tốc độ OCR", [["1.0", "1 fps — nhanh"], ["1.5", "1.5 fps"], ["2.0", "2 fps — kỹ"]], "transcript",
+    "Số khung hình quét chữ mỗi giây. <b>2 fps</b> bắt được cả sub hiện cực ngắn; <b>1 fps</b> nhanh gấp đôi, đủ cho sub ≥2 giây."],
+  ["OCR_CROP_TOP", "Vùng quét phụ đề", [["auto", "auto — tự đo"], ["0.50", "Từ 50%"], ["0.60", "Từ 60%"], ["0.70", "Từ 70%"], ["0.80", "Từ 80%"]], "transcript",
+    "OCR chỉ quét dải này (theo chiều cao) tìm phụ đề. <b>auto</b> tự đo vị trí sub từng video — quan trọng với video DỌC (sub ~65%, không sát đáy); số lớn = chỉ quét đáy, hợp phim ngang 16:9."],
 ];
 const ED_OV_GROUPS = [
   ["mix", "🎛 Trộn âm", "đổi xong: chỉ trộn + render lại (NHANH, giọng giữ nguyên)"],
@@ -2384,10 +2404,14 @@ function edOvNorm(k, v) {   // bool từ config có thể là "True"/"False" →
   if (k === "MAX_SPEEDUP" && v && !v.includes(".")) return v + ".0";
   return v;
 }
+// tooltip ⓘ cạnh nhãn — cùng kiểu .finfo/.ftip với trang Cấu hình (CSS toàn cục)
+function ovHint(h) {
+  return h ? ` <span class="finfo" tabindex="0">i<span class="ftip">${h}</span></span>` : "";
+}
 function edOverridePanel(data) {
   const ov = data.env_overrides || {};
   const cfg = data.cfg_defaults || {};
-  const field = ([key, label, opts]) => {
+  const field = ([key, label, opts, , help]) => {
     const cur = ov[key] ?? "";
     const inner = !opts   // ô chữ tự do (vd phong cách dịch); trống = theo cấu hình chung
       ? `<input type="text" id="ov-${key}" value="${esc(cur)}"
@@ -2397,21 +2421,21 @@ function edOverridePanel(data) {
            ${opts.map(([v, l]) => `<option value="${v}" ${cur === v ? "selected" : ""}>${l}</option>`).join("")}
          </select>`;
     return `<div class="ov-field" id="ovf-${key}">
-      <span class="ov-label" id="ovl-${key}">${label}</span>${inner}</div>`;
+      <span class="ov-label" id="ovl-${key}">${label}${ovHint(help)}</span>${inner}</div>`;
   };
   // control KHÔNG phải env-override nhưng cùng ngữ cảnh — nhét vào đúng nhóm:
   // 🎚 Âm nền gốc (bed_gain_db, nhóm Trộn — CHỈ hiện khi Nhạc/SFX = hạ đều, xem applyOvDeps),
   // 🎙 giọng tất cả câu + Xử lý giọng (nhóm Giọng đọc)
   const extras = {
     mix: `<div class="ov-field" id="ovf-BEDVOL">
-      <span class="ov-label" title="Mức hạ audio GỐC dưới giọng đọc — chỉ trộn lại, KHÔNG đọc lại giọng">🎚 Âm nền gốc</span>
+      <span class="ov-label">🎚 Âm nền gốc${ovHint("Mức hạ audio GỐC dưới giọng đọc — output nghe nền to/nhỏ quá thì chỉnh rồi 💾 Lưu &amp; render lại (chỉ trộn lại, KHÔNG đọc lại giọng). Chỉ áp khi Nhạc/SFX gốc = hạ ĐỀU suốt video.")}</span>
       <select id="ed-bedvol">
         ${[["", "— giữ nguyên —"], ["-8", "To hơn (-8dB)"], ["-14", "Vừa (-14dB, mặc định)"],
            ["-20", "Nhỏ (-20dB)"], ["-26", "Rất nhỏ (-26dB)"], ["-34", "Gần tắt (-34dB)"]]
           .map(([v, l]) => `<option value="${v}" ${String(data.bed_gain_db ?? "") === v ? "selected" : ""}>${l}</option>`).join("")}
       </select></div>`,
     tts: `<div class="ov-field">
-      <span class="ov-label" title="Đặt giọng cho TẤT CẢ câu rồi bấm Áp dụng / Lưu & render">🎙 Giọng tất cả câu</span>
+      <span class="ov-label">🎙 Giọng tất cả câu${ovHint("Đặt giọng đã chọn cho TẤT CẢ câu (đè lựa chọn riêng từng câu trong danh sách), rồi bấm 🔁 Áp dụng hoặc 💾 Lưu &amp; render để đọc lại.")}</span>
       <span style="display:flex;gap:6px;min-width:0">
         <select id="edbulkvoice" style="flex:1;min-width:0">
           <option value="nam">Nam — mặc định (${esc(data.voices.nam)})</option>
@@ -2421,7 +2445,7 @@ function edOverridePanel(data) {
         <button class="ghost" type="button" onclick="edApplyAllVoice()">↪ Đổi toàn bộ</button>
       </span></div>
     <div class="ov-field">
-      <span class="ov-label" title="Hậu kỳ giọng (EQ/nén/chuẩn độ to) — áp khi render">🎛 Xử lý giọng</span>
+      <span class="ov-label">🎛 Xử lý giọng${ovHint("Hậu kỳ giọng đọc khi render: EQ + nén + chuẩn độ to. <b>Cân bằng</b> là khởi đầu tốt; <b>Điện ảnh</b> dày, kịch tính; <b>Rõ/sáng</b> cứu giọng bị tối.")}</span>
       <select id="fx-ed">${fxOptionsHtml((data.render || {}).fx || "off")}</select></div>`,
   };
   const hint = data.single_voice
@@ -2460,7 +2484,11 @@ function applyOvDeps() {
   show("TTS_VOICE", edgeVi);
   show("TTS_VOICE_NU", edgeVi && !single);
   const lb = document.getElementById("ovl-TTS_VOICE");
-  if (lb) lb.textContent = single ? "👤 Giọng đọc (edge)" : "👨 Giọng nam/chính (edge)";
+  if (lb) {   // chỉ sửa TEXT NODE đầu — textContent sẽ xoá mất icon ⓘ tooltip bên trong
+    const txt = single ? "👤 Giọng đọc (edge)" : "👨 Giọng nam/chính (edge)";
+    if (lb.firstChild && lb.firstChild.nodeType === 3) lb.firstChild.nodeValue = txt;
+    else lb.insertBefore(document.createTextNode(txt), lb.firstChild);
+  }
   const prov = edOvEff("TRANSLATE_PROVIDER");
   show("CLAUDE_MODEL", prov !== "gemini");
   show("GEMINI_MODEL", prov === "gemini");

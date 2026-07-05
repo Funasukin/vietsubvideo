@@ -6,6 +6,28 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-06 (1) — Desktop (F:\MyProject\vietsubvideo)
+
+### Hoàn thiện UX panel ⚙️ editor: dependent, 2 cột, dọn header, helptext ⓘ
+
+Chuỗi 3 commit theo yêu cầu user khi test tính năng override theo job:
+- **6ee2549** — field PHỤ THUỘC ẩn/hiện theo giá trị HIỆU LỰC (`applyOvDeps`):
+  1 giọng → ẩn Giọng nữ; engine ≠ edge / đích ≠ vi → ẩn cặp giọng edge;
+  provider → chỉ hiện model tương ứng; transcript ocr/whisper → ẩn option lẻ.
+  Field ẩn không được gửi khi Lưu (check style.display, KHÔNG dùng offsetParent
+  kẻo details đóng xóa nhầm hết override). Lưới `.ov-grid` 2 cột, nhãn 180px +
+  input giãn đều — thẳng hàng dọc.
+- **d2766f2** — header editor chỉ còn "← Quay lại" + tiêu đề; control dời về đúng
+  nhóm ngữ cảnh trong panel ⚙️ (Giọng tất cả câu + Xử lý giọng → 🔊; Âm nền gốc
+  → 🎛, CHỈ hiện khi Nhạc/SFX = hạ đều); nút Áp dụng/Lưu & render + edmsg →
+  thanh DÍNH ĐÁY `.ed-actionbar`.
+- **(commit này)** — helptext ⓘ cho CẢ 22 control panel ⚙️ (19 field + Âm nền/
+  Giọng tất cả câu/Xử lý giọng), cùng kiểu `.finfo/.ftip` với trang Cấu hình.
+  Relabel "Giọng đọc/Giọng nam" chỉ sửa text node đầu — textContent sẽ xoá mất
+  icon tooltip con.
+
+---
+
 ## 2026-07-05 (7) — Desktop (F:\MyProject\vietsubvideo)
 
 ### "⚙️ Tùy chọn video này" mở rộng 19 option, chia 4 NHÓM theo độ sâu làm lại
