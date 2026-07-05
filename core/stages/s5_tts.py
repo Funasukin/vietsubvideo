@@ -58,8 +58,9 @@ def _voice_sig(seg: dict) -> str:
         # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
         return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
                 + emotion.sig_tag(seg) + pt)
-    # kèm tông giọng (prosody) + nhãn cảm xúc — đổi là câu bị ảnh hưởng tự đọc lại
-    return "edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg) + pt
+    # kèm tông giọng (prosody) + nhãn cảm xúc + ngân sách fit — đổi là tự đọc lại
+    return ("edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg)
+            + f":f{_fit_budget()}" + pt)
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -80,6 +81,13 @@ def _write_sig(job: Job, seg: dict, sig: str) -> None:
 
 _FIT_TOL = 1.02          # dung sai 2%: dài hơn slot cỡ này mới phải đọc lại
 _FIT_RATE_MAX = 50       # trần TỔNG rate edge (%) — nhanh hơn nữa nghe máy móc
+
+
+def _fit_budget() -> int:
+    """Ngân sách tăng tốc VÌ KHỚP THOẠI (%) theo núm MAX_SPEEDUP — deterministic nên
+    nằm được trong .sig: user đổi núm → sig lệch → các câu edge tự đọc lại đúng mức mới
+    (không tag thì mp3 cũ giữ tốc độ fit cũ, hạ núm xuống cũng không tác dụng)."""
+    return max(0, min(_FIT_RATE_MAX, round((config.MAX_SPEEDUP - 1) * 100)))
 
 
 def _mp3_dur_s(path) -> float | None:
@@ -104,7 +112,13 @@ async def _fit_slot(seg: dict, voice: str, out) -> None:
         return
     kw = emotion.edge_kwargs(seg)
     base = int(kw.get("rate", "+0%").rstrip("%"))
-    total = min(_FIT_RATE_MAX, base + math.ceil((dur / slot - 1) * 100))
+    # Ngân sách tăng tốc VÌ KHỚP THOẠI theo đúng núm MAX_SPEEDUP của user (1.0× = không
+    # được ép nhanh, chấp nhận tràn; 2.0× = ép tới +100% nhưng kẹp trần an toàn +50%).
+    # base (prosody/cảm xúc) là diễn cảm, không tính vào ngân sách khớp.
+    allow = min(_FIT_RATE_MAX - base, round((config.MAX_SPEEDUP - 1) * 100))
+    if allow <= 0:
+        return
+    total = base + min(allow, math.ceil((dur / slot - 1) * 100))
     if total <= base:
         return
     kw["rate"] = f"{total:+d}%"
@@ -145,10 +159,12 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
             if out.exists() and out.stat().st_size > 0:
                 await _fit_slot(seg, voice, out)        # chống tràn: dài quá slot → đọc lại nhanh hơn
                 prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
-                # ghi giọng THỰC tế đã đọc (kèm tông giọng + cảm xúc) — giữ "edge:" tường
-                # minh vì nhánh fallback vixtts→edge cần sig LỆCH _voice_sig để thử lại
+                # ghi giọng THỰC tế đã đọc (kèm tông giọng + cảm xúc + ngân sách fit) —
+                # giữ "edge:" tường minh vì nhánh fallback vixtts→edge cần sig LỆCH
+                # _voice_sig để thử lại
                 _write_sig(job, seg, "edge:" + voice + prosody.sig_tag(seg)
-                           + emotion.sig_tag(seg) + prosody_transfer.sig_tag())
+                           + emotion.sig_tag(seg) + f":f{_fit_budget()}"
+                           + prosody_transfer.sig_tag())
                 return
             if attempt == RETRIES:
                 raise RuntimeError(

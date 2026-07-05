@@ -6,6 +6,23 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-06 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### "Giọng lúc nhanh lúc chậm": MAX_SPEEDUP thành núm TỔNG cho mọi lớp tăng tốc
+
+User nghe giọng đọc không đều. Đo job 8691dd: PROSODY chỉnh rate −12..+20% cho
+10/23 câu (bám tốc độ giọng gốc) + _fit_slot ép +15..+50% cho câu dài hơn slot —
+hai tầng chồng nhau → câu cạnh nhau lệch tốc độ rõ.
+
+Fix thiết kế: `_fit_slot` giờ TÔN TRỌNG núm MAX_SPEEDUP — ngân sách ép-nhanh-vì-
+khớp = (MAX_SPEEDUP−1)×100%, kẹp trần 50%. **1.0× = không ép nhanh chút nào**
+(giọng đều tự nhiên, chấp nhận tràn) — trước đó 1.0× chỉ tắt atempo S7 còn fit
+edge vẫn ép +50% (núm nói dối). Thêm `:f{budget}` vào .sig → đổi núm là các câu
+edge tự đọc lại đúng mức mới (trước đổi núm không có tác dụng với mp3 đã có).
+Helptext 2 nơi cập nhật. Muốn giọng ĐỀU: tắt PROSODY (±20%) + hạ MAX_SPEEDUP.
+
+---
+
 ## 2026-07-06 (1) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Hoàn thiện UX panel ⚙️ editor: dependent, 2 cột, dọn header, helptext ⓘ
