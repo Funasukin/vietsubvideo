@@ -6,6 +6,27 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (3) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix OCR video nhiều chữ trên hình (vlog quán ăn) — crop dải TRỘI + trần gộp 4 dòng
+
+User test video 大学生饭店兼职 (vlog quán ăn, thoại bắn nhanh) → chất lượng tệ:
+transcript ngập menu/giá tiền (15元 80元, tên món), câu gộp tới 7 lượt thoại.
+
+1. **`_auto_crop_top` chọn DẢI TRỘI thay vì phân vị 15%**: video quán ăn đầy chữ
+   giữa hình (bảng menu y=0.5-0.6) kéo crop lên sàn 0.30 → OCR nuốt menu vào thoại.
+   Giờ gom mép-trên vào băng 0.05, chọn băng NHIỀU DÒNG NHẤT (phụ đề hiện mọi cảnh
+   vị trí cố định; menu/biển hiệu chỉ vài cảnh), đồng điểm lấy băng thấp hơn.
+   Đo lại: quán ăn 0.30→0.575, Douyin cũ 0.582 (không đổi hành vi video sạch).
+2. **`segtools.MERGE_MAX_PIECES=4`**: trần số dòng sub gốc gộp vào 1 câu đọc —
+   thoại bắn nhanh không trần sẽ gộp 6-7 lượt (nhiều người nói) thành câu tràng
+   giang, giọng đọc lệch hình.
+
+Kết quả extract lại: 86 dòng thô → 24 câu, 0 câu dính 元, max 4 mảnh/câu. Job đã
+tự process lại + render (theo quy trình [[auto-reprocess-then-notify]]).
+
+---
+
 ## 2026-07-05 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Fix: phụ đề XEM TRƯỚC trong editor hiện nguyên câu gộp dài (sub thật đã tách)

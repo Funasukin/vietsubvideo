@@ -108,8 +108,11 @@ def _duration(video: Path) -> float:
 
 def _auto_crop_top(video: Path, work_dir: Path, sample: int = 16) -> float | None:
     """Tự đo mép TRÊN của dải phụ đề: OCR ~sample frame rải đều TOÀN khung, gom vị trí
-    y các dòng chữ trong [0.22, 0.97] (bỏ watermark đỉnh + UI đáy) → crop_top = mép cao
-    nhất ổn định trừ lề. Nhờ vậy video DỌC (sub ~0.65) không bị crop cứng 0.70 cắt mất.
+    y các dòng chữ trong [0.22, 0.97] (bỏ watermark đỉnh + UI đáy), rồi chọn DẢI TRỘI —
+    băng y xuất hiện NHIỀU dòng nhất qua các frame chính là phụ đề (hiện ở mọi cảnh,
+    vị trí cố định); chữ khác trên hình (bảng menu, biển hiệu, giá tiền...) chỉ hiện
+    ở vài cảnh nên băng của chúng thưa hơn. (Bản đầu lấy phân vị 15% của MỌI dòng —
+    video quán ăn đầy chữ giữa màn hình kéo crop lên tận sàn → OCR nuốt menu vào thoại.)
     Trả None nếu không đủ dữ liệu (→ dùng mặc định)."""
     dur = _duration(video)
     if dur <= 1:
@@ -135,10 +138,12 @@ def _auto_crop_top(video: Path, work_dir: Path, sample: int = 16) -> float | Non
     shutil.rmtree(probe, ignore_errors=True)
     if len(tops) < 4:
         return None
-    tops.sort()
-    # phân vị ~15% = mép trên cao nhất mà ổn định (bỏ vài dòng lạc), trừ lề an toàn
-    top = tops[max(0, int(0.15 * len(tops)) - 1)]
-    return max(0.30, min(0.80, round(top - 0.06, 3)))
+    # gom mép-trên vào băng 0.05 → băng nhiều dòng nhất = dải phụ đề; đồng điểm thì
+    # lấy băng THẤP hơn trên màn hình (phụ đề luôn nằm dưới chữ trang trí cùng tần suất)
+    band = Counter(round(t / 0.05) * 0.05 for t in tops)
+    best = max(band.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    members = [t for t in tops if best - 0.03 <= t <= best + 0.08]
+    return max(0.30, min(0.80, round(min(members) - 0.06, 3)))
 
 
 def _resolve_crop_top(video: Path, work_dir: Path) -> float:
