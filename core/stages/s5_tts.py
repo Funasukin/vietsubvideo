@@ -60,7 +60,7 @@ def _voice_sig(seg: dict) -> str:
                 + emotion.sig_tag(seg) + pt)
     # kèm tông giọng (prosody) + nhãn cảm xúc + ngân sách fit — đổi là tự đọc lại
     return ("edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg)
-            + f":f{_fit_budget()}" + pt)
+            + f":f{_fit_budget()}s{_SLOW_MAX}" + pt)
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -81,6 +81,8 @@ def _write_sig(job: Job, seg: dict, sig: str) -> None:
 
 _FIT_TOL = 1.02          # dung sai 2%: dài hơn slot cỡ này mới phải đọc lại
 _FIT_RATE_MAX = 50       # trần TỔNG rate edge (%) — nhanh hơn nữa nghe máy móc
+_SLOW_TOL = 0.80         # đọc xong sớm hơn 80% thời lượng câu GỐC → kéo chậm lại
+_SLOW_MAX = 15           # kéo chậm tối đa (%) — hơn nữa nghe lê thê, "say rượu"
 
 
 def _fit_budget() -> int:
@@ -100,26 +102,39 @@ def _mp3_dur_s(path) -> float | None:
 
 
 async def _fit_slot(seg: dict, voice: str, out) -> None:
-    """Chống tràn thoại (#3): bản đọc DÀI hơn slot (khoảng trống tới câu kế) → đọc
-    lại MỘT lần với rate cộng thêm đúng phần vượt — edge rate giữ cao độ và tự nhiên
-    hơn atempo hậu kỳ. S7 vẫn atempo phần dư còn lại → cộng 2 lớp là giọng đọc khớp
-    hoặc hụt hơn giọng gốc một chút. Lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
+    """Khớp nhịp thoại 2 CHIỀU (#3): bản đọc DÀI hơn slot (khoảng trống tới câu kế)
+    → đọc lại nhanh hơn đúng phần vượt; bản đọc NGẮN hơn hẳn thời lượng câu GỐC →
+    kéo chậm lại (trần _SLOW_MAX) cho khớp miệng, khỏi "đọc xong ngồi im". Chiều
+    chậm neo theo thời lượng CÂU GỐC (end−start) chứ không phải slot — slot gồm cả
+    khoảng NGHỈ tự nhiên giữa câu, kéo lấp hết là mất nhịp nghỉ. Cả 2 chiều chỉ chạy
+    khi MAX_SPEEDUP > 1.0 (1.0× = giữ giọng hoàn toàn tự nhiên). Edge rate giữ cao
+    độ; lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
     slot = seg.get("_slot_s")
     if not slot:
         return
     dur = _mp3_dur_s(out)
-    if not dur or dur <= slot * _FIT_TOL:
+    if not dur:
         return
     kw = emotion.edge_kwargs(seg)
     base = int(kw.get("rate", "+0%").rstrip("%"))
-    # Ngân sách tăng tốc VÌ KHỚP THOẠI theo đúng núm MAX_SPEEDUP của user (1.0× = không
-    # được ép nhanh, chấp nhận tràn; 2.0× = ép tới +100% nhưng kẹp trần an toàn +50%).
-    # base (prosody/cảm xúc) là diễn cảm, không tính vào ngân sách khớp.
-    allow = min(_FIT_RATE_MAX - base, round((config.MAX_SPEEDUP - 1) * 100))
-    if allow <= 0:
+    # Ngân sách chỉnh nhịp VÌ KHỚP THOẠI theo đúng núm MAX_SPEEDUP của user (1.0× =
+    # không đụng; 2.0× = ép tới trần an toàn +50%). base (prosody/cảm xúc) là diễn
+    # cảm, không tính vào ngân sách khớp.
+    budget = _fit_budget()
+    if budget <= 0:
         return
-    total = base + min(allow, math.ceil((dur / slot - 1) * 100))
-    if total <= base:
+    utter = max(0.3, float(seg.get("end", 0)) - float(seg.get("start", 0)))
+    if dur > slot * _FIT_TOL:          # DÀI quá slot → đọc nhanh hơn
+        allow = min(_FIT_RATE_MAX - base, budget)
+        if allow <= 0:
+            return
+        total = base + min(allow, math.ceil((dur / slot - 1) * 100))
+    elif dur < min(utter, slot) * _SLOW_TOL:   # NGẮN hơn hẳn câu gốc → kéo chậm lại
+        target = min(utter, slot)
+        total = base - min(_SLOW_MAX, round((1 - dur / target) * 100))
+    else:
+        return
+    if total == base:
         return
     kw["rate"] = f"{total:+d}%"
     tmp = out.with_suffix(".fit.mp3")
@@ -129,7 +144,7 @@ async def _fit_slot(seg: dict, voice: str, out) -> None:
             timeout=config.TTS_TIMEOUT_S)
         if tmp.exists() and tmp.stat().st_size > 0:
             os.replace(tmp, out)
-            print(f"  ↳ câu {seg['id']}: {dur:.1f}s > slot {slot:.1f}s → đọc lại rate {total:+d}%")
+            print(f"  ↳ câu {seg['id']}: đọc {dur:.1f}s / slot {slot:.1f}s → đọc lại rate {total:+d}%")
     except Exception:
         pass
     finally:
@@ -163,7 +178,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
                 # giữ "edge:" tường minh vì nhánh fallback vixtts→edge cần sig LỆCH
                 # _voice_sig để thử lại
                 _write_sig(job, seg, "edge:" + voice + prosody.sig_tag(seg)
-                           + emotion.sig_tag(seg) + f":f{_fit_budget()}"
+                           + emotion.sig_tag(seg) + f":f{_fit_budget()}s{_SLOW_MAX}"
                            + prosody_transfer.sig_tag())
                 return
             if attempt == RETRIES:
