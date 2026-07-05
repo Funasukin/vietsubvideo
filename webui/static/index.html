@@ -2111,11 +2111,11 @@ async function openEditor(id) {
         </div>
         ${!data.has_final ? `<div class="meta" style="margin:6px 0 0">Khung hình là video GỐC; ${data.has_dub ? "đang phát LỒNG TIẾNG VIỆT; " : ""}phụ đề + làm mờ bên dưới là xem trước gần đúng (bản chính xác sau khi render). Nhấp 1 lần vào dòng để tua tới, nhấp ĐÚP để phát từ đó, 🔊 để nghe riêng câu.</div>` : ""}
         <div class="ed-now" id="ednow">▶ Phát video — câu đang chiếu sẽ tự sáng & cuộn tới.</div>
-        ${edSettingsPanel(data)}
       </div>
       <div class="ed-list" id="edlist">${rows}</div>
       <datalist id="ed-castnames">${edCastNames.map(n => `<option value="${esc(n)}">`).join("")}</datalist>
-    </div>`;
+    </div>
+    ${edSettingsPanel(data)}`;
   for (const t of ["over", "jobs", "cfg"]) document.getElementById("pane-" + t).style.display = "none";
   document.getElementById("pane-edit").style.display = "";
   const ev = document.getElementById("edvideo");
