@@ -22,7 +22,11 @@ JOBS_DIR = DATA_DIR / "jobs"
 OUTPUT_DIR = BASE_DIR / "output"
 FONTS_DIR = BASE_DIR / "fonts"   # font tùy biến: thả .ttf/.otf vào đây để dùng
 
-load_dotenv(BASE_DIR / ".env")
+# override=True: .env là NGUỒN SỰ THẬT duy nhất (UI ghi vào đây). Mặc định dotenv
+# KHÔNG ghi đè biến đã có trong environment → job con (cli.py) THỪA KẾ environment
+# của server (nạp .env lúc server khởi động) → mọi thay đổi Cấu hình lưu qua UI
+# âm thầm KHÔNG có tác dụng cho tới khi restart server. override sửa tận gốc.
+load_dotenv(BASE_DIR / ".env", override=True)
 
 # API keys
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")

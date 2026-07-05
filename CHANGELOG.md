@@ -6,6 +6,22 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-05 (5) — Desktop (F:\MyProject\vietsubvideo)
+
+### Fix BUG NỀN TẢNG: Cấu hình lưu qua UI âm thầm KHÔNG áp dụng tới khi restart server
+
+Lộ khi user bật "Chuyển ngữ điệu gốc" rồi chạy lại job → 0/23 câu được transfer.
+Nguyên nhân: `config.py` dùng `load_dotenv()` mặc định (`override=False`) — server
+nạp `.env` vào os.environ lúc khởi động; job con (`cli.py --resume`) THỪA KẾ
+environment đó; dotenv trong con thấy biến đã có → giữ giá trị CŨ → mọi thay đổi
+Cấu hình qua UI chỉ ăn sau khi restart server. Không lộ trước giờ vì dev hay restart.
+
+Fix: `load_dotenv(BASE_DIR/".env", override=True)` — `.env` là nguồn sự thật duy
+nhất (UI ghi vào đây), luôn thắng environment thừa kế. Verify bằng mô phỏng đúng
+kịch bản (env cũ 0, .env mới 1 → đọc ra 1).
+
+---
+
 ## 2026-07-05 (4) — Desktop (F:\MyProject\vietsubvideo)
 
 ### 4 yêu cầu: nền hạ đều, chỉnh âm nền trong editor, list cao bằng video, fix "vẫn nhiều giọng"
