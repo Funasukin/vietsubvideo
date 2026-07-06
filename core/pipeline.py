@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Callable
 
 from core import progress
-from core.job import PIPELINE_STAGES, Job, Stage
+from core.job import PIPELINE_STAGES, VISUAL_STAGES, Job, Stage
 from core.stages import (
     s1_download,
     s2_extract,
@@ -39,7 +39,8 @@ ProgressCallback = Callable[[Job, Stage], None]
 
 
 def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
-    for stage in PIPELINE_STAGES:
+    stages = VISUAL_STAGES if job.mode == "visual" else PIPELINE_STAGES
+    for stage in stages:
         if stage not in STAGE_RUNNERS:
             continue
         if stage.value in job.completed_stages:

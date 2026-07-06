@@ -6,6 +6,51 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-06 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### Tính năng MỚI: tab "🎨 Chỉnh giao diện" — chỉ nạp video để thêm khung/logo/watermark, KHÔNG dịch/lồng tiếng
+
+User muốn 1 luồng nhẹ: nạp video → chỉnh khung viền/logo/watermark/crop/che sub gốc
+→ xuất — không tốn phí Claude/Whisper/TTS, không cần chờ dịch. Thiết kế: job MỚI
+`mode="dub"` (mặc định, y hệt cũ) | `"visual"` — pipeline rút còn 2 stage
+`[DOWNLOADING, RENDERING]` (`core/job.py: VISUAL_STAGES`), `core/pipeline.py` chọn
+stage-list theo `job.mode`.
+
+- **`core/stages/s8_render.py: _run_visual(job)`** (song song với `run()` cũ, không
+  đụng code dịch): dùng THẲNG audio gốc của video nguồn (không cần transcript/dub
+  audio) — remux nhanh (`-c:v copy`) nếu không chỉnh gì, re-encode khi có khung/che/
+  watermark/crop/logo. Nhạc nền/logo/master vẫn dùng CHUNG cấu hình "Thương hiệu"
+  toàn cục như job dịch (nhất quán thương hiệu kênh). "Che sub gốc" chỉ có dải THỦ
+  CÔNG (không "tự động" vì chưa từng OCR).
+- **webui/server.py**: `NewJob.mode`, `create_job`/`upload_job` nhánh visual (tự
+  `_enqueue`, ép `pause_before_render=True` để dừng đúng trước render cho user chỉnh
+  trước khi xuất lần đầu); `list_jobs(mode="dub")` mặc định — API cũ `/api/jobs`
+  không tham số vẫn CHỈ trả job dịch (zero thay đổi hành vi cho code cũ); thêm
+  `mode="visual"`/`"all"`. `rerender_job` bỏ qua xoá/reset stage "metadata" cho job
+  visual (s9_metadata đọc transcript → crash nếu lỡ chạy). Endpoint mới nhẹ
+  `GET /api/jobs/{id}/visual` (render dict + danh sách khung PNG + has_final/audio).
+- **webui/static/index.html**: tab mới + `pane-visual` (danh sách/thêm video, tách
+  biệt hoàn toàn khỏi Jobs) + `pane-visual-edit` (editor riêng: video preview +
+  panel 🎨 khung viền/watermark/crop/che sub — KHÔNG có font/subtitle-mode vì
+  không bao giờ vẽ phụ đề mới). Tái dùng triệt để hạ tầng có sẵn: CSS `.wm-ov`/
+  `.crop-ov` (đổi từ `#ed-wm-ov`/`#ed-crop-ov` sang class dùng chung, giữ nguyên
+  rule ID cũ), `syncBand()`/`jobProgressHTML()`/`openJob()`/`resumeJob()` generic
+  sẵn, và 2 endpoint `/preview` + `/rerender` y hệt editor lồng tiếng (chỉ khác
+  payload gửi lên).
+- **Fix bug tiện thể phát hiện**: `/api/jobs/{id}/preview` mặc định lấy mẫu ở giây
+  30 khi job chưa có transcript — video NGẮN hơn 30s (test clip 10.5s, hay gặp ở
+  video visual-mode/Shorts) khiến `-ss` vượt quá thời lượng → ffmpeg không trích
+  được khung nào → 500. Giờ kẹp `t` theo `brand._duration(source)`. Sửa dùng chung
+  cho cả 2 chế độ, không đổi hành vi job dịch bình thường (t luôn nhỏ hơn duration).
+
+Verify end-to-end qua HTTP thật (không chỉ gọi hàm Python): tạo job visual bằng
+link/upload → tự chạy → dừng đúng chỗ → mở editor → đổi khung màu + che mờ → xem
+trước CSS (tức thời) khớp xem trước FFmpeg (chính xác) → bấm Xuất video → render
+xong → final.mp4 đúng kích thước/audio nguyên vẹn → xóa job. Xác nhận job visual
+KHÔNG lẫn vào tab Jobs (dịch) và ngược lại. Không lỗi console suốt test.
+
+---
+
 ## 2026-07-06 (BÀN GIAO SANG MÁY MỚI) — Desktop (F:\MyProject\vietsubvideo)
 
 ### User sắp chuyển sang máy mới. Toàn bộ code đã commit + push (HEAD = 30e285c).

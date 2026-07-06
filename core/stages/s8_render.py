@@ -242,10 +242,130 @@ def style_with_frame_margin(style: dict | None, frame: str, frame_width: float,
     return s
 
 
+def _run_visual(job: Job) -> None:
+    """job.mode == 'visual' (#task 'Chỉnh giao diện'): KHÔNG dịch/lồng tiếng — chỉ áp
+    khung viền/logo/watermark/crop/che sub gốc lên video GỐC, giữ NGUYÊN audio gốc.
+    Không có transcript_vi.json/dubbed_audio.wav (chưa từng chạy dịch/TTS) nên không
+    gọi make_srt/vẽ phụ đề mới; "che sub gốc" chỉ dùng băng THỦ CÔNG (không có
+    sub_boxes.json từ OCR vì transcribe chưa từng chạy trong chế độ này)."""
+    out_path = job.dir / "final.mp4"
+    r = job.render or {}
+    source = job.find_source()
+    has_audio = brand._has_audio(source)
+
+    cover = r.get("cover", config.COVER_SOURCE_SUBS)
+    if cover == "auto":   # không có sub_boxes.json (chưa OCR) → auto vô nghĩa, về mờ thủ công
+        cover = "blur"
+    top = float(r.get("cover_top", config.COVER_TOP))
+    cw = float(r.get("cover_width", 1.0))
+    cb = float(r.get("cover_bottom", 1.0))
+    frame = r.get("frame", config.FRAME)
+    frame_color = r.get("frame_color", config.FRAME_COLOR)
+    frame_color2 = r.get("frame_color2", config.FRAME_COLOR2)
+    frame_width = float(r.get("frame_width", config.FRAME_WIDTH))
+    frame_pad = str(r.get("frame_pad", config.FRAME_PAD)).strip().lower() in ("1", "true")
+    # brand/xuất bản: DÙNG CHUNG cấu hình toàn cục với chế độ dịch (nhạc/logo/master
+    # là thương hiệu kênh, áp đồng nhất mọi video dù có dịch hay không)
+    music = r.get("music", config.MUSIC)
+    music_vol = r.get("music_vol", config.MUSIC_VOL)
+    logo = r.get("logo", config.LOGO)
+    logo_pos = r.get("logo_pos", config.LOGO_POS)
+    logo_scale = r.get("logo_scale", config.LOGO_SCALE)
+    logo_opacity = r.get("logo_opacity", config.LOGO_OPACITY)
+    intro = r.get("intro", config.INTRO)
+    outro = r.get("outro", config.OUTRO)
+    master = str(r.get("master", config.MASTER)).strip().lower() in ("1", "true")
+    subscribe = str(r.get("subscribe", config.SUBSCRIBE)).strip().lower()
+
+    needs_reencode = (cover != "none" or frame != "none" or logo not in ("", "none")
+                      or subscribe == "on" or watermark.active(r))
+
+    # Audio: fx/nhạc nền(duck)/master áp THẲNG lên audio GỐC — build_audio chỉ cần
+    # 1 path bất kỳ có track audio để "-i"; [0:a] không quan tâm input kèm video hay
+    # không, nên truyền cả path VIDEO nguồn vào thẳng là hợp lệ, khỏi tách audio riêng.
+    audio_path = source
+    render_wav = job.dir / "dubbed_render.wav"
+    if has_audio and brand.build_audio(source, render_wav, r.get("fx", config.VOICE_FX),
+                                       music, music_vol, master, job.dir):
+        audio_path = render_wav
+
+    if not needs_reencode:
+        # Không có gì cần vẽ lại pixel → remux nhanh (giữ nguyên chất lượng video gốc)
+        args = ["-i", str(source)]
+        maps = ["-map", "0:v:0"]
+        if has_audio:
+            if audio_path != source:
+                args += ["-i", str(audio_path)]
+                maps += ["-map", "1:a:0"]
+            else:
+                maps += ["-map", "0:a:0"]
+            ffmpeg.run(*args, *maps, "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+                      "-shortest", str(out_path))
+        else:
+            ffmpeg.run(*args, *maps, "-c:v", "copy", "-an", str(out_path))
+    else:
+        vw, vh = ffmpeg.probe_dims(source)
+        wm_pre = watermark.pre_chain(r, vw, vh, job.dir)
+        crop_r = r.get("crop") or []
+        if watermark.crop_active(crop_r):
+            top, cb = watermark.map_y(top, crop_r), watermark.map_y(cb, crop_r)
+        base = cover_filter(cover, top, "null", cw, cb) if cover != "none" else "null"
+        if wm_pre:
+            base = f"{wm_pre},{base}"
+        vf_full = frames.append_to_vf(base, frame, frame_color, frame_color2,
+                                      frame_width, vw, vh, job.dir, pad=frame_pad)
+        vf_full = brand.append_logo(vf_full, logo, logo_pos, logo_scale, logo_opacity, vw, job.dir)
+        sub_dur = brand._duration(source) if subscribe == "on" else 0.0
+        vf_full = brand.append_subscribe(vf_full, subscribe,
+                                         r.get("subscribe_text", config.SUBSCRIBE_TEXT),
+                                         vw, job.dir, sub_dur)
+        if len(vf_full) > 1000:
+            (job.dir / "vf_auto.txt").write_text(vf_full, encoding="utf-8")
+            vf_args = ("-filter_script:v", "vf_auto.txt")
+        else:
+            vf_args = ("-vf", vf_full)
+
+        def encode(*codec_args: str) -> None:
+            args = ["-i", str(source)]
+            maps = ["-map", "0:v:0", *vf_args]
+            audio_args: tuple[str, ...] = ()
+            if has_audio:
+                if audio_path != source:
+                    args += ["-i", str(audio_path)]
+                    maps += ["-map", "1:a:0"]
+                else:
+                    maps += ["-map", "0:a:0"]
+                audio_args = ("-c:a", "aac", "-b:a", "192k")
+            else:
+                audio_args = ("-an",)
+            ffmpeg.run(*args, *maps, *codec_args, *audio_args,
+                      "-shortest", "final.mp4", cwd=job.dir)
+
+        try:
+            encode("-c:v", "h264_qsv", "-global_quality", "23")
+        except RuntimeError:
+            encode("-c:v", "libx264", "-preset", "fast", "-crf", "20")
+
+    if not out_path.exists() or out_path.stat().st_size < 10_000:
+        raise RuntimeError("final.mp4 không được tạo hoặc quá nhỏ")
+
+    if intro not in ("", "none") or outro not in ("", "none"):
+        cw2, ch2 = ffmpeg.probe_dims(out_path)
+        io_tmp = job.dir / "final_io.mp4"
+        if brand.concat_io(intro, out_path, outro, io_tmp, cw2, ch2):
+            os.replace(io_tmp, out_path)
+
+    config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    shutil.copy2(out_path, config.OUTPUT_DIR / f"final-{ts}.mp4")
+
+
 def run(job: Job) -> None:
     out_path = job.dir / "final.mp4"
     if out_path.exists():
         return
+    if job.mode == "visual":
+        return _run_visual(job)
 
     r = job.render or {}
     # nhịp phụ đề: 1 = tách theo nhịp sub gốc (mặc định) | 0 = hiện cả câu gộp

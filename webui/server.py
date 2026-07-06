@@ -287,6 +287,7 @@ class NewJob(BaseModel):
     pause_before_render: bool = False
     glossary: str = ""
     series: str = ""   # tên series (nhiều tập cùng phim) → dùng chung glossary + casting
+    mode: str = "dub"  # "dub" (mặc định, dịch+lồng tiếng đầy đủ) | "visual" (#task "Chỉnh giao diện")
 
 
 class RenderOptions(BaseModel):
@@ -410,13 +411,15 @@ def _cached_tts_done(job_dir: Path) -> int:
 
 
 @app.get("/api/jobs")
-def list_jobs() -> list[dict]:
+def list_jobs(mode: str = "dub") -> list[dict]:
+    """mode='dub' (mặc định — job cũ không có key 'mode' cũng tính là dub, giữ hành vi
+    cũ nguyên vẹn) | 'visual' (#task 'Chỉnh giao diện') | 'all' = không lọc."""
     jobs = []
     if config.JOBS_DIR.exists():
         for d in sorted(config.JOBS_DIR.iterdir(), reverse=True):
             if d.is_dir():
                 s = _job_summary(d)
-                if s:
+                if s and (mode == "all" or s.get("mode", "dub") == mode):
                     jobs.append(s)
     return jobs
 
@@ -426,10 +429,16 @@ def create_job(body: NewJob) -> dict:
     url = body.url.strip()
     if not url:
         raise HTTPException(400, "Thiếu URL")
-    _check_glossary(body.glossary)
-    job = Job.create(url=url, pause_before_render=body.pause_before_render,
-                     glossary=body.glossary, series=body.series.strip())
-    # KHÔNG _pending.put ở đây: job tạo xong ở trạng thái "Chờ chạy", chờ ▶ Chạy.
+    if body.mode == "visual":
+        # #task "Chỉnh giao diện": không glossary/series (không dịch) — tự chạy luôn
+        # (chỉ tải video, nhanh) rồi dừng trước render để mở thẳng vào editor chỉnh.
+        job = Job.create(url=url, pause_before_render=True, mode="visual")
+        _enqueue(job.id)
+    else:
+        _check_glossary(body.glossary)
+        job = Job.create(url=url, pause_before_render=body.pause_before_render,
+                         glossary=body.glossary, series=body.series.strip())
+        # KHÔNG _pending.put ở đây: job tạo xong ở trạng thái "Chờ chạy", chờ ▶ Chạy.
     return _job_summary(job.dir)
 
 
@@ -441,19 +450,25 @@ _UPLOAD_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".flv"}
 def upload_job(file: UploadFile = File(...),
                pause_before_render: bool = Form(False),
                glossary: str = Form(""),
-               series: str = Form("")) -> dict:
+               series: str = Form(""),
+               mode: str = Form("dub")) -> dict:
     """Tạo job từ video UPLOAD ở máy: lưu thẳng thành source.<ext> trong thư mục job.
     Không đặt completed_stages — S1 (download) tự bỏ qua khi đã có source nên job
-    vẫn là 'Chờ chạy' bình thường (hiện nút ▶ Chạy, tính vào 'Chạy tất cả')."""
+    vẫn là 'Chờ chạy' bình thường (hiện nút ▶ Chạy, tính vào 'Chạy tất cả').
+    mode='visual' (#task 'Chỉnh giao diện'): không glossary/series, tự chạy luôn."""
     name = Path(file.filename or "video").name
     ext = Path(name).suffix.lower()
     if ext not in _UPLOAD_EXTS:
         raise HTTPException(400, "Định dạng không hỗ trợ: " + (ext or "(không rõ)")
                             + ". Chấp nhận: " + ", ".join(sorted(_UPLOAD_EXTS)))
-    _check_glossary(glossary)
+    visual = mode == "visual"
+    if not visual:
+        _check_glossary(glossary)
     job = Job.create(url=f"[Upload] {name}",
-                     pause_before_render=pause_before_render, glossary=glossary,
-                     series=series.strip())
+                     pause_before_render=(True if visual else pause_before_render),
+                     glossary=("" if visual else glossary),
+                     series=("" if visual else series.strip()),
+                     mode=("visual" if visual else "dub"))
     dest = job.dir / f"source{ext}"
     try:
         with dest.open("wb") as out:
@@ -470,6 +485,8 @@ def upload_job(file: UploadFile = File(...),
     if size == 0:
         shutil.rmtree(job.dir, ignore_errors=True)
         raise HTTPException(400, "File rỗng hoặc upload hỏng (thử lại)")
+    if visual:
+        _enqueue(job.id)   # tự chạy luôn (chỉ copy file, S1 thấy source đã có → xong ngay)
     return _job_summary(job.dir)
 
 
@@ -765,9 +782,12 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
     if locked:
         raise HTTPException(409, "Tệp đang được phát/khoá: " + ", ".join(locked)
                             + ". Dừng phát (hoặc đợi vài giây) rồi thử lại.")
-    _unlink_quiet(job.dir / "metadata.json")
-    job.completed_stages = [s for s in job.completed_stages
-                            if s not in ("rendering", "metadata")]
+    # job.mode=="visual": không có transcript nên KHÔNG được đụng stage "metadata"
+    # (s9_metadata.run đọc transcript_vi.json → crash nếu chạy nhầm cho job visual).
+    drop_stages = ("rendering",) if job.mode == "visual" else ("rendering", "metadata")
+    if job.mode != "visual":
+        _unlink_quiet(job.dir / "metadata.json")
+    job.completed_stages = [s for s in job.completed_stages if s not in drop_stages]
     job.error = None
     job.save()
     _enqueue(job_id)
@@ -777,7 +797,7 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
 @app.post("/api/jobs/{job_id}/preview")
 def preview(job_id: str, opts: RenderOptions) -> FileResponse:
     """Áp vùng che + kiểu chữ + phụ đề mẫu lên 1 frame thật — xem trước không cần render."""
-    from core import ffmpeg, frames
+    from core import brand, ffmpeg, frames
     from core.stages.s8_render import (auto_cover_chain, build_style,
                                        cover_filter, fontsdir_arg, load_sub_boxes,
                                        style_with_frame_margin)
@@ -798,6 +818,11 @@ def preview(job_id: str, opts: RenderOptions) -> FileResponse:
         if segs:
             mid = segs[len(segs) // 2]
             t, sample = mid["start"] + 0.3, mid["text_vi"]
+    # video NGẮN hơn mốc mặc định 30s (video visual-mode/Shorts chưa có transcript
+    # để chọn mốc thật) → -ss vượt EOF khiến ffmpeg không trích được khung nào.
+    dur = brand._duration(source)
+    if dur > 0:
+        t = max(0.0, min(t, dur - 0.15))
 
     # chế độ che tự động: nhảy tới giữa lúc một sub gốc đang hiện để thấy hiệu ứng
     cover, auto_box = opts.cover, None
@@ -914,6 +939,31 @@ def job_dub(job_id: str) -> FileResponse:
     if not path.exists():
         raise HTTPException(404, "Chưa có bản lồng tiếng")
     return FileResponse(path, media_type="audio/wav")
+
+
+# ---------- #task "Chỉnh giao diện" (job.mode=="visual"): editor khung/logo/watermark
+# thuần túy, không transcript/segments — panel nhẹ hơn hẳn editor lồng tiếng ----------
+
+@app.get("/api/jobs/{job_id}/visual")
+def get_visual_job(job_id: str) -> dict:
+    """Dữ liệu cho editor 'Chỉnh giao diện': cài đặt render đã lưu + danh sách khung
+    PNG khả dụng + trạng thái final/audio. KHÔNG cần transcript (job này chưa từng
+    dịch/nhận dạng thoại)."""
+    _check_job_id(job_id)
+    job_dir = config.JOBS_DIR / job_id
+    if not job_dir.is_dir():
+        raise HTTPException(404, "Không có job này")
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    from core import brand, frames
+    source = job.find_source()
+    return {"render": job.render or {},
+            "frames": frames.list_png(),
+            "has_final": (job_dir / "final.mp4").exists(),
+            "has_audio": bool(source) and brand._has_audio(source),
+            "has_source": bool(source)}
 
 
 # ---------- Editor lời thoại: xem + sửa text/giọng từng câu ----------

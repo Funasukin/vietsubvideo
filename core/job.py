@@ -43,6 +43,15 @@ PIPELINE_STAGES = [
     Stage.UPLOADING,
 ]
 
+# job.mode == "visual" (#task "Chỉnh giao diện"): KHÔNG dịch/lồng tiếng — chỉ tải
+# video rồi áp khung viền/logo/watermark/crop/che sub gốc lên audio+video GỐC. Bỏ
+# hẳn transcribe/translate/tts/bgm/mixing/metadata (không tốn phí LLM/Whisper/TTS,
+# không cần transcript nên s9_metadata sẽ crash nếu lỡ chạy — PHẢI loại khỏi list).
+VISUAL_STAGES = [
+    Stage.DOWNLOADING,
+    Stage.RENDERING,
+]
+
 _VIDEO_EXTS = {".mp4", ".mkv", ".webm", ".mov", ".flv"}
 
 
@@ -65,6 +74,9 @@ class Job:
     # override cấu hình THEO JOB (editor "⚙️ Tùy chọn video này"): {ENV_KEY: value}.
     # Worker truyền qua FLOWAPP_JOB_OVERRIDES → config.py áp SAU .env → thắng cấu hình chung.
     env_overrides: dict = field(default_factory=dict)
+    # "dub" (mặc định, pipeline đầy đủ) | "visual" (#task chỉ chỉnh giao diện — xem
+    # VISUAL_STAGES). Job cũ không có key này → dataclass default "dub", đúng ý nghĩa.
+    mode: str = "dub"
 
     @property
     def dir(self) -> Path:
@@ -84,11 +96,11 @@ class Job:
     @classmethod
     def create(cls, url: str,
                pause_before_render: bool = False, glossary: str = "",
-               series: str = "") -> Job:
+               series: str = "", mode: str = "dub") -> Job:
         job_id = time.strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
         job = cls(id=job_id, url=url,
                   pause_before_render=pause_before_render, glossary=glossary,
-                  series=series)
+                  series=series, mode=mode)
         job.dir.mkdir(parents=True, exist_ok=True)
         job.save()
         return job
@@ -118,6 +130,7 @@ class Job:
             "series": self.series,
             "bed_gain_db": self.bed_gain_db,
             "env_overrides": self.env_overrides,
+            "mode": self.mode,
         }
         # ghi nguyên tử: file tạm (tên duy nhất) rồi os.replace → không để state.json bị
         # torn/nửa vời khi bị kill giữa lúc ghi (đọc lại sẽ JSONDecodeError, mất job khỏi UI)
