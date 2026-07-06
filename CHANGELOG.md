@@ -6,6 +6,43 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-06 (BÀN GIAO SANG MÁY MỚI) — Desktop (F:\MyProject\vietsubvideo)
+
+### User sắp chuyển sang máy mới. Toàn bộ code đã commit + push (HEAD = 30e285c).
+
+**Máy mới làm gì sau khi `git clone`:**
+1. Tạo `.env` từ `.env.example` rồi ĐẶT LẠI 3 SECRET (không có trong git):
+   `ANTHROPIC_API_KEY` (bắt buộc — bước dịch), `GEMINI_API_KEY` (nếu dùng Gemini),
+   và HF/ElevenLabs/VBee/FPT/Telegram token nếu dùng. Nhập trong app: ⚙️ Cấu hình →
+   nhóm "🔑 Khóa API & Token".
+2. `data/jobs/` (các video đã test) KHÔNG theo git — máy mới bắt đầu trắng, tự tải/
+   upload lại video để test.
+3. Tạo venv + cài lại deps (requirements.txt). Whisper GPU: `WHISPER_DEVICE=cuda`
+   + cài nvidia-*-cu12 (xem _add_cuda_dll_dirs trong s3_transcript.py). Không GPU
+   thì để `cpu`/`int8`, model `small`.
+4. Chạy server: launch.json "flowapp" (uvicorn webui.server:app :8790, KHÔNG --reload
+   → sửa .py phải restart; sửa .env thì KHÔNG cần nữa nhờ load_dotenv override=True).
+
+**Cấu hình NON-SECRET user đã tinh chỉnh trên máy F: (chép sang .env máy mới nếu muốn
+giống hệt):** TTS_ENGINE=edge, TTS_SINGLE_VOICE=1, MAX_SPEEDUP=2.0, KEEP_BGM=flat,
+PROSODY=1, EMOTION=1, PROSODY_TRANSFER=0, CONTENT_STYLE=donghua, OCR_CROP_TOP=auto,
+TRANSCRIPT_SOURCE=ocr, WHISPER_MODEL=large-v3+cuda, SUB_SPLIT=1, MASTER=1,
+TRANSLATE_PROVIDER=claude (CLAUDE_MODEL=haiku-4-5), FPT_VOICE_NU=banmai/NAM=leminh.
+
+**Phiên này đã làm (2026-07-05 → 07-06, xem các entry bên dưới):** loạt fix chất
+lượng lồng tiếng (1-giọng triệt để, khớp thoại theo núm MAX_SPEEDUP, nền hạ đều,
+OCR auto-crop cho video dọc + video nhiều chữ), đại tu editor "Chỉnh sửa" (panel
+⚙️ override cấu hình THEO JOB — 19 option 4 nhóm, dependent, 2 cột, helptext ⓘ,
+thanh nút dính đáy), fix bug nền tảng load_dotenv override. + 1 nghiên cứu (không
+code): giọng review phim Trung nổi bật chủ yếu là TTS FPT.AI "Ban Mai/Lê Minh";
+license thương mại: Vbee/FPT/ElevenLabs (paid) OK — xem [[tts-license-monetize]].
+
+**Trạng thái pipeline/tính năng:** tất cả xanh, không có việc dở dang giữa chừng.
+Job test cuối `20260705_212220_8691dd` đã render xong với override PROSODY=0,EMOTION=0
+(giọng đều) — chỉ là data local, không cần mang sang.
+
+---
+
 ## 2026-07-06 (3) — Desktop (F:\MyProject\vietsubvideo)
 
 ### REVERT "khớp nhịp 2 chiều" — user chỉ hỏi confirm, KHÔNG yêu cầu làm
