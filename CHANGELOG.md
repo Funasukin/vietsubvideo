@@ -45,6 +45,48 @@ giữ model trong RAM; #16/#17 tách monolith server.py/index.html; nhóm bug #1
 (race cancel rerender, ducked-mode state, loudnorm 1-pass/2-pass lệch nhau, temp
 final_io.mp4 rơi rớt).
 
+### Audit chuỗi xử lý GIỌNG (chỉ BÁO CÁO — chưa code, chờ user chọn theo số V1–V13)
+
+User báo: âm thanh lúc ngắn lúc dài, đọc không tự nhiên cả tốc độ lẫn âm điệu; nghi
+chồng chéo config. Audit đa-agent (23 agent, có vòng phản biện): 4 CONFIRMED,
+8 PARTIAL, 0 sai. Số đo job thật (a20f78, viXTTS): bản đọc dài median 2.5× thoại
+gốc (max 14.6× — "Niệm Bảo" 0.25s→3.56s); 52% câu bị atempo (median 1.41×, 2 câu
+kịch trần 2.0× VẪN tràn 826ms); 26–32% câu hụt slot → tổng 35.2s im lặng/103s video.
+
+**Nguyên nhân đã xác nhận:**
+1. Nhánh viXTTS (engine đang dùng) KHÔNG có tầng kiểm soát độ dài nào ở S5 —
+   `_fit_slot` chỉ gọi cho edge (s5_tts.py:165); tham số `speed` của XTTS có sẵn
+   nhưng vixtts.py:144 không truyền → độ dài thả nổi, dồn hết vào atempo 1 chiều S7.
+2. MAX_SPEEDUP tiêu 2 LẦN độc lập (S5 fit budget + S7 atempo cap, không đâu kẹp
+   TÍCH → tới 3.0×) trong khi UI hứa là "núm TỔNG"; công thức fit thiếu số hạng
+   chéo → 91% câu edge bị atempo THÊM sau khi đã fit (job 292928).
+3. Hai THƯỚC ĐO khác nhau: S5 đo full mp3 (gồm đuôi lặng edge 0.5–0.9s), S7 cắt
+   lặng rồi mới so → "tràn giả", 7/27 câu job 40de66 bị cộng oan tới +26% rate.
+4. Hai NGÂN SÁCH khác nhau: S4 cấp chữ theo end−start, S5/S7 nén theo
+   next.start−start; độ dài bản dịch chỉ ràng bằng LỜI DẶN prompt (không đếm âm
+   tiết, không vòng dịch-lại; review được phép nới dài không ai chặn).
+5. Chỉ có chiều NÉN, không chiều kéo chậm (bản 2 chiều a613cbc đã revert) → hụt
+   thì im lặng; tràn sau trần thì ĐÈ lên câu kế (đo được 826–2233ms, 2 giọng chồng).
+6. Nút 🔊 nghe thử dùng ĐƯỜNG KHÁC render (engine khác luôn: nghe edge, render
+   viXTTS; bỏ prosody/fit/atempo/voice_fx) → tinh chỉnh theo preview là ảo.
+7. Âm điệu phẳng hiện tại: PROSODY=0 + EMOTION=0 + clone đúng 1 clip
+   rieng-nam-review.wav cho mọi câu; khi bật lại (nhánh edge) thì 4 nguồn rate
+   độc lập đánh nhau không trọng tài.
+
+**Đề xuất V1–V13 (chưa làm):** GÓI 1 trọng tài thời lượng — V1 cắt đuôi lặng ngay
+sau synth (mọi engine, S5/S7 cùng thước); V2 viXTTS truyền speed + fit 1 vòng như
+edge; V3 tốc độ quyết định MỘT nơi, MAX_SPEEDUP thành trần TÍCH thật; V4 tràn sau
+trần → cắt/fade thay vì đè câu kế. GÓI 2 khớp từ tầng dịch — V5 S4 nhận đúng slot
+(trừ đệm thở); V6 đếm âm tiết sau dịch, câu >~4.3 âm tiết/giây slot thì dịch lại
+NGẮN riêng câu đó (vòng phản hồi đang thiếu); V7 review nhận max_s. GÓI 3 tự
+nhiên — V8 mục tiêu = khớp MIỆNG (end−start), trần = slot; V9 kéo chậm NHẸ có trần
+(0.92×) khi hụt >30%; V10 segtools nhập câu 1-từ vào câu bên (né sàn ~2.3s viXTTS),
+tách câu gộp quá dài. GÓI 4 dọn bề mặt — V11 preview 🔊 dùng đúng engine+đường
+render; V12 gom PROSODY/EMOTION/PT/VOICE_FX/MAX_SPEEDUP thành 3 preset, ẩn knob
+chết; V13 mix_report ghi hệ số từng câu + editor tô đỏ câu nén >1.3×/hụt >30%.
+Gợi ý thêm: cắt 3–4 clip mẫu từ 10 phút giọng user (bình thường/nhấn/trầm) để
+chỉnh âm điệu viXTTS tự nhiên thay vì knob số.
+
 ### Giọng mới: voices/rieng-nam-review.wav (giọng CỦA USER tự lồng)
 
 User xác nhận chính họ là người lồng tiếng trong clip nguồn. Tách bằng demucs
