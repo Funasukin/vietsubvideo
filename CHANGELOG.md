@@ -87,6 +87,10 @@ chết; V13 mix_report ghi hệ số từng câu + editor tô đỏ câu nén >1
 Gợi ý thêm: cắt 3–4 clip mẫu từ 10 phút giọng user (bình thường/nhấn/trầm) để
 chỉnh âm điệu viXTTS tự nhiên thay vì knob số.
 
+Bàn giao chéo: user nhờ thêm 2 agent (Codex, Gemini) phản biện độc lập — toàn bộ
+bối cảnh + kết luận + câu hỏi phản biện nằm trong **AUDIT_GIONG.md** ở gốc repo;
+họ sẽ ghi kết quả vào AUDIT_GIONG_CODEX.md / AUDIT_GIONG_GEMINI.md (không sửa code).
+
 ### Giọng mới: voices/rieng-nam-review.wav (giọng CỦA USER tự lồng)
 
 User xác nhận chính họ là người lồng tiếng trong clip nguồn. Tách bằng demucs
