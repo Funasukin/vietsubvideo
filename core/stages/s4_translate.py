@@ -29,7 +29,7 @@ SYSTEM = """Bạn là dịch giả chuyên nghiệp chuyên dịch phim/truyện
 
 Quy tắc:
 - Dịch tự nhiên như lời nói, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ được đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch NHẮM ≈ 3–4×max_s âm tiết (tiếng), CÂN ĐỐI với nhịp câu gốc: TUYỆT ĐỐI không vượt (dài quá giọng đọc lệch khỏi hình, phải tăng tốc nghe gấp gáp); cũng đừng ngắn hơn hẳn ngân sách (đọc xong quá sớm nghe hụt so với môi nhân vật). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
+- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — NHẮM đọc xong quanh ≈4×target_s âm tiết), "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa). Bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp); cũng đừng ngắn hơn hẳn mục tiêu (đọc xong quá sớm nghe hụt so với môi). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - XƯNG HÔ: bối cảnh cổ trang/tu tiên dùng nhất quán "ngươi/ta" (ngang hàng), "ngài/tại hạ" (kính trọng), "huynh/đệ/muội". TUYỆT ĐỐI không dùng "bạn/tôi/anh ấy" trong bối cảnh cổ trang.
 - Tên riêng Trung Quốc chuyển sang âm Hán-Việt (叶凡 → Diệp Phàm, 萧炎 → Tiêu Viêm, 萧公子 → Tiêu công tử).
 - Tên phiên âm pinyin trong sub tiếng Anh cũng chuyển về Hán-Việt quen thuộc: Wukong → Ngộ Không, Tang Monk/Tang Seng → Đường Tăng, Bajie → Bát Giới, Wujing → Ngộ Tĩnh, Nezha → Na Tra, Erlang → Nhị Lang.
@@ -44,7 +44,7 @@ GENERAL_SYSTEM = """Bạn là dịch giả chuyên nghiệp, dịch phụ đề/
 
 Quy tắc:
 - Dịch TỰ NHIÊN như lời nói người Việt, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu. Giọng đọc tiếng Việt ~4 âm tiết/giây → bản dịch NHẮM ≈ 3–4×max_s âm tiết (tiếng), CÂN ĐỐI với nhịp câu gốc: TUYỆT ĐỐI không vượt (dài quá giọng đọc lệch khỏi hình, phải tăng tốc nghe gấp gáp); cũng đừng ngắn hơn hẳn ngân sách (đọc xong quá sớm nghe hụt so với môi nhân vật). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
+- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — NHẮM đọc xong quanh ≈4×target_s âm tiết), "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa). Bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp); cũng đừng ngắn hơn hẳn mục tiêu (đọc xong quá sớm nghe hụt so với môi). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - Xưng hô HIỆN ĐẠI, phù hợp ngữ cảnh (tôi/bạn/anh/chị/em/ông/bà/mình/cậu...), suy từ quan hệ nhân vật. Chỉ dùng lối cổ trang/kiếm hiệp nếu nội dung RÕ RÀNG là cổ trang.
 - Tên riêng, thương hiệu, địa danh, thuật ngữ nước ngoài: giữ NGUYÊN gốc hoặc phiên âm quen thuộc với người Việt; KHÔNG ép sang Hán-Việt.
 - Dịch đúng nghĩa thuật ngữ chuyên ngành; giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -60,7 +60,7 @@ def _lang_system(lang_name: str) -> str:
 Quy tắc:
 - TOÀN BỘ trường "text_vi" phải là {lang_name} (tên trường giữ nguyên vì lý do kỹ thuật).
 - Dịch TỰ NHIÊN như lời nói bản xứ, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: trường "max_s" = số giây slot gốc của câu — bản dịch phải ĐỌC XONG trong chừng đó giây ở tốc độ nói tự nhiên, CÂN ĐỐI với nhịp câu gốc: không vượt, cũng đừng ngắn hơn hẳn (đọc xong quá sớm nghe hụt). Cần cắt thì lược từ đệm, giữ trọn ý.
+- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — nhắm đọc xong quanh chừng đó ở tốc độ tự nhiên) và "max_s" (trần cứng — chạm câu kế): bản dịch phải đọc xong TRƯỚC max_s giây, cũng đừng ngắn hơn hẳn target_s (đọc xong quá sớm nghe hụt). Cần cắt thì lược từ đệm, giữ trọn ý.
 - Xưng hô/văn phong phù hợp ngữ cảnh và văn hóa của {lang_name}.
 - Tên riêng, thương hiệu, địa danh: dùng dạng quen thuộc trong {lang_name} (tên quốc tế thường giữ nguyên).
 - Giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -140,16 +140,28 @@ def _cast_hint(names: list[str]) -> str:
 def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
                      context: list[tuple[str, str]],
                      extra_note: str = "", system: str = SYSTEM,
-                     schema: dict = SCHEMA) -> dict[int, dict]:
+                     schema: dict = SCHEMA,
+                     budget: dict | None = None) -> dict[int, dict]:
     """→ {id: {"text_vi": ..., "voice": "nam"|"nu", "character": ...}}"""
     parts = []
     if context:
         ctx = "\n".join(f"- {src} → {vi}" for src, vi in context)
         parts.append(f"Ngữ cảnh (các câu ngay trước, đã dịch):\n{ctx}\n")
     # kèm nhãn người nói (nếu diarize gán được) — Claude gán character/voice nhất quán.
-    # max_s = ngân sách GIÂY của slot gốc → model tự canh độ dài bản dịch (chống tràn slot)
-    payload = [{"id": s["id"], "text": s["text"],
-                "max_s": round(max(0.5, s["end"] - s["start"]), 1),
+    # Ngân sách KÉP (đợt C audit giọng): target_s = miệng nhân vật (end−start, nhắm
+    # đọc xong quanh đó), max_s = trần cứng tới câu KẾ (slot − đệm thở — CÙNG định
+    # nghĩa với tầng nén S5/S7, hết cảnh dịch theo thước này nén theo thước khác),
+    # max_syll = trần âm tiết validator sẽ ENFORCE sau dịch.
+    def _b(s: dict) -> dict:
+        if budget and s["id"] in budget:
+            tgt, lim, msyl = budget[s["id"]]
+            # max_syll chỉ có nghĩa với đích tiếng Việt (msyl=None với đích khác —
+            # 4.5 âm tiết Việt/giây gửi cho đích ja/en là trần sai đơn vị)
+            return {"target_s": tgt, "max_s": lim,
+                    **({"max_syll": msyl} if msyl is not None else {})}
+        return {"target_s": round(max(0.4, s["end"] - s["start"]), 1),
+                "max_s": round(max(0.5, s["end"] - s["start"]), 1)}
+    payload = [{"id": s["id"], "text": s["text"], **_b(s),
                 **({"speaker": s["speaker"]} if s.get("speaker") else {})}
                for s in batch]
     parts.append("Dịch các segment sau sang tiếng Việt:"
@@ -173,10 +185,11 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
 def _translate_with_retry(client: anthropic.Anthropic, batch: list[dict],
                           context: list[tuple[str, str]],
                           extra_note: str = "", system: str = SYSTEM,
-                          schema: dict = SCHEMA) -> dict[int, dict]:
+                          schema: dict = SCHEMA,
+                          budget: dict | None = None) -> dict[int, dict]:
     """Dịch batch; segment Claude bỏ sót (thường do output dài bị cắt token) được
     dịch lại bằng cách CHIA ĐÔI phần còn thiếu đến khi đủ. Không raise giữa chừng."""
-    result = _translate_batch(client, batch, context, extra_note, system, schema)
+    result = _translate_batch(client, batch, context, extra_note, system, schema, budget)
     missing = [s for s in batch if s["id"] not in result]
     if not missing or len(batch) <= 1:
         return result
@@ -184,7 +197,7 @@ def _translate_with_retry(client: anthropic.Anthropic, batch: list[dict],
     for chunk in (missing[:mid], missing[mid:]):
         if chunk:
             result.update(_translate_with_retry(client, chunk, context, extra_note,
-                                                system, schema))
+                                                system, schema, budget))
     return result
 
 
@@ -245,14 +258,22 @@ REVIEW_SCHEMA = {
 
 
 def review_pass(client: anthropic.Anthropic, segments: list[dict],
-                system: str = REVIEW_SYSTEM, allow_cjk: bool = False) -> list[int]:
+                system: str = REVIEW_SYSTEM, allow_cjk: bool = False,
+                syl_limits: dict | None = None) -> list[int]:
     """Đọc lại toàn bộ bản dịch, sửa tại chỗ các câu lệch. Trả về list id đã sửa.
-    allow_cjk=True khi ngôn ngữ ĐÍCH là zh/ja — chữ Hán trong bản sửa là hợp lệ."""
+    allow_cjk=True khi ngôn ngữ ĐÍCH là zh/ja — chữ Hán trong bản sửa là hợp lệ.
+    syl_limits (đợt C): {id: trần âm tiết} — review không được nới câu vượt ngân
+    sách (trước đây review viết lại tự do, phá công sức canh độ dài của tầng dịch)."""
     payload = [{"id": s["id"], "zh": s["text"], "vi": s["text_vi"],
-                "voice": s.get("voice", "nam")} for s in segments]
+                "voice": s.get("voice", "nam"),
+                **({"max_syll": syl_limits[s["id"]]}
+                   if syl_limits and s["id"] in syl_limits else {})}
+               for s in segments]
     from core import llm
+    head = ("Soát bản dịch sau (max_syll = trần ÂM TIẾT của câu, bản sửa không được "
+            "vượt):\n" if syl_limits else "Soát bản dịch sau:\n")
     text = llm.structured_json(
-        system, "Soát bản dịch sau:\n" + json.dumps(payload, ensure_ascii=False),
+        system, head + json.dumps(payload, ensure_ascii=False),
         REVIEW_SCHEMA, max_tokens=16000, client=client)
     try:
         result = json.loads(text)
@@ -264,6 +285,7 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
         print("  ! Review: output không đọc được, bỏ qua vòng soát")
         return []
 
+    from core import duration
     by_id = {s["id"]: s for s in segments}
     changed = []
     for fix in fixes:
@@ -272,6 +294,13 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
         seg = by_id.get(fix["id"])
         # không nhận bản sửa lại đưa ký tự Trung vào (trừ khi đích là zh/ja)
         if seg and fix["text_vi"].strip() and (allow_cjk or not _CJK_RE.search(fix["text_vi"])):
+            # V7: guard ngân sách — bản sửa vừa DÀI HƠN câu cũ vừa VƯỢT trần âm tiết
+            # thì từ chối (rút ngắn thì luôn nhận; nới trong ngân sách cũng nhận)
+            if syl_limits and fix["id"] in syl_limits:
+                new_syl = duration.syllables(fix["text_vi"])
+                if (new_syl > duration.syllables(seg["text_vi"])
+                        and new_syl > syl_limits[fix["id"]]):
+                    continue
             if seg["text_vi"] != fix["text_vi"]:
                 seg["text_vi"] = fix["text_vi"]
                 changed.append(fix["id"])
@@ -289,7 +318,7 @@ def review_pass(client: anthropic.Anthropic, segments: list[dict],
 def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
               translated: dict[int, dict], attempts: int = 2,
               system: str = SYSTEM, schema: dict = SCHEMA,
-              note: str = _LEAK_NOTE) -> None:
+              note: str = _LEAK_NOTE, budget: dict | None = None) -> None:
     """Dịch lại các câu còn sót ký tự Trung (Haiku thỉnh thoảng bỏ sót từ khó).
     GIỮ nhãn character cũ nếu lần sửa không gán lại (kẻo mất casting của câu leak).
     KHÔNG gọi khi ngôn ngữ đích là zh/ja (chữ Hán là hợp lệ) — caller tự chặn."""
@@ -301,7 +330,7 @@ def fix_leaks(client: anthropic.Anthropic, by_id: dict[int, dict],
         prev_char = {i: translated[i].get("character", "") for i in bad_ids}
         prev_emo = {i: translated[i].get("emotion", "") for i in bad_ids}
         fixed = _translate_batch(client, batch, [], extra_note=note,
-                                 system=system, schema=schema)
+                                 system=system, schema=schema, budget=budget)
         for i, t in fixed.items():   # đừng để sửa-sót ghi đè character/emotion đã suy trước
             if not t.get("character") and prev_char.get(i):
                 t["character"] = prev_char[i]
@@ -394,6 +423,34 @@ def run(job: Job) -> None:
             print(f"  Người nói (audio): {len(labels)} giọng, "
                   f"gán {n_spk}/{len(segments)} câu")
 
+    # V10 audit giọng: nhập câu CỤT (1-2 chữ) vào câu bên — chạy Ở ĐÂY (sau diarize
+    # gán speaker, trước dịch) chứ không phải S3, để guard "không trộn 2 người nói"
+    # có dữ liệu speaker thật (review đối kháng bắt được lỗi này). Ghi lại vào data
+    # để transcript_vi (S5-S8 dùng) nhất quán với id mới.
+    from core import segtools
+    n0 = len(segments)
+    segments = segtools.absorb_tiny(segments)
+    if len(segments) != n0:
+        print(f"  Gộp câu cụt: {n0} → {len(segments)} câu "
+              f"(nhập lời gọi 1-2 chữ vào câu bên cạnh)")
+    data["segments"] = segments
+
+    # Đợt C (V5): ngân sách KÉP per-câu từ trọng tài thời lượng — target (miệng) +
+    # limit (slot tới câu kế − đệm thở, CÙNG định nghĩa với tầng nén S5/S7) + trần
+    # âm tiết (CHỈ đích tiếng Việt — SYL_MAX_PER_S hiệu chuẩn cho âm tiết Việt, gửi
+    # cho đích ja/en... là ép trần sai đơn vị). Câu cuối không có câu kế → target+2s.
+    from core import duration
+    import math as _math
+    sl = duration.slots(segments)
+    budget: dict[int, tuple] = {}
+    for s in segments:
+        tgt = round(max(0.4, s["end"] - s["start"]), 1)
+        lim = (round(max(0.5, sl[s["id"]] - duration.BREATH_S), 1)
+               if sl[s["id"]] is not None else round(tgt + 2.0, 1))
+        msyl = (max(3, _math.floor(lim * duration.SYL_MAX_PER_S))
+                if vi_target else None)
+        budget[s["id"]] = (tgt, lim, msyl)
+
     translated: dict[int, dict] = {}
     by_id = {s["id"]: s for s in segments}
 
@@ -407,12 +464,13 @@ def run(job: Job) -> None:
         prev_ids = sorted(translated)[-config.TRANSLATE_BATCH_OVERLAP:]
         context = [(by_id[i]["text"], translated[i]["text_vi"]) for i in prev_ids]
         translated.update(_translate_with_retry(client, batch, context,
-                                                system=sys_translate, schema=cast_schema))
+                                                system=sys_translate, schema=cast_schema,
+                                                budget=budget))
         progress.write(job.dir, "translating", len(translated), total)
 
     if not langs.cjk_target():   # đích zh/ja: chữ Hán/kanji là hợp lệ, không phải "sót"
         fix_leaks(client, by_id, translated, system=sys_translate, schema=cast_schema,
-                  note=_leak_note(lang_name))
+                  note=_leak_note(lang_name), budget=budget)
 
     missing_final = [s["id"] for s in segments if s["id"] not in translated]
     if missing_final:
@@ -433,9 +491,42 @@ def run(job: Job) -> None:
             else:
                 seg.pop("emotion", None)
 
+    # Đợt C (V6): VALIDATOR âm tiết — lời dặn prompt là chưa đủ (đo được LLM vẫn vượt),
+    # đếm thật từng câu: vượt trần (SYL_MAX_PER_S âm tiết/giây-limit) → dịch lại NGẮN
+    # đúng 1 vòng, gom batch. Chỉ nhận bản mới nếu THẬT SỰ ngắn hơn; giữ nguyên nhãn
+    # voice/character/emotion cũ (chỉ thay chữ). Đích ≠ vi: bỏ qua (đếm âm tiết kiểu
+    # Việt không áp được).
+    if vi_target:
+        over = [s for s in segments
+                if s["text_vi"].strip()
+                and duration.syllables(s["text_vi"]) > budget[s["id"]][2]]
+        if over:
+            print(f"  Ngân sách chữ: {len(over)} câu vượt trần "
+                  f"{duration.SYL_MAX_PER_S} âm tiết/giây → dịch lại cho ngắn: "
+                  f"{[s['id'] for s in over]}")
+            note = ("\nLƯU Ý ĐẶC BIỆT: bản dịch trước của các câu này DÀI QUÁ ngân sách "
+                    "đọc — giọng sẽ bị ép nhanh nghe gấp gáp. Dịch lại NGẮN HẲN: mỗi câu "
+                    "TỐI ĐA \"max_syll\" âm tiết, lược từ đệm/đưa đẩy, giữ trọn ý chính.")
+            redo = _translate_with_retry(client, over, [], extra_note=note,
+                                         system=sys_translate, schema=cast_schema,
+                                         budget=budget)
+            n_ok = 0
+            for s in over:
+                t = redo.get(s["id"])
+                if not t or not t["text_vi"].strip():
+                    continue
+                if _CJK_RE.search(t["text_vi"]):
+                    continue
+                if duration.syllables(t["text_vi"]) < duration.syllables(s["text_vi"]):
+                    s["text_vi"] = t["text_vi"]
+                    n_ok += 1
+            print(f"  Ngân sách chữ: rút gọn được {n_ok}/{len(over)} câu")
+
     if config.REVIEW_TRANSLATION:
         changed = review_pass(client, segments, system=sys_review,
-                              allow_cjk=langs.cjk_target())
+                              allow_cjk=langs.cjk_target(),
+                              syl_limits={i: b[2] for i, b in budget.items()}
+                              if vi_target else None)
         if changed:
             print(f"  Review: sửa {len(changed)} câu (nhất quán tên/xưng hô): {changed}")
 

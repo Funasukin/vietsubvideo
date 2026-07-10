@@ -39,7 +39,7 @@ from core.job import Job, Stage
 # Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
 SAFE_ENV_KEYS = ["CLAUDE_MODEL", "TRANSLATE_PROVIDER", "GEMINI_MODEL",
                  "GEMINI_MIN_INTERVAL", "TRANSLATE_STYLE_EXTRA",
-                 "CONTENT_STYLE", "TARGET_LANG", "MAX_SPEEDUP",
+                 "CONTENT_STYLE", "TARGET_LANG", "MAX_SPEEDUP", "STRETCH_SHORT",
                  "TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
                  "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "DUCK_GAIN_DB",
                  "VOICE_FX", "EMOTION", "PROSODY_TRANSFER",
@@ -1019,11 +1019,15 @@ def get_segments(job_id: str) -> dict:
             job_state = json.loads(sp.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
             job_state = {}
+    # 1 giọng HIỆU LỰC theo job: ⚙️ override thắng .env (nhãn "không tác dụng" trên
+    # dropdown Nam/Nữ phải khớp điều render/nghe thử thật làm — review đối kháng)
+    _sv_ov = str((job_state.get("env_overrides") or {}).get("TTS_SINGLE_VOICE", "")).strip()
+    single_eff = (_sv_ov.lower() in ("1", "true")) if _sv_ov else config.TTS_SINGLE_VOICE
     return {"segments": segs,
             "engine": config.TTS_ENGINE,
             "voices": {"nam": nam_v, "nu": nu_v},
             # 1 giọng: editor hiện chú thích + nghe thử đọc giọng chính bất kể nhãn
-            "single_voice": config.TTS_SINGLE_VOICE,
+            "single_voice": single_eff,
             "bed_gain_db": job_state.get("bed_gain_db"),
             # ⚙️ Tùy chọn video này: override đang lưu + giá trị cấu hình CHUNG hiện tại
             # (đọc .env trực tiếp — config của server có thể nạp từ lúc khởi động)
@@ -1279,7 +1283,7 @@ _OV_TTS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
            # đợt B audit giọng: ngân sách fit nướng vào giọng đã đọc (sig :f cả edge
            # lẫn viXTTS) — đổi núm phải ĐỌC LẠI, xếp nhóm mix là knob nửa tác dụng
            "MAX_SPEEDUP"}
-_OV_MIX = {"KEEP_BGM"}
+_OV_MIX = {"KEEP_BGM", "STRETCH_SHORT"}
 _JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX
 
 
@@ -1450,6 +1454,8 @@ class TtsPreviewBody(BaseModel):
     voice: str = "nam"
     voice_ref: str = ""   # tên clip trong voices/ → đọc câu này bằng viXTTS (nhân bản)
     emotion: str = ""     # nhãn cảm xúc của câu → nghe thử ĐÚNG sắc thái sẽ render
+    job_id: str = ""      # V11 audit giọng: áp ⚙️ override của job (engine/giọng) —
+                          # không có thì nghe thử theo cấu hình CHUNG như cũ
 
 
 def _resolve_voice_ref(name: str) -> str | None:
@@ -1501,13 +1507,62 @@ def tts_preview(body: TtsPreviewBody):
         return Response(content=data, media_type="audio/mpeg",
                         headers={"Cache-Control": "no-store"})
 
+    # V11 audit giọng: nghe thử phải TRUNG THỰC với render — áp ⚙️ override của job
+    # (engine/giọng/1-giọng) nếu editor gửi job_id; trước đây luôn dùng cấu hình chung
+    # nên đổi engine per-job xong bấm 🔊 vẫn nghe engine cũ.
+    ov: dict = {}
+    if body.job_id and _JOB_ID_RE.match(body.job_id):
+        sp = config.JOBS_DIR / body.job_id / "state.json"
+        try:
+            ov = json.loads(sp.read_text(encoding="utf-8")).get("env_overrides") or {}
+        except (OSError, json.JSONDecodeError):
+            ov = {}
+
+    def _ov(key: str, cur):
+        v = str(ov.get(key, "")).strip()
+        return v if v else cur
+
     # engine trả phí (PLAN 11 C/D): nghe thử bằng CHÍNH dịch vụ đó (tốn phí ~1 câu)
     from core import langs, paid_tts
-    eng = config.TTS_ENGINE
+    eng = _ov("TTS_ENGINE", config.TTS_ENGINE)
+    single = str(_ov("TTS_SINGLE_VOICE", "1" if config.TTS_SINGLE_VOICE else "0")
+                 ).lower() in ("1", "true")
+    # ngôn ngữ đích HIỆU LỰC theo job (⚙️ TARGET_LANG) — job đổi ngôn ngữ mà nghe
+    # thử theo ngôn ngữ toàn cục là sai engine lẫn giọng (review đối kháng)
+    lang = str(_ov("TARGET_LANG", langs.code())).strip().lower()
+    lang = lang if lang in langs.LANGS else "vi"
+    is_vi = lang == "vi"
     # nghe thử phải khớp giọng SẼ render: chế độ 1 giọng đọc mọi câu bằng giọng chính
     # (cùng logic s5_tts._seg_nu) — kẻo nhãn "nữ" nghe thử ra HoaiMy mà render NamMinh
-    nu = body.voice == "nu" and not config.TTS_SINGLE_VOICE
-    if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
+    nu = body.voice == "nu" and not single
+
+    # V11: engine viXTTS + câu KHÔNG cast → render sẽ đọc viXTTS giọng mặc định,
+    # nghe thử cũng phải vậy (trước đây rơi xuống edge — nghe một đằng render một nẻo)
+    if eng == "vixtts" and is_vi:
+        from core import emotion as _emo, vixtts
+        name = _ov("VIXTTS_VOICE_NU" if nu else "VIXTTS_VOICE_NAM",
+                   config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
+        # khớp thứ tự _vixtts_ref của render: clip mẫu theo CẢM XÚC (khi EMOTION bật
+        # toàn cục) thắng giọng mặc định; câu không nhãn → vixtts_sample trả None
+        es = _emo.vixtts_sample({"voice": body.voice, "emotion": body.emotion})
+        if es:
+            name = es
+        ref = _resolve_voice_ref(name) or (
+            str(config.VIXTTS_DIR / "vi_sample.wav")
+            if (config.VIXTTS_DIR / "vi_sample.wav").is_file() else None)
+        if ref and vixtts.is_available():
+            import uuid as _uu
+            vout = config.DATA_DIR / f"_tts_preview_{_uu.uuid4().hex}.mp3"
+            try:
+                vixtts.synth(text, ref, str(vout))
+                data = vout.read_bytes()
+                return Response(content=data, media_type="audio/mpeg",
+                                headers={"Cache-Control": "no-store"})
+            except Exception as e:
+                print(f"  nghe thử viXTTS mặc định lỗi ({e}) → edge")
+            finally:
+                vout.unlink(missing_ok=True)
+    if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not is_vi):
         ok, why = paid_tts.ready(eng)
         if not ok:
             raise HTTPException(400, why)
@@ -1525,9 +1580,12 @@ def tts_preview(body: TtsPreviewBody):
         return Response(content=data, media_type="audio/mpeg",
                         headers={"Cache-Control": "no-store"})
 
-    # giọng theo NGÔN NGỮ ĐÍCH (#16) — nghe thử đúng giọng sẽ render
+    # giọng theo NGÔN NGỮ ĐÍCH hiệu lực (#16) — nghe thử đúng giọng sẽ render
     from core import emotion as emo
-    _nam, _nu = langs.edge_voices()
+    _nam, _nu = langs.edge_voices(lang)
+    if is_vi:   # V11: tôn trọng ⚙️ giọng edge override theo job
+        _nam = _ov("TTS_VOICE", _nam)
+        _nu = _ov("TTS_VOICE_NU", _nu)
     voice = _nu if nu else _nam
     # nhãn cảm xúc như lúc render (prosody đo audio thì bỏ — nghe thử lẻ không có audio)
     emo_kw = emo.edge_kwargs({"voice": body.voice, "emotion": body.emotion})

@@ -19,6 +19,11 @@ MERGE_MAX_CHARS = 80
 # đổi ~0.5s/lần) không có trần này sẽ gộp 6-7 lượt thoại (nhiều NGƯỜI NÓI) thành một
 # câu tràng giang — giọng đọc lệch hẳn khỏi hình. 4 dòng ≈ 2-4s slot, vẫn đủ đọc.
 MERGE_MAX_PIECES = 4
+# V10 audit giọng: câu CỤT (1-2 chữ gọi tên, "叔叔?"...) — TTS không đọc tự nhiên được
+# trong slot bé (viXTTS có sàn ~2.3s, đo được 1 từ ngân 3.6s → nén kịch trần vẫn tràn).
+# Nhập vào câu bên cạnh khi đủ gần — nới gap rộng hơn MERGE_GAP_S thường.
+TINY_CHARS = 2       # ≤ 2 ký tự CJK (bỏ dấu câu) coi là câu cụt
+TINY_GAP_S = 0.8     # cách câu bên ≤ 0.8s thì nhập vào
 
 
 def _is_junk(text: str) -> bool:
@@ -97,3 +102,66 @@ def clean_and_merge(segments: list[dict]) -> list[dict]:
     for i, seg in enumerate(merged, start=1):
         seg["id"] = i
     return merged
+
+
+def _tiny(seg: dict) -> bool:
+    """Câu cụt: ≤ TINY_CHARS ký tự thực (bỏ dấu câu/khoảng trắng)."""
+    return len(re.sub(r"[\W_]", "", seg["text"])) <= TINY_CHARS
+
+
+def absorb_tiny(segments: list[dict]) -> list[dict]:
+    """V10 audit giọng: nhập câu CỤT vào câu hàng xóm gần nhất (gap ≤ TINY_GAP_S) rồi
+    đánh lại id. Gọi ở S4 SAU speakers.assign (review đối kháng chỉ ra: đặt trong
+    clean_and_merge của S3 thì seg chưa có key 'speaker' — guard chống trộn 2 người
+    nói thành code chết). DIARIZE tắt → không speaker nào → nhập theo gap như thường;
+    có speaker → cả 2 phía đều KHÁC người nói thì giữ nguyên câu cụt."""
+    out = _absorb_tiny([dict(s) for s in segments])
+    for i, seg in enumerate(out, start=1):
+        seg["id"] = i
+    return out
+
+
+def _absorb_tiny(merged: list[dict]) -> list[dict]:
+    out: list[dict] = []
+    i = 0
+    while i < len(merged):
+        seg = merged[i]
+        if not _tiny(seg):
+            out.append(seg)
+            i += 1
+            continue
+
+        def _same_spk(a: dict, b: dict) -> bool:
+            return (a.get("speaker") or "") == (b.get("speaker") or "")
+
+        prev = out[-1] if out else None
+        nxt = merged[i + 1] if i + 1 < len(merged) else None
+        gap_p = seg["start"] - prev["end"] if prev is not None else 99.0
+        gap_n = nxt["start"] - seg["end"] if nxt is not None else 99.0
+        ok_p = (prev is not None and gap_p <= TINY_GAP_S and _same_spk(prev, seg)
+                and seg["end"] - prev["start"] <= MERGE_MAX_DUR_S)
+        ok_n = (nxt is not None and gap_n <= TINY_GAP_S and _same_spk(seg, nxt)
+                and nxt["end"] - seg["start"] <= MERGE_MAX_DUR_S)
+        if ok_p and (not ok_n or gap_p <= gap_n):     # nhập về TRƯỚC (gần hơn)
+            if "pieces" not in prev:
+                prev["pieces"] = [{"start": prev["start"], "end": prev["end"],
+                                   "len": len(prev["text"])}]
+            prev["pieces"].append({"start": seg["start"], "end": seg["end"],
+                                   "len": len(seg["text"])})
+            prev["text"] = f"{prev['text']} {seg['text']}"
+            prev["end"] = seg["end"]
+            i += 1
+        elif ok_n:                                    # nhập về SAU
+            nxt = dict(nxt)
+            pieces = [{"start": seg["start"], "end": seg["end"], "len": len(seg["text"])}]
+            pieces += nxt.get("pieces") or [{"start": nxt["start"], "end": nxt["end"],
+                                             "len": len(nxt["text"])}]
+            nxt["pieces"] = pieces
+            nxt["text"] = f"{seg['text']} {nxt['text']}"
+            nxt["start"] = seg["start"]
+            merged[i + 1] = nxt
+            i += 1
+        else:
+            out.append(seg)
+            i += 1
+    return out

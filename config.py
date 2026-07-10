@@ -28,6 +28,27 @@ FONTS_DIR = BASE_DIR / "fonts"   # font tùy biến: thả .ttf/.otf vào đây 
 # âm thầm KHÔNG có tác dụng cho tới khi restart server. override sửa tận gốc.
 load_dotenv(BASE_DIR / ".env", override=True)
 
+# Migration 1 lần (2026-07-10, audit giọng): default code của PROSODY/EMOTION đổi
+# "1" → "0". Máy đã dùng từ trước mà .env CHƯA có 2 key này thì đang chạy theo
+# default cũ ("1") — ghi tường minh giá trị cũ vào .env để đổi default không âm
+# thầm đổi giọng + kích re-TTS hàng loạt (sig chứa nhãn prosody/emotion). Cài mới
+# tinh (.env chưa tồn tại) thì hưởng default mới. Idempotent: có key là thôi.
+_envp = BASE_DIR / ".env"
+if _envp.exists():
+    try:
+        _txt = _envp.read_text(encoding="utf-8")
+        _add = [f"{_k}=1" for _k in ("PROSODY", "EMOTION")
+                if not any(ln.strip().startswith(_k + "=")
+                           for ln in _txt.splitlines())]
+        if _add:
+            _envp.write_text(_txt.rstrip("\n") + "\n" + "\n".join(_add) + "\n",
+                             encoding="utf-8")
+            for _kv in _add:
+                _k, _v = _kv.split("=", 1)
+                os.environ.setdefault(_k, _v)
+    except OSError:
+        pass   # .env chỉ đọc được cũng không sao — default mới áp dụng
+
 # Override THEO JOB (editor "⚙️ Tùy chọn video này"): worker đặt FLOWAPP_JOB_OVERRIDES
 # = JSON {ENV_KEY: value} khi spawn cli.py. Áp SAU dotenv → thắng cấu hình chung,
 # chỉ sống trong tiến trình của job đó.
@@ -136,10 +157,13 @@ VOICE_FX = os.getenv("VOICE_FX", "off").strip().lower()
 # Tông giọng theo audio gốc (PLAN mục 11, mức 1 — core/prosody.py): đo cao độ/tốc độ/
 # năng lượng từng câu → chỉnh rate/pitch/volume edge-tts. Bảo thủ: mơ hồ = không chỉnh.
 # Giữ dạng chuỗi "1"/"0" cho khớp dropdown tab Cấu hình (parse ở prosody.enabled()).
-PROSODY = os.getenv("PROSODY", "1").strip()
+# Default "0" từ 2026-07-10 (audit giọng, Codex chỉ ra lệch default/env giữa 2 máy):
+# khi bật, rate/pitch đo từ audio TRỘN NHẠC cộng chồng với fit/atempo — bật lại chỉ
+# sau khi có trọng tài prosody riêng.
+PROSODY = os.getenv("PROSODY", "0").strip()
 # Nhãn cảm xúc từng câu (PLAN 11 mức 2 — core/emotion.py): Claude gắn khi dịch →
 # edge chỉnh rate/pitch/volume thêm, viXTTS chọn clip mẫu hợp cảm xúc. "0" = tắt.
-EMOTION = os.getenv("EMOTION", "1").strip()
+EMOTION = os.getenv("EMOTION", "0").strip()   # default 0 từ 2026-07-10 (như PROSODY)
 # PLAN 11 mức 3 (core/prosody_transfer.py): ép DÁNG đường ngữ điệu câu gốc lên giọng
 # đọc bằng Praat PSOLA. Thử nghiệm — mặc định tắt; cần praat-parselmouth.
 PROSODY_TRANSFER = os.getenv("PROSODY_TRANSFER", "0").strip()
@@ -225,6 +249,10 @@ DUCK_ALL = _KEEP_BGM_RAW == "flat"
 # khớp timeline (atempo GIỮ NGUYÊN cao độ). Đây là mức tăng tốc TỐI ĐA cho phép:
 # cao = khớp timing sát hơn nhưng giọng dồn nhanh; 1.0 = KHÔNG tăng tốc (chấp nhận tràn).
 MAX_SPEEDUP = float(os.getenv("MAX_SPEEDUP", "1.4"))
+# V9 audit giọng: câu đọc xong QUÁ SỚM so với miệng nhân vật → kéo CHẬM nhẹ (atempo
+# 0.92–1.0, giữ cao độ) cho đỡ hụt. Mặc định TẮT — tính năng từng bị revert theo yêu
+# cầu user (30e285c), chỉ bật khi chủ động muốn thử; bật/tắt chỉ cần chạy lại từ trộn.
+STRETCH_SHORT = os.getenv("STRETCH_SHORT", "0").strip().lower() in ("1", "true")
 
 # Nhịp phụ đề (S8): 1 = câu gộp (cho giọng đọc) được TÁCH hiển thị lại theo đúng
 # mốc thời gian từng dòng sub gốc — nhịp như bản gốc | 0 = hiện cả câu gộp.

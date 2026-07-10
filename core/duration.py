@@ -28,6 +28,32 @@ VIXTTS_SPEED_MAX = 1.25  # trần speed synth lại viXTTS (length_scale) — ca
 EDGE_RATE_MAX = 50       # trần TỔNG rate edge (%) — nhanh hơn nữa nghe máy móc
 MIN_SLOT_S = 0.3         # sàn slot (đồng bộ S5/S7 — trước đây S4 dùng sàn khác 0.5)
 
+# Ngân sách CHỮ cho tầng dịch (đợt C audit giọng): giọng đọc tiếng Việt tự nhiên
+# ~4 âm tiết/giây; quá 4.5/giây-limit là chắc chắn phải nén máy móc.
+BREATH_S = 0.25          # đệm thở trừ khỏi slot khi cấp ngân sách cho bản dịch
+SYL_TARGET_PER_S = 4.0   # nhắm ~4 âm tiết/giây thoại gốc (khớp miệng)
+SYL_MAX_PER_S = 4.5      # trần cứng cho validator — vượt là dịch lại cho ngắn
+
+
+def slots(segments: list[dict]) -> dict:
+    """{id: slot giây (tới start câu KẾ theo thời gian, tính cả câu mute/rỗng —
+    CÙNG công thức S5/S7); câu cuối → None}. Một nguồn sự thật cho mọi tầng."""
+    full = sorted(segments, key=lambda s: s["start"])
+    out: dict = {}
+    for k, s in enumerate(full):
+        if k + 1 < len(full):
+            out[s["id"]] = max(MIN_SLOT_S, full[k + 1]["start"] - s["start"])
+        else:
+            out[s["id"]] = None
+    return out
+
+
+def syllables(text: str) -> int:
+    """Đếm âm tiết tiếng Việt ≈ đếm TIẾNG (token cách nhau bởi khoảng trắng, bỏ
+    token toàn dấu câu). Xấp xỉ đủ tốt cho ngân sách đọc — số/ký hiệu hiếm gặp."""
+    import re
+    return sum(1 for t in text.split() if re.search(r"[\wà-ỹÀ-Ỹ]", t))
+
 _REPORT = "fit_report.json"   # tts/fit_report.json: id → đo đạc + engine_speed đã tiêu
 
 

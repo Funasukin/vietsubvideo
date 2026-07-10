@@ -6,6 +6,49 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-10 (4) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt C+D audit giọng (user: "thực hiện các bước tiếp theo") — V5-V7, V9-V12, V14
+
+**Đợt C — khớp từ tầng DỊCH (s4_translate):**
+- **V5** payload dịch mang ngân sách KÉP từ trọng tài: `target_s` (miệng =
+  end−start, nhắm ≈4×target_s âm tiết), `max_s` (slot tới câu kế − 0.25s đệm thở
+  — CÙNG định nghĩa với tầng nén S5/S7, hết cảnh 2 thước 2 tầng), `max_syll`
+  (trần âm tiết, CHỈ đích tiếng Việt). 3 system prompt cập nhật rule ĐỘ DÀI.
+- **V6** validator ĐẾM THẬT âm tiết sau dịch (`duration.syllables`): câu >4.5 âm
+  tiết/giây-limit → dịch lại NGẮN 1 vòng gom batch, chỉ nhận bản thật sự ngắn
+  hơn. Test thật: bắt đúng 1 câu (#13), rút gọn 1/1.
+- **V7** review pass nhận `max_syll` + guard programmatic: bản sửa vừa dài hơn
+  câu cũ vừa vượt trần → từ chối.
+
+**Đợt D:**
+- **V10** `segtools.absorb_tiny`: nhập câu CỤT (≤2 chữ) vào câu bên khi gap
+  ≤0.8s, không trộn 2 speaker. Gọi ở **S4 sau diarize** (review đối kháng bắt
+  lỗi bản đầu đặt ở S3: seg chưa có speaker → guard chết). Test thật: 23→19 câu,
+  hết sạch câu 1-2 chữ.
+- **V9** `STRETCH_SHORT` (mặc định TẮT — tính năng từng bị revert 30e285c, cần
+  user chủ động bật): câu hụt >30% slot → atempo 0.92–1.0 kéo về độ dài MIỆNG
+  (không lấp khoảng lặng tự nhiên). Knob ở Cấu hình + ⚙️ per-job nhóm mix.
+- **V11** nghe thử 🔊 trung thực: nhận `job_id` → áp ⚙️ override
+  (engine/giọng/1-giọng/TARGET_LANG); engine viXTTS + câu không cast → nghe thử
+  cũng viXTTS giọng mặc định (+ clip cảm xúc như render) thay vì rơi xuống edge.
+- **V12** preset Cấu hình (🎯 Khớp môi chặt = 2.0×+kéo giãn / 🌿 Tự nhiên =
+  1.2×); nhãn "Nữ (1 giọng — không tác dụng)" theo giá trị HIỆU LỰC của job;
+  default code PROSODY/EMOTION "1"→"0" KÈM migration tự append giá trị cũ vào
+  .env máy đã dùng (không âm thầm đổi giọng/re-TTS — laptop pull về là an toàn).
+- **V14** demucs giữ lại `vocals.wav` (bọc OSError — file phụ hỏng không được
+  phá lần tách GPU; review bắt lỗi bản đầu thiếu try/except).
+
+**Kiểm chứng:** pipeline chạy lại từ transcribing trên clone
+`20260710_155613_aaa003` (edge): 19 câu, chỉ 2 câu nén (max 1.37×), 0 tràn,
+0 cắt — so bản gốc 12 câu nén (max 2.0×), 10 tràn. Review đối kháng 19 agent
+trên diff: 15 CONFIRMED (nặng nhất: STRETCH_SHORT/DUCK_GAIN_DB thiếu trong
+CFG_FIELDS → tab Cấu hình không lưu được — đã sửa cùng 6 lỗi khác), tất cả đã
+xử lý trước khi commit. Còn treo: đợt sau nếu muốn — 2 chế độ nghe thử
+(raw/in-timeline), preview cho câu voice_ref khi đích ≠ vi.
+
+---
+
 ## 2026-07-10 (3) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Nền át giọng Việt (user phàn nàn sau khi nghe test) + đổi engine edge 1 giọng

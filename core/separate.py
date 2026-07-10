@@ -45,5 +45,17 @@ def no_vocals(job: Job) -> str:
     if not produced.exists():
         raise RuntimeError("demucs không tạo được no_vocals.wav")
     shutil.move(str(produced), str(out))
+    # V14 audit giọng (phát hiện của Gemini): GIỮ lại vocals.wav (giọng gốc sạch) —
+    # trước đây rmtree xoá luôn, muốn đo prosody trên vocal sạch cũng không có dữ
+    # liệu. /api/cleanup đã có sẵn dòng dọn file này nên không lo phình đĩa.
+    # File PHỤ TRỢ — lỗi (đích đang bị Windows khoá khi phát...) chỉ được print,
+    # tuyệt đối không ném lên kẻo s6 tưởng "demucs lỗi" mà vứt no_vocals vừa tách
+    # (review đối kháng bắt được: mất trắng nhiều phút GPU vì một file phụ).
+    try:
+        voc = outroot / "htdemucs" / src.stem / "vocals.wav"
+        if voc.exists():
+            os.replace(str(voc), str(job.dir / "vocals.wav"))
+    except OSError as e:
+        print(f"  không giữ được vocals.wav ({e}) — bỏ qua, không ảnh hưởng tách nền")
     shutil.rmtree(outroot, ignore_errors=True)
     return str(out)

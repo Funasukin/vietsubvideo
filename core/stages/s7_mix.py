@@ -103,6 +103,7 @@ def run(job: Job) -> None:
         espeed = float(fit.get(str(seg["id"]), {}).get("engine_speed") or 1.0)
         factor = 1.0
 
+        mouth = max(1, int((seg["end"] - seg["start"]) * rate))
         if len(voice) > limit * duration.TOL:
             # ngân sách CÒN LẠI sau phần engine đã nén ở S5 — tích ≤ MAX_SPEEDUP
             allowed = duration.budget_left(espeed)
@@ -111,6 +112,19 @@ def run(job: Job) -> None:
                 sped = job.dir / "tts" / f"seg_{seg['id']:04d}_sped.wav"
                 # LUÔN tạo lại: factor phụ thuộc slot + mp3 hiện tại — bản _sped của lần
                 # chạy trước (text/slot khác) mà tái dùng là sai tốc độ âm thầm
+                sped.unlink(missing_ok=True)
+                ffmpeg.run("-i", str(mp3), "-filter:a", f"atempo={factor:.4f}", str(sped))
+                voice = _load_voice(sped, rate)
+            else:
+                factor = 1.0
+        elif (config.STRETCH_SHORT and len(voice) < int(0.7 * slot)
+                and len(voice) < mouth):
+            # V9 (mặc định TẮT): đọc xong quá sớm → kéo CHẬM nhẹ về phía độ dài MIỆNG
+            # (không phải slot — slot dư thường là khoảng lặng tự nhiên của phim).
+            # atempo < 1 giữ cao độ; sàn 0.92 — chậm hơn nghe rề.
+            factor = max(0.92, len(voice) / min(mouth, limit))
+            if factor < 0.996:
+                sped = job.dir / "tts" / f"seg_{seg['id']:04d}_sped.wav"
                 sped.unlink(missing_ok=True)
                 ffmpeg.run("-i", str(mp3), "-filter:a", f"atempo={factor:.4f}", str(sped))
                 voice = _load_voice(sped, rate)

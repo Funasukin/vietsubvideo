@@ -527,6 +527,8 @@ const CFG_FIELDS = [
   ["GEMINI_MIN_INTERVAL", "Giãn nhịp Gemini (giây)", ["0", "6", "7", "10"]],
   ["TRANSLATE_STYLE_EXTRA", "Phong cách dịch riêng", []],
   ["MAX_SPEEDUP", "Đồng bộ khớp thoại (tăng tốc tối đa)", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"]],
+  ["STRETCH_SHORT", "Kéo giãn câu đọc xong sớm", ["0", "1"]],
+  ["DUCK_GAIN_DB", "Âm nền gốc dưới thoại", ["-14", "-17", "-20", "-23", "-26"]],
   ["CONTENT_STYLE", "Kiểu nội dung", ["donghua", "general"]],
   ["TARGET_LANG", "Ngôn ngữ lồng tiếng", ["vi", "en", "zh", "ja", "ko", "es", "fr", "id", "th", "pt"]],
   ["TTS_ENGINE", "Giọng đọc (engine)", ["edge", "vixtts", "elevenlabs", "vbee", "fpt"]],
@@ -670,6 +672,15 @@ async function saveGlossDefault() {
 let cfgDirty = false;
 let _pendingTab = null;
 function markCfgDirty() { cfgDirty = true; }
+// V12 audit giọng: preset đặt nhanh các núm khớp thoại (user vẫn phải bấm Lưu)
+function cfgPreset(kind) {
+  const set = (k, v) => { const el = document.getElementById("cfg-" + k); if (el) el.value = v; };
+  if (kind === "tight") { set("MAX_SPEEDUP", "2.0"); set("STRETCH_SHORT", "1"); }
+  else { set("MAX_SPEEDUP", "1.2"); set("STRETCH_SHORT", "0"); }
+  markCfgDirty();
+  toast(kind === "tight" ? "Preset: khớp môi chặt (2.0× + kéo giãn) — nhớ Lưu"
+                         : "Preset: tự nhiên (1.2×, không kéo giãn) — nhớ Lưu");
+}
 
 function showTab(name) {
   // Rời tab Cấu hình khi còn thay đổi chưa lưu → nhắc bằng popup trước khi chuyển.
@@ -760,6 +771,8 @@ async function loadConfig() {
     : (V.KEEP_BGM === "1" || /^true$/i.test(V.KEEP_BGM || "")) ? "1" : "0";
   V.DENOISE = (V.DENOISE === "1" || /^true$/i.test(V.DENOISE || "")) ? "1" : "0";
   V.TTS_SINGLE_VOICE = (V.TTS_SINGLE_VOICE === "1" || /^true$/i.test(V.TTS_SINGLE_VOICE || "")) ? "1" : "0";
+  V.STRETCH_SHORT = (V.STRETCH_SHORT === "1" || /^true$/i.test(V.STRETCH_SHORT || "")) ? "1" : "0";
+  V.DUCK_GAIN_DB = String(parseInt(V.DUCK_GAIN_DB || "-20", 10) || -20);   // "-20.0" → "-20"
   V.SHORTS_LEN = String(parseInt(V.SHORTS_LEN || "45", 10) || 45);   // "45.0" → "45"
   V.GEMINI_MIN_INTERVAL = String(parseInt(V.GEMINI_MIN_INTERVAL || "0", 10) || 0);   // "0.0" → "0"
   let v = { voices: [], nam: "", nu: "" };
@@ -902,6 +915,13 @@ async function loadConfig() {
       {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
        "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
       "", "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine đọc nhanh × atempo hậu kỳ ≤ mức này — trọng tài thời lượng bảo đảm, không cộng chồng như trước). Câu hết ngân sách mà vẫn dài thì fade + cắt ở biên slot, KHÔNG đè sang câu kế. <b>1.0× = KHÔNG ép nhanh chút nào</b> (tự nhiên nhất, câu dài bị cắt sớm); <b>2.0×</b> = bám hình gắt nhất nhưng câu dài đọc dồn rõ.")
+    + row("STRETCH_SHORT", "Kéo giãn câu đọc xong sớm", ["0", "1"],
+      {"0": "Tắt (mặc định)", "1": "Bật — chậm lại nhẹ tối đa 8%"},
+      "", "Câu đọc xong QUÁ SỚM so với miệng nhân vật → kéo chậm nhẹ (0.92–1.0×, giữ cao độ) cho đỡ hụt. Chỉ kéo về độ dài MIỆNG, không lấp khoảng lặng tự nhiên của phim. Đổi xong chỉ cần render lại (không đọc lại giọng).")
+    + `<div class="frow"><label>Preset nhanh</label><span>
+        <button class="ghost" onclick="cfgPreset('tight')" title="MAX_SPEEDUP 2.0 + kéo giãn câu ngắn — bám khẩu hình sát nhất">🎯 Khớp môi chặt</button>
+        <button class="ghost" onclick="cfgPreset('natural')" title="MAX_SPEEDUP 1.2, không kéo giãn — giọng đều, ưu tiên nghe tự nhiên">🌿 Tự nhiên</button>
+        <span class="meta">đặt sẵn 2 núm trên — bấm xong nhớ Lưu</span></span></div>`
     + `<div id="edge-voices">`
     + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
       "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu). Chế độ 1 giọng thì đây là giọng cho cả video.")
@@ -2143,7 +2163,7 @@ async function openEditor(id) {
       <div class="ed-ctl">
         <select id="edvoice-${i}" class="ed-voice" onchange="edMark(${i})">
           <option value="nam" ${vsel === "nam" ? "selected" : ""}>Nam — mặc định (${esc(data.voices.nam)})</option>
-          <option value="nu" ${vsel === "nu" ? "selected" : ""}>Nữ — mặc định (${esc(data.voices.nu)})</option>
+          <option value="nu" ${vsel === "nu" ? "selected" : ""}>Nữ ${data.single_voice ? "(1 giọng — không tác dụng)" : "— mặc định (" + esc(data.voices.nu) + ")"}</option>
           ${edVoices.map(v => `<option value="ref:${esc(v.file)}" ${vsel === "ref:" + v.file ? "selected" : ""}>🎙 ${esc(v.name)}</option>`).join("")}
         </select>
         <div class="ed-btns">
@@ -2422,6 +2442,8 @@ const ED_OV_FIELDS = [
   // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
   ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "tts",
     "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine × atempo ≤ mức này); hết ngân sách thì fade + cắt ở biên, KHÔNG đè câu kế. <b>1.0× = KHÔNG ép nhanh</b> — tự nhiên nhất, câu dài bị cắt sớm; <b>2.0×</b> = bám hình gắt nhưng đọc dồn rõ. Đổi núm sẽ ĐỌC LẠI các câu bị ảnh hưởng (ngân sách nằm trong giọng đã đọc)."],
+  ["STRETCH_SHORT", "🐢 Kéo giãn câu đọc xong sớm", [["0", "Tắt"], ["1", "Bật — chậm nhẹ ≤8%"]], "mix",
+    "Câu đọc xong quá sớm so với miệng → kéo chậm nhẹ (0.92–1.0×, giữ cao độ). Chỉ kéo về độ dài MIỆNG, không lấp khoảng lặng tự nhiên."],
   ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix",
     "Xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: nền to–nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định, dễ nghe. <b>demucs</b>: tách hẳn giọng nói gốc (GPU, chậm) — nền giữ trọn vẹn nhất."],
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)
@@ -2842,9 +2864,10 @@ async function edPreview(i) {
   // Đọc CHÍNH nội dung dòng này bằng giọng đang chọn:
   //  - ref: (giọng nhân bản đã cast) → viXTTS tổng hợp câu với clip đó (đúng giọng render)
   //  - nam/nữ → edge-tts đọc nhanh để soát chữ
+  // job_id (V11): server áp ⚙️ override của job (engine/giọng) → nghe thử ĐÚNG engine render
   const body = voice.startsWith("ref:")
-    ? { text, voice_ref: voice.slice(4) }
-    : { text, voice, emotion: edSegs[i].emotion || "" };   // nghe thử đúng sắc thái render
+    ? { text, voice_ref: voice.slice(4), job_id: edJobId || "" }
+    : { text, voice, emotion: edSegs[i].emotion || "", job_id: edJobId || "" };
   const btn = document.querySelector(`#edrow-${i} .ed-ctl .ed-preview`);   // ĐÚNG nút loa (không phải nút Mute)
   // KHÔNG disable nút: đổi giọng rồi bấm lại sẽ tạo lần nghe mới (seq) đè lần cũ,
   // nên luôn nghe đúng giọng vừa chọn (trước đây nút bị khoá → bỏ qua lần bấm thứ 2).
