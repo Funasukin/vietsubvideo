@@ -63,218 +63,17 @@ ENV_PATH = config.BASE_DIR / ".env"
 
 app = FastAPI(title="FlowApp")
 
-_pending: "queue.Queue[str]" = queue.Queue()
-_lock = threading.Lock()
-# Job đang trong hàng đợi HOẶC đang chạy. Nguồn sự thật duy nhất để chống xếp trùng
-# (một job chạy 2 lần): mọi "kiểm tra rồi xếp" đều làm dưới _lock nên atomic.
-_active: set[str] = set()
-_running_id: str | None = None   # job đang chạy (None nếu rảnh) — chỉ để hiển thị
-_current_proc: "subprocess.Popen | None" = None  # tiến trình job đang chạy (để hủy)
-_cancel: set[str] = set()        # job_id được yêu cầu hủy (đang chạy hoặc còn chờ)
-_retries: dict[str, int] = {}    # job_id → số lần đã tự chạy lại
-_queue_paused = False            # ⏸ tạm dừng hàng đợi: job đang chạy chạy nốt,
-                                 # job kế KHÔNG được bắt đầu cho tới khi mở lại
+# #16 tách monolith (giai đoạn 1): toàn bộ hàng đợi + vòng đời tiến trình job
+# nằm ở webui/worker.py (worker thread tự khởi động khi import). Object dùng chung
+# (_pending/_lock/_active/_cancel/_retries + các hàm) import trực tiếp; biến VÔ
+# HƯỚNG bị gán lại bên worker (_running_id/_current_proc/_queue_paused) PHẢI
+# đọc/ghi qua `worker.` — import from sẽ dính bản cũ.
+from webui import worker
+from webui.envfile import read_env as _read_env
+from webui.worker import (_active, _cancel, _drain_remove, _enqueue,
+                          _enqueue_reserved, _kill_proc_tree, _lock, _pending,
+                          _release_job, _reserve_job, _retries)
 
-
-def _enqueue(job_id: str) -> bool:
-    """Xếp job vào hàng đợi nếu chưa ở trong (đang chờ/đang chạy).
-
-    Trả True nếu vừa xếp, False nếu đã đang chờ/đang chạy. Kiểm tra + đánh dấu
-    'active' dưới cùng một lock → hai request gần như đồng thời (bấm Chạy 2 lần,
-    hoặc Chạy lẻ trùng Chạy tất cả) không thể cùng xếp một job."""
-    with _lock:
-        if job_id in _active or job_id in _cancel:
-            return False   # đang chờ/chạy, hoặc còn đang dọn dở sau khi bị hủy
-        _active.add(job_id)
-    # Nếu dashboard đang giữ model viXTTS (do nghe thử giọng nhân bản), nhả GPU ra
-    # trước khi worker (tiến trình con) nạp model của nó → tránh tranh chấp VRAM/OOM.
-    try:
-        from core import vixtts
-        vixtts.unload()
-    except Exception:
-        pass
-    _pending.put(job_id)
-    return True
-
-
-def _reserve_job(job_id: str) -> None:
-    """Bug #12 (audit): GIỮ CHỖ job trong _active TRƯỚC khi endpoint sửa file của nó
-    (save_segments/rerender xoá transcript/mp3/final giữa chừng). Trước đây chỉ check
-    `in _active` rồi buông lock — 'Chạy tất cả'/resume có thể xếp job chạy ĐÚNG LÚC
-    đang xoá dở → cli đọc dữ liệu nửa vời. Caller PHẢI kết thúc bằng
-    _enqueue_reserved() (thành công) hoặc _release_job() (mọi đường lỗi/không đổi)."""
-    with _lock:
-        if job_id in _active or job_id in _cancel:
-            raise HTTPException(409, "Job đang chạy hoặc đã trong hàng đợi")
-        _active.add(job_id)
-
-
-def _release_job(job_id: str) -> None:
-    with _lock:
-        _active.discard(job_id)
-
-
-def _enqueue_reserved(job_id: str) -> None:
-    """Xếp job ĐÃ giữ chỗ (_reserve_job) vào hàng — như _enqueue nhưng bỏ bước
-    check/add _active (đã giữ từ trước khi sửa file)."""
-    try:
-        from core import vixtts
-        vixtts.unload()
-    except Exception:
-        pass
-    _pending.put(job_id)
-
-
-def _auto_retry_limit() -> int:
-    """Đọc AUTO_RETRY tươi từ .env mỗi lần (sửa từ UI có hiệu lực ngay, khỏi restart)."""
-    try:
-        return int(_read_env().get("AUTO_RETRY", config.AUTO_RETRY))
-    except (ValueError, TypeError):
-        return config.AUTO_RETRY
-
-
-def _kill_proc_tree(proc: "subprocess.Popen") -> str:
-    """Hủy cây tiến trình job. Trên Windows cli.py sinh thêm worker OCR (ProcessPool);
-    taskkill /T diệt cả con cháu — chạy khi cli.py CÒN sống nên cây tiến trình còn
-    nguyên vẹn để liệt kê. Trả 'ok' hoặc mô tả lỗi để caller ghi log."""
-    try:
-        if os.name == "nt":
-            r = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
-                               capture_output=True, text=True)
-            if r.returncode != 0:
-                return f"taskkill rc={r.returncode}: {(r.stderr or r.stdout or '').strip()}"
-            return "ok"
-        proc.terminate()
-        return "ok"
-    except Exception as e:
-        return f"lỗi kill: {e}"
-
-
-def _drain_remove(job_id: str) -> bool:
-    """Rút job_id khỏi hàng đợi _pending. queue.Queue không xóa phần tử giữa chừng được
-    nên múc hết (get_nowait — không block) rồi đổ lại, bỏ job_id. PHẢI gọi khi đang giữ
-    _lock. Trả True nếu tìm & rút được (⇒ caller tự dọn _active); False nếu không còn
-    trong hàng (worker đã pull ⇒ để worker reap qua cờ _cancel)."""
-    items, found = [], False
-    while True:
-        try:
-            items.append(_pending.get_nowait())
-        except queue.Empty:
-            break
-    for it in items:
-        if it == job_id and not found:
-            found = True          # chỉ bỏ 1 lần (dù _enqueue đã chặn xếp trùng)
-        else:
-            _pending.put(it)
-    return found
-
-
-def _notify_done(job_id: str, ok: bool) -> None:
-    """Báo Telegram khi job kết thúc (best-effort, không làm hỏng worker)."""
-    try:
-        from core import notify
-        if not notify.enabled():
-            return
-        from core.job import Job
-        j = Job.load(job_id)
-        notify.job_done(job_id, j.url, ok, j.error or "")
-    except Exception:
-        pass
-
-
-def _worker() -> None:
-    global _running_id, _current_proc
-    while True:
-        job_id = _pending.get()          # KHÔNG giữ lock khi chờ (get() blocking)
-        # ⏸ hàng đợi tạm dừng → giữ job (vẫn hiện "trong hàng đợi"), chờ mở lại.
-        # Hủy trong lúc chờ vẫn ăn (rơi xuống nhánh _cancel bên dưới).
-        while True:
-            with _lock:
-                if not _queue_paused or job_id in _cancel:
-                    break
-            time.sleep(0.5)
-        with _lock:
-            if job_id in _cancel:         # hủy khi còn nằm trong hàng đợi → bỏ qua
-                _cancel.discard(job_id)
-                _active.discard(job_id)
-                _retries.pop(job_id, None)
-                continue
-            _running_id = job_id          # vẫn nằm trong _active từ lúc _enqueue
-        # Log per-job: toàn bộ stdout/stderr của cli.py ghi vào <job>/run.log (append,
-        # kèm header mỗi lượt) — job lỗi lúc vắng mặt vẫn còn vết, UI đọc qua /log.
-        log_f = None
-        try:
-            log_f = open(config.JOBS_DIR / job_id / "run.log", "ab")
-            log_f.write(f"\n===== run {time.strftime('%Y-%m-%d %H:%M:%S')} =====\n"
-                        .encode("utf-8"))
-            log_f.flush()
-            out_target = log_f
-        except OSError:
-            out_target = None             # không mở được log → về console như cũ
-        # Override cấu hình THEO JOB (editor "⚙️ Tùy chọn video này"): truyền qua env
-        # FLOWAPP_JOB_OVERRIDES — config.py của tiến trình con áp SAU .env.
-        child_env = None
-        try:
-            _ov = Job.load(job_id).env_overrides or {}
-            if _ov:
-                child_env = dict(os.environ)
-                child_env["FLOWAPP_JOB_OVERRIDES"] = json.dumps(_ov)
-        except Exception:
-            pass
-        proc = subprocess.Popen(
-            [sys.executable, str(config.BASE_DIR / "cli.py"), "--resume", job_id],
-            cwd=config.BASE_DIR, env=child_env,
-            stdout=out_target, stderr=subprocess.STDOUT if out_target else None,
-        )
-        with _lock:
-            _current_proc = proc
-            # Hủy có thể ập tới đúng lúc Popen đang khởi động (khi đó _current_proc
-            # còn None nên endpoint không kill được) → tự kiểm & kill ngay tại đây.
-            kill_now = job_id in _cancel
-        if kill_now:
-            res = _kill_proc_tree(proc)   # bị hủy ngay lúc khởi động → kill kịp
-            if res != "ok":
-                print(f"[cancel] {job_id}: {res}")
-        proc.wait()
-        if log_f is not None:
-            try:
-                log_f.close()
-            except OSError:
-                pass
-        rc = proc.returncode              # ≠0 ⇒ pipeline lỗi (cli.py để exception thoát)
-        with _lock:
-            _current_proc = None
-            _running_id = None
-            cancelled = job_id in _cancel
-            _cancel.discard(job_id)
-        if cancelled:                     # người dùng bấm Hủy → không thử lại
-            with _lock:
-                _active.discard(job_id)
-                _retries.pop(job_id, None)
-        elif rc != 0 and _retries.get(job_id, 0) < _auto_retry_limit():
-            n = _retries.get(job_id, 0) + 1
-            with _lock:
-                _retries[job_id] = n
-            print(f"[worker] job {job_id} lỗi (rc={rc}) → tự chạy lại lần {n}")
-            _pending.put(job_id)          # giữ trong _active, xếp lại cuối hàng
-        else:                             # kết thúc hẳn (xong hoặc lỗi hết lượt thử)
-            with _lock:
-                _active.discard(job_id)
-                _retries.pop(job_id, None)
-            _notify_done(job_id, rc == 0)   # #11 báo Telegram (best-effort)
-
-
-threading.Thread(target=_worker, daemon=True, name="flowapp-worker").start()
-
-
-@atexit.register
-def _kill_running_job() -> None:
-    """Server tắt (Ctrl+C / restart) → hạ luôn job đang chạy kẻo thành tiến trình
-    mồ côi chiếm CPU/GPU. Checkpoint đã lưu theo stage nên bấm Chạy tiếp là nối lại."""
-    with _lock:
-        proc = _current_proc
-    if proc is not None and proc.poll() is None:
-        _kill_proc_tree(proc)
 
 
 def _trending_safe_scan() -> None:
@@ -381,8 +180,8 @@ def _job_summary(job_dir: Path) -> dict | None:
         except (json.JSONDecodeError, OSError):
             pass
     with _lock:
-        state["queued"] = state["id"] in _active and state["id"] != _running_id
-        state["running"] = state["id"] == _running_id
+        state["queued"] = state["id"] in _active and state["id"] != worker._running_id
+        state["running"] = state["id"] == worker._running_id
 
     mr = job_dir / "mix_report.json"
     if mr.exists():
@@ -727,8 +526,8 @@ def cancel_job(job_id: str) -> dict:
             raise HTTPException(409, "Job không đang chạy/chờ")
         _cancel.add(job_id)              # chốt: worker tôn trọng cờ này ở mọi nhánh
         _retries.pop(job_id, None)       # hủy tay → không tự thử lại
-        if job_id == _running_id and _current_proc is not None:
-            proc = _current_proc         # đang chạy → kill; worker.wait() sẽ dọn _active
+        if job_id == worker._running_id and worker._current_proc is not None:
+            proc = worker._current_proc  # đang chạy → kill; worker.wait() sẽ dọn _active
         elif _drain_remove(job_id):      # còn trong hàng đợi → rút ra, dọn ngay
             _active.discard(job_id)
             _cancel.discard(job_id)      # đã rời hàng, worker không gặp lại → gỡ chốt
@@ -748,15 +547,14 @@ class QueuePauseBody(BaseModel):
 @app.get("/api/queue")
 def queue_state() -> dict:
     with _lock:
-        return {"paused": _queue_paused}
+        return {"paused": worker._queue_paused}
 
 
 @app.post("/api/queue/pause")
 def queue_pause(body: QueuePauseBody) -> dict:
     """⏸/▶ Tạm dừng/mở lại hàng đợi. Job đang chạy chạy nốt; job kế chờ mở lại."""
-    global _queue_paused
     with _lock:
-        _queue_paused = body.paused
+        worker._queue_paused = body.paused   # gán qua module — biến vô hướng của worker
     return {"paused": body.paused}
 
 
@@ -765,7 +563,7 @@ def prioritize_job(job_id: str) -> dict:
     """⬆ Đưa job đang CHỜ lên đầu hàng đợi (chạy ngay sau job hiện tại)."""
     _check_job_id(job_id)
     with _lock:
-        if job_id not in _active or job_id == _running_id:
+        if job_id not in _active or job_id == worker._running_id:
             raise HTTPException(409, "Job không nằm trong hàng đợi")
         # múc hết hàng ra, xếp lại: job này TRƯỚC, còn lại giữ nguyên thứ tự
         items = []
@@ -2260,14 +2058,7 @@ def open_job_folder(job_id: str) -> dict:
     return {"opened": job_id}
 
 
-def _read_env() -> dict[str, str]:
-    values = {}
-    if ENV_PATH.exists():
-        for line in ENV_PATH.read_text(encoding="utf-8").splitlines():
-            m = re.match(r"^([A-Z_]+)=(.*)$", line.strip())
-            if m:
-                values[m.group(1)] = m.group(2)
-    return values
+# _read_env đã dời sang webui/envfile.py (#16 giai đoạn 1) — import ở đầu file.
 
 
 # ---------- #1 Đăng YouTube: gói xuất sẵn (kéo-thả) + đăng thẳng OAuth ----------

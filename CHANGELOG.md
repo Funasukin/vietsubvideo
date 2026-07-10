@@ -6,6 +6,32 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (5) — Desktop (F:\MyProject\vietsubvideo)
+
+### #16 giai đoạn 1: tách worker/queue khỏi server.py → webui/worker.py
+
+Refactor CƠ HỌC không đổi hành vi (bước 2 trong thứ tự Codex đề xuất — dọn đường
+cho model-host manager W-2 nếu telemetry nói có lãi):
+- **`webui/worker.py` (MỚI, 243 dòng)**: toàn bộ state hàng đợi
+  (_pending/_lock/_active/_cancel/_retries/_running_id/_current_proc/
+  _queue_paused) + _enqueue/_reserve_job/_release_job/_enqueue_reserved +
+  _drain_remove + _kill_proc_tree + _notify_done + vòng _worker + thread tự
+  khởi động khi import + atexit kill job đang chạy. Chuyển NGUYÊN VĂN.
+- **`webui/envfile.py` (MỚI)**: `read_env()` tách từ server (worker cần đọc
+  AUTO_RETRY tươi mà không import ngược server).
+- **server.py** (2306 → 2208 dòng): import object dùng chung trực tiếp; 3 biến
+  VÔ HƯỚNG bị gán lại bên worker (_running_id/_current_proc/_queue_paused)
+  đọc/ghi qua `worker.` — import from sẽ dính bản cũ (đã ghi chú ngay tại chỗ).
+- Verify end-to-end qua server thật: pause queue → resume job (hiện "trong
+  hàng") → CANCEL rút khỏi hàng sạch → unpause → resume chạy tới done qua
+  worker mới; run.log vẫn nhận STAGE telemetry; import-test khẳng định object
+  identity chia sẻ đúng + thread flowapp-worker sống.
+
+Giai đoạn sau của #16 (tách routes theo nhóm) + #17 (index.html) — làm tiếp khi
+user gọi; nền tảng worker giờ đã là module độc lập.
+
+---
+
 ## 2026-07-11 (4) — Desktop (F:\MyProject\vietsubvideo)
 
 ### W-0: benchmark model + telemetry (user chốt "W-0 trước, gọn rồi qua #16")
