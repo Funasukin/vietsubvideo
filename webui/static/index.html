@@ -672,14 +672,37 @@ async function saveGlossDefault() {
 let cfgDirty = false;
 let _pendingTab = null;
 function markCfgDirty() { cfgDirty = true; }
-// V12 audit giọng: preset đặt nhanh các núm khớp thoại (user vẫn phải bấm Lưu)
-function cfgPreset(kind) {
-  const set = (k, v) => { const el = document.getElementById("cfg-" + k); if (el) el.value = v; };
-  if (kind === "tight") { set("MAX_SPEEDUP", "2.0"); set("STRETCH_SHORT", "1"); }
-  else { set("MAX_SPEEDUP", "1.2"); set("STRETCH_SHORT", "0"); }
-  markCfgDirty();
-  toast(kind === "tight" ? "Preset: khớp môi chặt (2.0× + kéo giãn) — nhớ Lưu"
-                         : "Preset: tự nhiên (1.2×, không kéo giãn) — nhớ Lưu");
+// V12/U5: MỘT nguồn mapping preset khớp thoại — tab Cấu hình (cfg-*) và panel ⚙️
+// per-job (ov-*) cùng dùng, khỏi lệch nhau về sau (điểm Codex).
+const SYNC_PRESETS = {
+  tight: { MAX_SPEEDUP: "2.0", STRETCH_SHORT: "1" },
+  natural: { MAX_SPEEDUP: "1.2", STRETCH_SHORT: "0" },
+};
+function applySyncPreset(kind, prefix) {
+  const p = SYNC_PRESETS[kind] || {};
+  for (const [k, v] of Object.entries(p)) {
+    const el = document.getElementById(prefix + k);
+    if (el) el.value = v;
+  }
+  toast(kind === "tight" ? "Preset: khớp môi chặt (2.0× + kéo giãn câu ngắn)"
+                         : "Preset: tự nhiên (1.2×, không kéo giãn)");
+}
+function cfgPreset(kind) { applySyncPreset(kind, "cfg-"); markCfgDirty(); }
+function edOvPreset(kind) { applySyncPreset(kind, "ov-"); applyOvDeps(); }
+// U10 mở rộng: 1 núm "Chất lượng dịch" per-job thay 2 danh sách model — map model
+// theo CẢ 2 provider (provider nào hiệu lực thì model đó được dùng; Gemini fallback
+// Claude cũng ăn đúng model Claude tương ứng).
+const QUALITY_MODELS = {
+  eco: { CLAUDE_MODEL: "claude-haiku-4-5-20251001", GEMINI_MODEL: "gemini-2.5-flash-lite" },
+  balanced: { CLAUDE_MODEL: "claude-haiku-4-5-20251001", GEMINI_MODEL: "gemini-2.5-flash" },
+  best: { CLAUDE_MODEL: "claude-sonnet-4-6", GEMINI_MODEL: "gemini-2.5-pro" },
+};
+function qualityFromOv(ov) {   // suy ngược giá trị núm từ override đang lưu (job cũ)
+  const c = ov.CLAUDE_MODEL || "", g = ov.GEMINI_MODEL || "";
+  if (!c && !g) return "";
+  if (c.includes("sonnet") || g.includes("pro")) return "best";
+  if (g.includes("lite")) return "eco";
+  return "balanced";
 }
 
 function showTab(name) {
@@ -2457,25 +2480,22 @@ const ED_OV_FIELDS = [
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)
   ["TTS_ENGINE", "🗣 Engine giọng", [["edge", "edge — miễn phí"], ["vixtts", "viXTTS — nhân bản (GPU)"], ["elevenlabs", "ElevenLabs (trả phí)"], ["vbee", "VBee (trả phí)"], ["fpt", "FPT.AI (trả phí)"]], "tts",
     "Bộ máy đọc giọng. <b>edge/viXTTS miễn phí nhưng license KHÔNG cho dùng video bật kiếm tiền</b>; 3 engine trả phí cần API key (nhập ở Cấu hình → 🔑). Câu đã cast giọng nhân vật vẫn đọc viXTTS clone bất kể engine."],
-  ["TTS_SINGLE_VOICE", "🔊 Số giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ riêng"]], "tts",
-    "<b>1 giọng</b>: mọi câu đọc cùng một giọng, bỏ phân biệt nam/nữ. <b>2 giọng</b>: câu nhân vật nam đọc giọng nam, nữ đọc giọng nữ (AI tự gán nhãn). Nhân vật đã cast trong Series vẫn giữ giọng riêng."],
-  ["TTS_VOICE", "👨 Giọng nam/chính (edge)", [["vi-VN-NamMinhNeural", "NamMinh (nam)"], ["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"]], "tts",
-    "Giọng đọc chính: mọi câu khi chọn 1 giọng; các câu nhãn NAM khi chọn 2 giọng."],
-  ["TTS_VOICE_NU", "👩 Giọng nữ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts",
-    "Giọng đọc các câu gắn nhãn NỮ (chỉ áp khi chọn 2 giọng)."],
+  ["TTS_SINGLE_VOICE", "🔊 Chế độ giọng", [["1", "1 giọng — cả video một giọng"], ["0", "2 giọng — nam & nữ tự gán"]], "tts",
+    "<b>1 giọng</b>: mọi câu đọc cùng một giọng, bỏ phân biệt nam/nữ. <b>2 giọng</b>: câu nhân vật nam đọc giọng nam, nữ giọng nữ (AI tự gán nhãn). Nhân vật đã cast trong Series vẫn giữ giọng riêng. DANH TÍNH giọng do engine quyết: edge chỉnh 2 ô trong Nâng cao; viXTTS/trả phí theo cặp giọng ở tab Cấu hình."],
+  ["TTS_VOICE", "👨 Giọng chính (edge)", [["vi-VN-NamMinhNeural", "NamMinh (nam)"], ["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"]], "tts",
+    "Giọng đọc chính: mọi câu khi chọn 1 giọng; các câu nhãn NAM khi chọn 2 giọng. Chỉ áp engine edge."],
+  ["TTS_VOICE_NU", "👩 Giọng phụ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts",
+    "Giọng đọc các câu gắn nhãn NỮ (chỉ áp khi chọn 2 giọng, engine edge)."],
   ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
     "Đo tốc độ/độ to từng câu GỐC so với nền người nói → chỉnh giọng đọc theo (câu quát → đọc dồn, câu trầm → chậm lại). Nguồn đo: ƯU TIÊN giọng đã tách demucs (vocals — có khi Nhạc/SFX gốc = demucs đã chạy); chưa tách thì đo trên audio gốc, cảnh nhạc to có thể nhiễu. Chỉ áp engine edge."],
   ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]], "tts",
     "AI gắn nhãn cảm xúc từng câu khi dịch (gấp/giận/buồn/thì thầm) → giọng đọc chỉnh nhịp/âm lượng theo — bắt được sắc thái audio không lộ (mỉa mai, đe dọa nói nhỏ...)."],
-  ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
-    "Thử nghiệm: ép DÁNG đường lên–xuống giọng của câu gốc lên giọng đọc (PSOLA) — câu gốc lên giọng cuối câu thì bản đọc cũng vậy, vẫn giữ tầm giọng của giọng đọc. Bật/tắt → toàn bộ câu xử lý lại."],
+  // (U-3: PROSODY_TRANSFER + 2 danh sách model đã RÚT khỏi per-job — chính sách
+  //  toàn cục, chỉnh ở tab Cấu hình; per-job thay bằng ⭐ Chất lượng dịch.
+  //  Override cũ của khóa rút tự rơi ở lần Lưu kế — cơ chế field-ẩn sẵn có.)
   // nhóm DỊCH — DỊCH LẠI toàn bộ (tốn phí API, MẤT chỉnh tay câu)
   ["TRANSLATE_PROVIDER", "🌐 Nhà cung cấp dịch", [["claude", "Claude"], ["gemini", "Gemini"]], "translate",
-    "LLM dịch/soát. <b>Claude</b> ổn định; <b>Gemini</b> free tier gần như $0 nhưng giới hạn request — lỗi/hết quota giữa chừng TỰ chuyển về Claude, job không chết."],
-  ["CLAUDE_MODEL", "Model Claude", [["claude-haiku-4-5-20251001", "Haiku 4.5 — rẻ"], ["claude-sonnet-4-6", "Sonnet 4.6 — mượt hơn"]], "translate",
-    "<b>Haiku</b> rẻ (~$0.001/câu), đủ tốt đa số video; <b>Sonnet</b> mượt hơn với thoại dày/thuật ngữ, phí ~10 lần."],
-  ["GEMINI_MODEL", "Model Gemini", [["gemini-2.5-flash", "2.5 Flash"], ["gemini-2.5-flash-lite", "2.5 Flash-Lite"], ["gemini-2.5-pro", "2.5 Pro"], ["gemini-2.0-flash", "2.0 Flash"], ["gemini-2.0-flash-lite", "2.0 Flash-Lite"]], "translate",
-    "<b>2.5 Flash</b> cân bằng (khuyên dùng); <b>Flash-Lite</b> rẻ/nhanh nhất; <b>2.5 Pro</b> mượt nhất nhưng free tier siết chặt; <b>2.0</b> đời trước, quota free rộng hơn."],
+    "LLM dịch/soát. <b>Claude</b> ổn định; <b>Gemini</b> free tier gần như $0 nhưng giới hạn request — lỗi/hết quota giữa chừng TỰ chuyển về Claude (model Claude khi đó theo Chất lượng dịch/cấu hình chung), job không chết."],
   ["CONTENT_STYLE", "Kiểu nội dung", [["donghua", "Donghua/cổ trang — Hán-Việt"], ["general", "Chung — dịch tự nhiên"]], "translate",
     "Văn phong bản dịch. <b>Donghua</b>: tên riêng ép Hán-Việt (叶凡→Diệp Phàm), xưng hô cổ trang (ngươi/ta). <b>Chung</b>: xưng hô hiện đại, giữ tên gốc — hợp vlog/tài liệu/phim hiện đại."],
   ["TARGET_LANG", "Ngôn ngữ lồng tiếng", [["vi", "Tiếng Việt"], ["en", "English"], ["zh", "中文"], ["ja", "日本語"], ["ko", "한국어"], ["es", "Español"], ["fr", "Français"], ["id", "Indonesia"], ["th", "ไทย"], ["pt", "Português"]], "translate",
@@ -2485,18 +2505,22 @@ const ED_OV_FIELDS = [
   // nhóm NHẬN DẠNG — làm lại từ transcript (LÂU NHẤT, mất bản dịch + chỉnh tay)
   ["TRANSCRIPT_SOURCE", "📝 Nguồn transcript", [["auto", "auto — tự chọn"], ["ocr", "ocr — đọc hardsub"], ["whisper", "whisper — nghe tiếng"]], "transcript",
     "Cách lấy lời thoại gốc. <b>auto</b>: thử OCR đọc sub cứng trước, không có → Whisper nghe tiếng. Ép <b>ocr</b> khi chắc chắn video có hardsub (chính xác nhất); <b>whisper</b> khi video không sub."],
-  ["WHISPER_MODEL", "Model whisper", [["tiny", "tiny"], ["base", "base"], ["small", "small"], ["medium", "medium"], ["large-v3", "large-v3"]], "transcript",
-    "Model nghe tiếng — to hơn = chính xác hơn + chậm hơn. Máy CPU: <b>small</b> cân bằng; máy GPU: <b>large-v3</b> chính xác nhất."],
-  ["OCR_FPS", "Tốc độ OCR", [["1.0", "1 fps — nhanh"], ["1.5", "1.5 fps"], ["2.0", "2 fps — kỹ"]], "transcript",
-    "Số khung hình quét chữ mỗi giây. <b>2 fps</b> bắt được cả sub hiện cực ngắn; <b>1 fps</b> nhanh gấp đôi, đủ cho sub ≥2 giây."],
+  ["WHISPER_MODEL", "Nghe tiếng (whisper)", [["tiny", "Nhanh nhất (tiny)"], ["base", "Nhanh (base)"], ["small", "Cân bằng (small)"], ["medium", "Chính xác (medium)"], ["large-v3", "Chính xác nhất (large-v3, GPU)"]], "transcript",
+    "Chất lượng nghe tiếng — chính xác hơn = chậm hơn. Máy CPU: <b>Cân bằng</b>; máy GPU: <b>Chính xác nhất</b>. Dùng khi audio khó nghe/nhiều tạp âm."],
+  ["OCR_FPS", "Quét chữ (OCR)", [["1.0", "Nhanh (1 fps)"], ["1.5", "Cân bằng (1.5 fps)"], ["2.0", "Kỹ (2 fps)"]], "transcript",
+    "Số khung hình quét chữ mỗi giây. <b>Kỹ</b> bắt được cả sub hiện cực ngắn (sub nháy nhanh); <b>Nhanh</b> nhanh gấp đôi, đủ cho sub ≥2 giây."],
   ["OCR_CROP_TOP", "Vùng quét phụ đề", [["auto", "auto — tự đo"], ["0.50", "Từ 50%"], ["0.60", "Từ 60%"], ["0.70", "Từ 70%"], ["0.80", "Từ 80%"]], "transcript",
     "OCR chỉ quét dải này (theo chiều cao) tìm phụ đề. <b>auto</b> tự đo vị trí sub từng video — quan trọng với video DỌC (sub ~65%, không sát đáy); số lớn = chỉ quét đáy, hợp phim ngang 16:9."],
+  // nhóm TRÍCH AUDIO (U16) — sâu nhất: trích lại audio rồi làm lại toàn bộ
+  ["DENOISE", "🎧 Khử ồn trước khi nghe", [["0", "Tắt"], ["1", "Bật — lọc ù/ồn cho Whisper"]], "extract",
+    "Video nguồn nhiều tạp âm/ù → bật để Whisper nghe rõ hơn (chỉ áp cho bản audio NHẬN DẠNG, không đụng nền mix). Audio sạch sẵn thì đừng bật kẻo méo. Đổi là trích lại audio + nhận dạng + dịch lại TỪ ĐẦU."],
 ];
 const ED_OV_GROUPS = [
   ["mix", "🎛 Trộn âm", "đổi xong: chỉ trộn + render lại (NHANH, giọng giữ nguyên)"],
   ["tts", "🔊 Giọng đọc", "đổi xong: đọc lại các câu bị ảnh hưởng rồi trộn + render (vài phút)"],
   ["translate", "🌐 Dịch", "⚠️ đổi xong: DỊCH LẠI TOÀN BỘ — tốn phí API, MẤT các câu đã sửa tay"],
   ["transcript", "📝 Nhận dạng thoại", "⚠️ đổi xong: làm lại TỪ TRANSCRIPT — lâu nhất, mất bản dịch + mọi chỉnh tay"],
+  ["extract", "🎧 Trích audio", "⚠️ đổi xong: trích lại audio + làm lại TOÀN BỘ nhận dạng/dịch — sâu nhất"],
 ];
 function edOvNorm(k, v) {   // bool từ config có thể là "True"/"False" → chuẩn về mã option
   v = String(v ?? "").trim();
@@ -2548,22 +2572,93 @@ function edOverridePanel(data) {
   };
   const hint = data.single_voice
     ? ' <span class="meta" style="margin:0">· 🔊 1 giọng: mọi câu đọc giọng chính — nhãn nam/nữ chỉ để casting</span>' : "";
-  const groups = ED_OV_GROUPS.map(([g, title, cost]) => `
+  // U15: THƯỜNG DÙNG (6 control chỉnh nhanh theo video) + NÂNG CAO gập lại (nhớ
+  // trạng thái qua localStorage) — panel cũ 20+ knob phẳng là quá tải.
+  const COMMON = new Set(["KEEP_BGM", "TTS_ENGINE", "TTS_SINGLE_VOICE"]);
+  const fmap = Object.fromEntries(ED_OV_FIELDS.map(f => [f[0], f]));
+  const presetRow = `<div class="ov-field">
+      <span class="ov-label">🎯 Preset khớp thoại${ovHint("Đặt nhanh 2 núm Đồng bộ khớp thoại + Kéo giãn (chi tiết trong Nâng cao — cùng bộ preset với tab Cấu hình). <b>Chặt</b>: bám khẩu hình sát nhất (2.0× + kéo giãn). <b>Tự nhiên</b>: giọng đều, ưu tiên nghe êm (1.2×). Vẫn phải bấm Áp dụng/Lưu.")}</span>
+      <span style="display:flex;gap:6px;min-width:0">
+        <button class="ghost" type="button" onclick="edOvPreset('tight')">🎯 Chặt</button>
+        <button class="ghost" type="button" onclick="edOvPreset('natural')">🌿 Tự nhiên</button>
+      </span></div>`;
+  const mixPrevRow = `<div class="ov-field">
+      <span class="ov-label">👂 Nghe thử 10s${ovHint("Trộn nhanh ~10 giây quanh câu đang chọn với Âm nền / Nhạc SFX / Kéo giãn ĐANG chỉnh (chưa cần Lưu) — dựng bằng đúng bộ trộn của render thật. Đổi engine/giọng/tốc độ cần ĐỌC LẠI giọng nên không nằm trong nghe thử này; demucs chưa tách sẵn thì nền tạm dùng audio gốc.")}</span>
+      <button class="ghost" type="button" id="edmixprevbtn" onclick="edMixPreview()">▶ Nghe quanh câu đang chọn</button></div>`;
+  const qOv = qualityFromOv(ov);
+  const qualityRow = `<div class="ov-field" id="ovf-QUALITY">
+      <span class="ov-label">⭐ Chất lượng dịch${ovHint("Một núm thay cho chọn model từng nhà cung cấp: <b>Tiết kiệm</b> (Haiku / Flash-Lite), <b>Cân bằng</b> (Haiku / Flash), <b>Tốt nhất</b> (Sonnet / Pro — phí ~10×). Áp cho provider đang hiệu lực, kể cả khi Gemini fallback về Claude.")}</span>
+      <select id="ov-QUALITY">
+        <option value="">— theo cấu hình chung —</option>
+        <option value="eco" ${qOv === "eco" ? "selected" : ""}>Tiết kiệm</option>
+        <option value="balanced" ${qOv === "balanced" ? "selected" : ""}>Cân bằng</option>
+        <option value="best" ${qOv === "best" ? "selected" : ""}>Tốt nhất</option>
+      </select></div>`;
+  const commonGrid = extras.mix + field(fmap.KEEP_BGM) + presetRow
+    + field(fmap.TTS_ENGINE) + field(fmap.TTS_SINGLE_VOICE) + extras.tts + mixPrevRow;
+  const advGroups = ED_OV_GROUPS.map(([g, title, cost]) => {
+    const fields = ED_OV_FIELDS.filter(f => f[3] === g && !COMMON.has(f[0]));
+    const extra = g === "translate" ? qualityRow : "";
+    if (!fields.length && !extra) return "";
+    return `
     <div class="ov-group"><b style="color:var(--accent)">${title}</b>
       <span class="meta" style="margin:0"> — ${cost}</span>${g === "tts" ? hint : ""}</div>
-    <div class="ov-grid">${(extras[g] || "") + ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
-  // onchange nổi bọt từ mọi select bên trong → cập nhật ẩn/hiện field phụ thuộc
-  return `<details class="ed-settings" open onchange="applyOvDeps()">
+    <div class="ov-grid">${extra + fields.map(field).join("")}</div>`;
+  }).join("");
+  const panelOpen = localStorage.getItem("ovPanelOpen") !== "0" ? " open" : "";
+  const advOpen = localStorage.getItem("ovAdvOpen") === "1" ? " open" : "";
+  // onchange nổi bọt từ mọi select bên trong → cập nhật ẩn/hiện field phụ thuộc.
+  // toggle KHÔNG nổi bọt nên 2 details nhớ trạng thái độc lập.
+  return `<details class="ed-settings"${panelOpen} onchange="applyOvDeps()"
+      ontoggle="localStorage.setItem('ovPanelOpen', this.open ? '1' : '0')">
     <summary>⚙️ Tùy chọn video này (đè cấu hình chung)
       <button class="ghost" type="button" style="float:right;font-size:12px"
         onclick="event.preventDefault();edOvReset()"
         title="Xoá mọi tùy chọn riêng của video này — quay về theo cấu hình chung (không đụng 🎚 âm nền và panel 🎨)">↺ Về cấu hình chung</button></summary>
-    ${groups}
+    <div class="ov-group"><b style="color:var(--accent)">🧰 Thường dùng</b>
+      <span class="meta" style="margin:0"> — chỉnh nhanh theo video; chi phí hiện khi bấm Áp dụng/Lưu</span></div>
+    <div class="ov-grid">${commonGrid}</div>
+    <details class="ov-adv"${advOpen}
+      ontoggle="localStorage.setItem('ovAdvOpen', this.open ? '1' : '0')">
+      <summary>🛠 Nâng cao — tinh chỉnh giọng / dịch / nhận dạng</summary>
+      ${advGroups}
+    </details>
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
     🔁 Áp dụng để NGHE THỬ (không render) hoặc 💾 Lưu &amp; render lại để xuất video;
     hệ thống tự chạy lại từ đúng khâu bị ảnh hưởng (nhóm sâu nhất thắng).
     Chọn "— theo cấu hình chung —" / xoá trống ô chữ để bỏ đè.</div>
   </details>`;
+}
+// U14: nghe thử ~10s quanh câu đang chọn với chỉnh MIX chưa lưu (đúng bộ trộn thật)
+let edMixPrevAudio = null;
+async function edMixPreview() {
+  if (!edJobId || !edSegs.length) return;
+  const seg = edSegs[Math.max(0, edCurIdx)] || edSegs[0];
+  document.getElementById("edvideo")?.pause();
+  if (edMixPrevAudio) {
+    edMixPrevAudio.pause();
+    if (edMixPrevAudio.src.startsWith("blob:")) URL.revokeObjectURL(edMixPrevAudio.src);
+    edMixPrevAudio = null;
+  }
+  const bedSel = document.getElementById("ed-bedvol");
+  const body = {
+    t: Math.max(0, (seg.start || 0) - 2), duration_s: 10,
+    keep_bgm: edOvEff("KEEP_BGM") || "",
+    stretch_short: edOvEff("STRETCH_SHORT") || "",
+    ...(bedSel && bedSel.value !== "" ? { bed_gain_db: parseFloat(bedSel.value) } : {}),
+  };
+  const btn = document.getElementById("edmixprevbtn");
+  if (btn) btn.textContent = "⏳ Đang trộn 10s...";
+  try {
+    const res = await fetch(`/api/jobs/${edJobId}/mix-preview`, { method: "POST",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    if (!res.ok) { toast("Nghe thử lỗi: " + _errDetail(await res.text(), res.status)); return; }
+    const url = URL.createObjectURL(await res.blob());
+    edMixPrevAudio = new Audio(url);
+    edMixPrevAudio.addEventListener("ended", () => URL.revokeObjectURL(url));
+    edMixPrevAudio.play().catch(() => {});
+  } catch (e) { toast("Lỗi nghe thử: " + e); }
+  finally { if (btn) btn.textContent = "▶ Nghe quanh câu đang chọn"; }
 }
 // Giá trị HIỆU LỰC của 1 khóa: override đang chọn, không thì giá trị cấu hình chung
 function edOvEff(key) {
@@ -2587,13 +2682,10 @@ function applyOvDeps() {
   show("TTS_VOICE_NU", edgeVi && !single);
   const lb = document.getElementById("ovl-TTS_VOICE");
   if (lb) {   // chỉ sửa TEXT NODE đầu — textContent sẽ xoá mất icon ⓘ tooltip bên trong
-    const txt = single ? "👤 Giọng đọc (edge)" : "👨 Giọng nam/chính (edge)";
+    const txt = single ? "👤 Giọng đọc (edge)" : "👨 Giọng chính (edge)";
     if (lb.firstChild && lb.firstChild.nodeType === 3) lb.firstChild.nodeValue = txt;
     else lb.insertBefore(document.createTextNode(txt), lb.firstChild);
   }
-  const prov = edOvEff("TRANSLATE_PROVIDER");
-  show("CLAUDE_MODEL", prov !== "gemini");
-  show("GEMINI_MODEL", prov === "gemini");
   const ts = edOvEff("TRANSCRIPT_SOURCE");
   show("WHISPER_MODEL", ts !== "ocr");
   show("OCR_FPS", ts !== "whisper");
@@ -2646,6 +2738,9 @@ function edCollectOverrides() {
     if (!el || (wrap && wrap.style.display === "none")) continue;
     if (el.value.trim() !== "") out[key] = el.value.trim();
   }
+  // ⭐ Chất lượng dịch (U10): 1 núm → 2 khóa model (server whitelist sẵn có)
+  const q = document.getElementById("ov-QUALITY");
+  if (q && q.value && QUALITY_MODELS[q.value]) Object.assign(out, QUALITY_MODELS[q.value]);
   return out;
 }
 // nhóm sâu nhất bị ĐỔI so với override đang lưu — để cảnh báo trước khi Lưu
@@ -2654,7 +2749,11 @@ function edOvDepth(newOv) {
   const diff = new Set();
   for (const k of new Set([...Object.keys(old), ...Object.keys(newOv)]))
     if ((old[k] ?? "") !== (newOv[k] ?? "")) diff.add(k);
-  const g = k => (ED_OV_FIELDS.find(f => f[0] === k) || [])[3];
+  // model dịch không còn field riêng (đi qua ⭐ Chất lượng dịch) nhưng vẫn là khóa
+  // override nhóm dịch — thiếu map là depth rơi nhầm về "mix"
+  const EXTRA_G = { CLAUDE_MODEL: "translate", GEMINI_MODEL: "translate" };
+  const g = k => (ED_OV_FIELDS.find(f => f[0] === k) || [])[3] || EXTRA_G[k];
+  if ([...diff].some(k => g(k) === "extract")) return "extract";
   if ([...diff].some(k => g(k) === "transcript")) return "transcript";
   if ([...diff].some(k => g(k) === "translate")) return "translate";
   if ([...diff].some(k => g(k) === "tts")) {
@@ -2674,6 +2773,8 @@ function edOvReset() {
     const el = document.getElementById("ov-" + key);
     if (el && el.value !== "") { el.value = ""; n++; }
   }
+  const q = document.getElementById("ov-QUALITY");   // ⭐ Chất lượng dịch cũng về chung
+  if (q && q.value !== "") { q.value = ""; n++; }
   applyOvDeps();
   toast(n ? `Đã bỏ ${n} tùy chọn riêng — bấm 🔁 Áp dụng hoặc 💾 Lưu để chạy lại theo cấu hình chung`
           : "Không có tùy chọn riêng nào đang đặt");

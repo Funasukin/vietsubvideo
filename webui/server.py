@@ -1290,7 +1290,10 @@ _OV_TTS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
            # lẫn viXTTS) — đổi núm phải ĐỌC LẠI, xếp nhóm mix là knob nửa tác dụng
            "MAX_SPEEDUP"}
 _OV_MIX = {"KEEP_BGM", "STRETCH_SHORT"}
-_JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX
+# U16: DENOISE đụng S2 (audio_16k.wav cho Whisper) — depth RIÊNG sâu hơn transcript
+# (Codex: nhét vào nhóm transcript là knob nửa tác dụng vì audio cũ vẫn còn)
+_OV_EXTRACT = {"DENOISE"}
+_JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX | _OV_EXTRACT
 
 
 def _has_emotion_labels(job_dir: Path) -> bool:
@@ -1311,7 +1314,8 @@ def _ov_depth_for(diff: set, job_dir: Path, new_ov: dict) -> str | None:
     Client (edOvDepth) có logic leo thang Y HỆT để confirm khớp server."""
     if not diff:
         return None
-    depth = ("transcript" if diff & _OV_TRANSCRIPT
+    depth = ("extract" if diff & _OV_EXTRACT
+             else "transcript" if diff & _OV_TRANSCRIPT
              else "translate" if diff & _OV_TRANSLATE
              else "tts" if diff & _OV_TTS
              else "mix")
@@ -1461,19 +1465,23 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
         # - translate: DỊCH LẠI toàn bộ (mất chỉnh tay câu) + đọc + trộn + render
         # - transcript: NHẬN DẠNG LẠI từ đầu (mất bản dịch + chỉnh tay) + toàn bộ sau
         drop = {"bgm", "mixing", "rendering"}
-        if ov_depth in ("tts", "translate", "transcript"):
+        if ov_depth in ("tts", "translate", "transcript", "extract"):
             drop.add("tts")
-        if ov_depth in ("translate", "transcript"):
+        if ov_depth in ("translate", "transcript", "extract"):
             drop.add("translating")
             _unlink_quiet(job.dir / "transcript_vi.json")
             _unlink_quiet(job.dir / "metadata.json")   # title/desc theo bản dịch cũ
             _unlink_quiet(job.dir / "mix_report.json")
             shutil.rmtree(job.dir / "tts", ignore_errors=True)  # text đổi → mp3 cũ sai
-        if ov_depth == "transcript":
+        if ov_depth in ("transcript", "extract"):
             drop.add("transcribing")
             for name in ("transcript_zh.json", "ocr_raw.json", "sub_boxes.json",
                          "glossary_auto.json", "stage_progress.json"):
                 _unlink_quiet(job.dir / name)
+        if ov_depth == "extract":
+            # U16: DENOISE đổi → audio_16k.wav phải trích lại (S2 skip khi file còn)
+            drop.add("extracting")
+            _unlink_quiet(job.dir / "audio_16k.wav")
         job.completed_stages = [s for s in job.completed_stages if s not in drop]
 
     if has_render:
@@ -1531,7 +1539,9 @@ def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
                   "tts": ["tts", "bgm", "mixing", "rendering"],
                   "translate": ["translating", "tts", "bgm", "mixing", "rendering"],
                   "transcript": ["transcribing", "translating", "tts", "bgm",
-                                 "mixing", "rendering"]}
+                                 "mixing", "rendering"],
+                  "extract": ["extracting", "transcribing", "translating", "tts",
+                              "bgm", "mixing", "rendering"]}
     out = {"depth": depth, "stages": stages_map.get(depth or "", []),
            "segments_total": len(segs), "tts_regenerate": 0, "paid_tts_chars": 0,
            "manual_edits_at_risk": 0, "estimated_seconds": [0, 0], "warnings": []}
@@ -1551,7 +1561,7 @@ def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
     if depth == "mix":
         out["estimated_seconds"] = [5, 30]
         return out
-    if depth in ("translate", "transcript"):
+    if depth in ("translate", "transcript", "extract"):
         # chữ ký TƯƠNG LAI phụ thuộc output LLM/ASR — không giả vờ đếm được:
         # toàn bộ output sau stage bị làm lại
         out["tts_regenerate"] = len(segs)
@@ -1559,7 +1569,9 @@ def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
         if st.engine in voicesig.PAID_ENGINES:
             out["paid_tts_chars"] = sum(len(s.get("text_vi", "")) for s in segs
                                         if not s.get("voice_ref"))
-        out["estimated_seconds"] = [60, 300] if depth == "translate" else [120, 600]
+        out["estimated_seconds"] = ([60, 300] if depth == "translate"
+                                    else [120, 600] if depth == "transcript"
+                                    else [150, 700])
         out["warnings"].append("Các câu đã sửa tay sẽ MẤT (dịch/nhận dạng lại).")
         return out
 
@@ -1590,6 +1602,127 @@ def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
     per = {"edge": (0.8, 2.0), "vixtts": (4.0, 9.0)}.get(st.engine, (1.0, 3.0))
     out["estimated_seconds"] = [int(regen * per[0] + 10), int(regen * per[1] + 30)]
     return out
+
+
+class MixPreviewBody(BaseModel):
+    t: float = 0.0             # mốc bắt đầu cửa sổ (giây, theo video gốc)
+    duration_s: float = 10.0   # độ dài cửa sổ (kẹp 3..20)
+    bed_gain_db: float | None = None   # thử gain CHƯA lưu; None = theo job/cấu hình
+    keep_bgm: str = ""         # "" = theo hiệu lực hiện tại; "0" | "flat" | "1"
+    stretch_short: str = ""    # "" = theo hiệu lực; "0" | "1"
+
+
+@app.post("/api/jobs/{job_id}/mix-preview")
+def mix_preview(job_id: str, body: MixPreviewBody):
+    """U14: nghe thử ~10s quanh câu đang chọn với chỉnh MIX chưa lưu (âm nền /
+    chế độ nền / kéo giãn). Dựng bằng ĐÚNG primitive của render thật
+    (s6_bgm.apply_duck + s7_mix.render_voice — Codex: bản 'gần giống' phá lòng
+    tin). Giới hạn trung thực: đổi engine/giọng/MAX_SPEEDUP cần đọc lại giọng —
+    KHÔNG thuộc preview này; demucs chưa tách sẵn thì nền rơi về audio gốc."""
+    _check_job_id(job_id)
+    job_dir = config.JOBS_DIR / job_id
+    tv = job_dir / "transcript_vi.json"
+    if not tv.exists() or not (job_dir / "tts").is_dir():
+        raise HTTPException(409, "Job chưa có bản lồng tiếng để nghe thử")
+    from core import audio_np, duration
+    from core.stages import s6_bgm, s7_mix
+
+    # cấu hình HIỆU LỰC: body (chưa lưu) > env_overrides job > .env/config
+    try:
+        state = json.loads((job_dir / "state.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        state = {}
+    ov = state.get("env_overrides") or {}
+    env = _read_env()
+
+    def eff(key: str, default: str) -> str:
+        return str(ov.get(key) or env.get(key) or default).strip()
+
+    keep_raw = (body.keep_bgm or eff("KEEP_BGM", "0")).lower()
+    duck_all = keep_raw == "flat"
+    gain_db = (body.bed_gain_db if body.bed_gain_db is not None
+               else state.get("bed_gain_db"))
+    if gain_db is None:
+        try:
+            gain_db = float(eff("DUCK_GAIN_DB", str(config.DUCK_GAIN_DB)))
+        except ValueError:
+            gain_db = config.DUCK_GAIN_DB
+    gain_db = max(-40.0, min(0.0, float(gain_db)))
+    stretch = (body.stretch_short if body.stretch_short in ("0", "1")
+               else eff("STRETCH_SHORT", "0")) == "1"
+
+    # nền: demucs chỉ dùng khi ĐÃ tách sẵn (tách mới mất nhiều phút — không phải preview)
+    src = job_dir / "audio_full.wav"
+    warn = ""
+    if keep_raw == "1":
+        if (job_dir / "no_vocals.wav").exists():
+            src = job_dir / "no_vocals.wav"
+        else:
+            warn = "demucs chưa tách — nền preview dùng audio gốc"
+    if not src.exists():
+        raise HTTPException(409, "Thiếu audio nền (audio_full.wav)")
+
+    win = max(3.0, min(20.0, float(body.duration_s or 10.0)))
+    t0 = max(0.0, float(body.t or 0.0))
+    bed, rate = audio_np.read_wav_slice(src, t0, win)
+    if not len(bed):
+        raise HTTPException(400, "Mốc nghe thử ngoài video")
+
+    data = json.loads(tv.read_text(encoding="utf-8"))
+    full = sorted(data["segments"], key=lambda s: s["start"])
+    bed = s6_bgm.apply_duck(bed, rate, full, gain_db, duck_all, t0_s=t0)
+
+    # đặt các câu dub giao với cửa sổ — slot y công thức S7 (tới start câu kế)
+    fit = duration.load_report(job_dir)
+    import numpy as np
+    import uuid as _uuid
+    total = len(bed)
+    tmp_tag = _uuid.uuid4().hex[:8]
+    tmps: list[Path] = []
+    try:
+        for k, seg in enumerate(full):
+            if not seg.get("text_vi", "").strip() or seg.get("mute"):
+                continue
+            nxt = full[k + 1]["start"] if k + 1 < len(full) else None
+            slot_s = (nxt - seg["start"]) if nxt is not None else win
+            if seg["start"] >= t0 + win or seg["start"] + slot_s <= t0:
+                continue
+            if not (job_dir / "tts" / f"seg_{seg['id']:04d}.mp3").exists():
+                continue
+            slot = max(int(0.3 * rate), int(slot_s * rate))
+            espeed = float(fit.get(str(seg["id"]), {}).get("engine_speed") or 1.0)
+            sped = config.DATA_DIR / f"_mixprev_{tmp_tag}_{seg['id']:04d}.wav"
+            tmps.append(sped)
+            try:
+                voice, _row = s7_mix.render_voice(job_dir, seg, rate, slot, espeed,
+                                                  stretch, sped_path=sped)
+            except Exception:
+                continue   # 1 câu hỏng không được làm chết preview
+            rel = int((seg["start"] - t0) * rate)
+            v0 = max(0, -rel)          # câu bắt đầu trước cửa sổ → cắt phần đầu
+            b0 = max(0, rel)
+            n = min(total - b0, len(voice) - v0)
+            if n <= 0:
+                continue
+            mixed = (bed[b0:b0 + n].astype(np.int32)
+                     + voice[v0:v0 + n].astype(np.int32))
+            bed[b0:b0 + n] = np.clip(mixed, -32768, 32767).astype(np.int16)
+    finally:
+        for p in tmps:
+            p.unlink(missing_ok=True)
+
+    import io
+    import wave as _wave
+    buf = io.BytesIO()
+    with _wave.open(buf, "wb") as w:
+        w.setnchannels(bed.shape[1])
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(np.ascontiguousarray(bed, dtype=np.int16).tobytes())
+    from fastapi.responses import Response
+    return Response(content=buf.getvalue(), media_type="audio/wav",
+                    headers={"Cache-Control": "no-store",
+                             **({"X-Preview-Note": warn} if warn else {})})
 
 
 class TtsPreviewBody(BaseModel):

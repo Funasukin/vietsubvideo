@@ -6,6 +6,48 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### Panel ⚙️ đợt U-3+U-4 (user: "làm U-3 và U-4") — HOÀN TẤT toàn bộ U1–U16
+
+**U-3 — bố cục:**
+- Panel chia **🧰 Thường dùng** (7 control: Âm nền · Nhạc/SFX · 🎯 Preset khớp
+  thoại · Engine · Chế độ giọng · Giọng tất cả câu · 👂 Nghe thử 10s) + **🛠
+  Nâng cao** gập lại — cả 2 nhớ trạng thái đóng/mở qua localStorage. Panel cũ
+  20+ knob phẳng → 7 thường dùng.
+- **U2 bản Codex**: "🔊 Số giọng" → "Chế độ giọng" (1/2 giọng — danh tính giọng
+  do engine quyết, ghi rõ trong help); "Giọng chính/phụ (edge)" nằm Nâng cao,
+  chỉ hiện khi engine edge + đích vi (như cũ).
+- **⭐ Chất lượng dịch** (user chốt "có"): 1 núm Tiết kiệm (Haiku/Flash-Lite) /
+  Cân bằng (Haiku/Flash) / Tốt nhất (Sonnet/Pro) → phát ra CLAUDE_MODEL +
+  GEMINI_MODEL cùng lúc (provider nào hiệu lực ăn model đó, Gemini fallback
+  Claude cũng đúng); suy ngược giá trị núm từ override cũ của job.
+- RÚT khỏi per-job: PROSODY_TRANSFER + 2 danh sách model (U9/U10 — vẫn ở Cấu
+  hình); nhãn thân thiện Whisper (Nhanh→Chính xác nhất) + OCR (Nhanh/Kỹ) —
+  U11 theo Codex, vẫn hiện theo Nguồn transcript.
+- edOvDepth thêm map CLAUDE_MODEL/GEMINI_MODEL→translate (Chất lượng dịch phát
+  2 khóa này nhưng không còn field riêng — thiếu map là depth rơi nhầm "mix").
+
+**U-4:**
+- **`POST /api/jobs/{id}/mix-preview`** (U14): nghe thử ~10s quanh câu đang chọn
+  với Âm nền/Nhạc SFX/Kéo giãn ĐANG chỉnh chưa lưu. Dựng bằng ĐÚNG primitive
+  render thật: refactor `s6_bgm.apply_duck(bed, ...)` + `s7_mix.render_voice(...)`
+  tách từ run() — parity test: mixing chạy lại y hệt từng field mix_report, md5
+  ducked.wav khớp. Giới hạn trung thực ghi trong help: không preview được đổi
+  engine/giọng/MAX_SPEEDUP (cần re-TTS); demucs chưa tách → nền tạm audio gốc.
+  Verify: WAV 10.0s/44.1k/stereo, giọng -16.6 dBFS nổi trên nền -37.7 (thử
+  gain -26 + stretch qua API).
+- **U16 DENOISE per-job** với depth MỚI "extract" (`_OV_EXTRACT`): sâu hơn
+  transcript — xoá audio_16k.wav + chạy lại từ S2-trích (Codex: nhét nhóm
+  transcript là knob nửa tác dụng). Impact endpoint báo đúng depth extract.
+- `audio_np.read_wav_slice` (đọc khúc wav không nạp cả file).
+
+Toàn bộ kế hoạch panel U1–U16 (AUDIT_GIONG_TUYCHON_TONGHOP.md) đến đây HOÀN TẤT.
+UI verify bằng node --check + static assert (browser bridge vẫn chưa nối lại);
+server logic verify bằng API thật + parity test.
+
+---
+
 ## 2026-07-11 — Desktop (F:\MyProject\vietsubvideo)
 
 ### Panel ⚙️ đợt U-1+U-2 (user chốt: "1. có / 2. nghiêng codex / 3. U-1+U-2 trước")

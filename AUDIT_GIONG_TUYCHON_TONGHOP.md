@@ -118,5 +118,12 @@ Kiểu nội dung · Phong cách dịch riêng · Nguồn transcript · Whisper
   động rõ giá"), U4, U7, U8 (+fx 3 trạng thái, fix bug ghim), U13, resolver
   `core/voicesig.py` (parity 65/65 với .sig thật), endpoint
   `/api/jobs/{id}/override-impact`, confirm có số liệu, nút ↺ Về cấu hình chung.
-- Đợt U-3 (bố cục + U2 bản Codex + Chất lượng dịch + nhãn U11) và U-4 (nghe thử
-  10s, DENOISE depth extract): CHƯA — chờ user xem thử U-1/U-2 rồi gọi.
+- **Đợt U-3 + U-4: ĐÃ LÀM (2026-07-11, user gọi "làm U-3 và U-4")** — panel chia
+  🧰 Thường dùng (Âm nền · Nhạc/SFX · Preset · Engine · Chế độ giọng · Giọng tất
+  cả câu · Nghe thử 10s) + 🛠 Nâng cao gập (nhớ localStorage); U2 bản Codex
+  (Chế độ giọng + Giọng chính/phụ chỉ hiện edge); ⭐ Chất lượng dịch (1 núm →
+  2 model key, suy ngược từ override cũ); nhãn Whisper/OCR thân thiện; RÚT
+  PROSODY_TRANSFER + 2 danh sách model khỏi per-job; U14 `/mix-preview` dựng
+  bằng đúng primitive S6/S7 (refactor `apply_duck` + `render_voice`, parity
+  md5/field bằng nhau 100%); U16 DENOISE depth "extract" mới (xoá audio_16k,
+  chạy lại từ S3). Toàn bộ kế hoạch U1–U16 hoàn tất.

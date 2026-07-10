@@ -17,6 +17,39 @@ from core.job import Job
 PAD_MS = 120
 
 
+def apply_duck(bed, rate: int, segments: list[dict], gain_db: float,
+               duck_all: bool, t0_s: float = 0.0):
+    """Hạ nền theo mode lên mảng bed (int16, sửa TẠI CHỖ + trả về) — logic DUY NHẤT
+    dùng bởi run() (cả track, t0_s=0) và /mix-preview (slice, t0_s = mốc cắt).
+    duck_all=True: hạ đều; False: chỉ hạ trong cửa sổ thoại (±PAD_MS)."""
+    import numpy as np
+    total = len(bed)
+    gain = 10 ** (gain_db / 20)
+    if duck_all:
+        return (bed.astype(np.float32) * gain).astype(np.int16)
+
+    def to_idx(ms: float) -> int:
+        return max(0, min(total, int(ms * rate / 1000)))
+
+    # gộp các khoảng thoại chồng lấn thành [start_idx, end_idx]. Chỉ hạ nhạc ở câu
+    # CÓ lồng tiếng Việt — bỏ câu rỗng và câu bị "Mute" (giữ nguyên tiếng gốc).
+    windows: list[list[int]] = []
+    for seg in segments:
+        if not seg.get("text_vi", "").strip() or seg.get("mute"):
+            continue
+        s = to_idx((seg["start"] - t0_s) * 1000 - PAD_MS)
+        e = to_idx((seg["end"] - t0_s) * 1000 + PAD_MS)
+        if e <= s:
+            continue
+        if windows and s <= windows[-1][1]:
+            windows[-1][1] = max(windows[-1][1], e)
+        else:
+            windows.append([s, e])
+    for s, e in windows:
+        bed[s:e] = (bed[s:e].astype(np.float32) * gain).astype(np.int16)
+    return bed
+
+
 def run(job: Job) -> None:
     out_path = job.dir / "ducked.wav"
     no_vocals_path = job.dir / "no_vocals.wav"
@@ -47,32 +80,9 @@ def run(job: Job) -> None:
     if bed is None:
         no_vocals_path.unlink(missing_ok=True)  # marker: nền = audio gốc (duck)
         bed, rate = audio_np.read_wav(job.dir / "audio_full.wav")
-    total = len(bed)
-    gain = 10 ** (gain_db / 20)
-
-    if config.DUCK_ALL:
-        # Hạ ĐỀU suốt video: âm gốc nhỏ ổn định, không "bơm" to-nhỏ theo thoại
-        # (kiểu bơm khiến nhạc nền lúc thoại nhỏ lúc trống thoại to gây khó chịu)
-        bed = (bed.astype("float32") * gain).astype("int16")
-    else:
-        def to_idx(ms: float) -> int:
-            return max(0, min(total, int(ms * rate / 1000)))
-
-        # gộp các khoảng thoại chồng lấn thành danh sách [start_idx, end_idx]. Chỉ hạ nhạc
-        # ở câu CÓ lồng tiếng Việt — bỏ qua câu rỗng và câu bị "Mute" (giữ nguyên tiếng gốc).
-        windows: list[list[int]] = []
-        for seg in data["segments"]:
-            if not seg.get("text_vi", "").strip() or seg.get("mute"):
-                continue
-            s = to_idx(seg["start"] * 1000 - PAD_MS)
-            e = to_idx(seg["end"] * 1000 + PAD_MS)
-            if windows and s <= windows[-1][1]:
-                windows[-1][1] = max(windows[-1][1], e)
-            else:
-                windows.append([s, e])
-
-        for s, e in windows:
-            bed[s:e] = (bed[s:e].astype("float32") * gain).astype("int16")
+    # Hạ đều (DUCK_ALL) hoặc theo cửa sổ thoại — logic ở apply_duck (dùng chung
+    # với /mix-preview để bản nghe thử 10s dựng ĐÚNG như render thật)
+    bed = apply_duck(bed, rate, data["segments"], gain_db, config.DUCK_ALL)
 
     audio_np.write_wav(out_path, bed, rate)
     marker.write_text(mode, encoding="utf-8")
