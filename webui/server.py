@@ -1035,7 +1035,19 @@ def get_segments(job_id: str) -> dict:
             "series": job_series,
             "cast_names": series.character_names(job_series),  # gợi ý nhân vật đã cast
             "has_final": (job_dir / "final.mp4").exists(),
-            "has_dub": (job_dir / "dubbed_audio.wav").exists()}
+            "has_dub": (job_dir / "dubbed_audio.wav").exists(),
+            # V13 audit giọng: số đo khớp nhịp per-câu từ lần mix gần nhất → editor
+            # tô cảnh báo câu bị nén mạnh / bị cắt / hụt slot. Job chưa mix → {}.
+            "mix_detail": _mix_detail(job_dir)}
+
+
+def _mix_detail(job_dir) -> dict:
+    """mix_report.json → {id(str): đo đạc per-câu} cho editor (thiếu/hỏng → {})."""
+    try:
+        rep = json.loads((job_dir / "mix_report.json").read_text(encoding="utf-8"))
+        return {str(row["id"]): row for row in rep.get("detail", [])}
+    except Exception:
+        return {}
 
 
 _QC_CJK = re.compile(r"[㐀-鿿]")   # chữ Trung còn sót trong bản dịch
@@ -1263,8 +1275,11 @@ _OV_TRANSCRIPT = {"TRANSCRIPT_SOURCE", "WHISPER_MODEL", "OCR_FPS", "OCR_CROP_TOP
 _OV_TRANSLATE = {"TRANSLATE_PROVIDER", "CLAUDE_MODEL", "GEMINI_MODEL",
                  "TRANSLATE_STYLE_EXTRA", "CONTENT_STYLE", "TARGET_LANG"}
 _OV_TTS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
-           "PROSODY", "EMOTION", "PROSODY_TRANSFER"}
-_OV_MIX = {"MAX_SPEEDUP", "KEEP_BGM"}
+           "PROSODY", "EMOTION", "PROSODY_TRANSFER",
+           # đợt B audit giọng: ngân sách fit nướng vào giọng đã đọc (sig :f cả edge
+           # lẫn viXTTS) — đổi núm phải ĐỌC LẠI, xếp nhóm mix là knob nửa tác dụng
+           "MAX_SPEEDUP"}
+_OV_MIX = {"KEEP_BGM"}
 _JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX
 
 

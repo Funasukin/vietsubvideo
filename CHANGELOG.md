@@ -6,6 +6,57 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-10 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### Trọng tài thời lượng giọng đọc — ĐỢT A+B theo AUDIT_GIONG_TONGHOP.md (user confirm "làm A B trước")
+
+**Đợt A (V13 — đo trước sửa sau, ý Codex):** mix_report.json thêm mảng `detail`
+per-câu: trimmed_ms (bản đọc đã cắt lặng) / target_ms (miệng = end−start) /
+slot_ms / engine_speed / post_atempo / total_speed (tích) / final_ms / gap_ms /
+clipped_ms. Editor: `GET /segments` trả kèm `mix_detail`, mỗi dòng câu có chip
+cảnh báo — ĐỎ `⏩ 1.61×` (nén tổng ≥1.3, rút gọn lời là hết), ĐỎ `✂ cắt 0.4s`
+(hết ngân sách vẫn dài → đã fade-cắt), VÀNG `⏳ 12.5s` (đọc xong sớm — đa phần
+là khoảng lặng tự nhiên của video gốc).
+
+**Đợt B (V1→V4 — một trọng tài, một thước, một ngân sách):**
+- **V1 `core/duration.py` (MỚI)**: `trim_silence`/`trimmed_dur_s` dùng CHUNG —
+  S5 hết đo bằng ffprobe full-mp3 (dính đuôi lặng edge 0.5–0.9s gây "tràn giả"),
+  S5 và S7 giờ nhìn cùng một con số (lệch ≤1ms, đã đối chiếu).
+- **V3 ngân sách TÍCH**: `MAX_SPEEDUP` thành trần NHÂN thật — S5 ghi phần engine
+  đã nén vào `tts/fit_report.json`, S7 chỉ atempo trong phần CÒN LẠI
+  (`budget_left = MAX_SPEEDUP / engine_speed`). Deadzone: câu lọt limit
+  (slot − 0.1s fade guard) thì không đụng. Edge fit dùng công thức SỐ HẠNG CHÉO
+  của Gemini (`edge_total_rate`) — hết cảnh fit xong vẫn hụt → S7 nén thêm 91%
+  câu như trước. `engine_speed` ghi mức nén YÊU CẦU chứ không phải đạt-được
+  (XTTS nondeterministic — variance đọc-ngắn-tình-cờ không tính là nén, kẻo
+  "tổng nén" báo ảo 2.6×).
+- **V2 viXTTS fit bằng `speed`**: `vixtts.synth(..., speed=)` truyền
+  length_scale XTTS (trước đây BỎ PHÍ — độ dài thả nổi median 2.5× thoại gốc);
+  vượt limit >3% → synth lại đúng 1 lần với speed = min(cần, 1.25, MAX_SPEEDUP),
+  chỉ nhận bản thật sự ngắn hơn. Sig vix thêm `:f{budget}` như edge → đổi núm
+  MAX_SPEEDUP là tự đọc lại; per-job override MAX_SPEEDUP chuyển nhóm
+  `_OV_MIX`→`_OV_TTS` (audit merged-3: xếp mix là knob nửa tác dụng).
+- **V4 fade thay đè**: hết ngân sách mà vẫn vượt slot → fade-out 100ms rồi CẮT
+  tại biên. KHÔNG BAO GIỜ đè giọng sang câu kế / thoại gốc chưa duck nữa.
+
+**Số đo trước/sau (job test clone từ a20f78, 23 câu — 2 clone giữ lại để nghe:
+`20260710_150158_aaa001` viXTTS, `20260710_151322_aaa002` edge):**
+| | tràn đè câu kế | nén ≥1.3× | max tổng nén | bị cắt |
+|---|---|---|---|---|
+| TRƯỚC (viXTTS) | **10 câu, max 826ms** | 7 | 2.00 (mù — không ai đo tích) | 0 |
+| SAU (viXTTS) | **0** | 6 | 2.00 (= đúng trần, có kiểm chứng) | 2 (max 417ms) |
+| SAU (edge) | **0** | 2 | **1.39** | 0 |
+Gap im lặng TĂNG nhẹ (35→40s viXTTS) — đúng thiết kế: chưa kéo giãn câu ngắn
+(V9 đợt D, chờ user duyệt riêng vì từng revert). Nhánh edge sau cross-term chỉ
+còn 2 câu nén ≥1.3 và không câu nào chạm trần.
+
+Phát hiện tiện thể: id job test tự đặt đuôi chữ (`_dgtes1`) bị `_JOB_ID_RE`
+(vá traversal) chặn 404 — đã đổi tên; job thật không ảnh hưởng (id luôn hex).
+CHƯA LÀM (chờ confirm): đợt C (V5–V7 ngân sách dịch + đếm âm tiết), đợt D
+(V8–V12, V14).
+
+---
+
 ## 2026-07-10 — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt tối ưu theo audit toàn app (user confirm "thực hiện hết theo thứ tự")

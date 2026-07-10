@@ -134,15 +134,20 @@ def _latents(model, ref_wav: str):
     return _latent_cache[ref_wav]
 
 
-def synth(text: str, ref_wav: str, out_mp3: str) -> None:
-    """Đọc 1 câu tiếng Việt bằng giọng nhân bản từ ref_wav → ghi out_mp3."""
+def synth(text: str, ref_wav: str, out_mp3: str, speed: float = 1.0) -> None:
+    """Đọc 1 câu tiếng Việt bằng giọng nhân bản từ ref_wav → ghi out_mp3.
+
+    speed: hệ số tốc độ NGAY LÚC synth (length_scale của XTTS) — nén tự nhiên hơn
+    atempo hậu kỳ nhiều. Trọng tài thời lượng (core/duration.py) chỉ truyền trong
+    khoảng 1.0–1.25; ngoài khoảng đó XTTS bắt đầu vỡ prosody."""
     # Giữ lock cho phần GPU: chỉ 1 inference/lần (tránh OOM khi nghe thử nhiều dòng)
     # và chặn unload() xen vào giữa khi đang đọc latent_cache / model.
     with _gpu_lock:
         model = _load()
         gpt_cond, spk = _latents(model, ref_wav)
         out = model.inference(text, "vi", gpt_cond, spk,
-                              temperature=0.7, enable_text_splitting=True)
+                              temperature=0.7, enable_text_splitting=True,
+                              speed=speed)
 
     import numpy as np
     import soundfile as sf

@@ -251,6 +251,11 @@
   .ed-zh { font-size: 12px; color: var(--dim); line-height: 1.4; }
   .ed-spk { font-size: 10px; color: var(--accent); border: 1px solid var(--accent);
             border-radius: 8px; padding: 0 5px; opacity: .8; }
+  /* V13 audit giọng: cảnh báo khớp nhịp per-câu (đỏ = nén mạnh/bị cắt, vàng = hụt slot) */
+  .ed-fit { display: inline-block; font-size: 10px; border-radius: 8px; padding: 0 5px;
+            margin-top: 2px; white-space: nowrap; }
+  .ed-fit.bad { color: #f66; border: 1px solid #f66; }
+  .ed-fit.warn { color: #db3; border: 1px solid #db3; }
   /* .wm-ov/.crop-ov: class (không chỉ #ed-*) để editor "Chỉnh giao diện" (#task)
      dùng lại nguyên khối overlay xem trước watermark/crop, không phải chép CSS */
   #ed-wm-ov, .wm-ov { position: absolute; display: none; pointer-events: none; z-index: 5;
@@ -892,7 +897,7 @@ async function loadConfig() {
     + row("MAX_SPEEDUP", "Đồng bộ khớp thoại", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"],
       {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
        "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
-      "", "Núm TỔNG cho mọi lớp tăng tốc vì khớp thoại: bản dịch canh số giây slot → giọng edge đọc lại nhanh hơn khi vẫn dài → atempo phần dư — tất cả không vượt mức này. <b>1.0× = KHÔNG ép nhanh chút nào</b> (giọng đều tự nhiên nhất, chấp nhận câu dài tràn sang câu sau); <b>2.0×</b> = bám hình gắt nhất nhưng câu dài đọc dồn rõ.")
+      "", "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine đọc nhanh × atempo hậu kỳ ≤ mức này — trọng tài thời lượng bảo đảm, không cộng chồng như trước). Câu hết ngân sách mà vẫn dài thì fade + cắt ở biên slot, KHÔNG đè sang câu kế. <b>1.0× = KHÔNG ép nhanh chút nào</b> (tự nhiên nhất, câu dài bị cắt sớm); <b>2.0×</b> = bám hình gắt nhất nhưng câu dài đọc dồn rõ.")
     + `<div id="edge-voices">`
     + row("TTS_VOICE", "Giọng nam (edge-tts)", ["vi-VN-NamMinhNeural", "vi-VN-HoaiMyNeural"], null,
       "", "Giọng đọc các câu gắn nhãn NAM khi engine = edge (nhãn nam/nữ do Claude + đo audio gán từng câu). Chế độ 1 giọng thì đây là giọng cho cả video.")
@@ -2035,6 +2040,20 @@ function autoGrow(el) { el.style.height = "auto"; el.style.height = el.scrollHei
 function edVoiceSel(s) {
   return s.voice_ref ? ("ref:" + s.voice_ref) : (s.voice === "nu" ? "nu" : "nam");
 }
+// V13 audit giọng: chip cảnh báo khớp nhịp cho 1 câu từ mix_detail (lần mix gần nhất).
+// Đỏ = bị cắt tại biên slot hoặc nén tổng ≥1.3× (sửa lời cho NGẮN đi là hết);
+// vàng = đọc xong sớm, hụt >30% slot (thường là khoảng lặng tự nhiên — chỉ để ý).
+function edFitChip(m) {
+  if (!m) return "";
+  const tot = m.total_speed || m.post_atempo || 1;
+  if (m.clipped_ms > 0)
+    return `<br><span class="ed-fit bad" title="Hết ngân sách tăng tốc mà vẫn dài hơn slot ${(m.clipped_ms / 1000).toFixed(1)}s — đã fade + cắt ở biên. Rút gọn lời dịch câu này.">✂ cắt ${(m.clipped_ms / 1000).toFixed(1)}s</span>`;
+  if (tot >= 1.3)
+    return `<br><span class="ed-fit bad" title="Câu bị nén ${tot.toFixed(2)}× cho vừa slot — nghe dồn. Rút gọn lời dịch để đọc chậm lại.">⏩ ${tot.toFixed(2)}×</span>`;
+  if (m.gap_ms > 700 && m.slot_ms > 0 && m.final_ms < 0.7 * m.slot_ms)
+    return `<br><span class="ed-fit warn" title="Đọc xong sớm ${(m.gap_ms / 1000).toFixed(1)}s trước câu kế (phần lớn thường là khoảng lặng tự nhiên của video gốc).">⏳ ${(m.gap_ms / 1000).toFixed(1)}s</span>`;
+  return "";
+}
 function edMark(i) {
   const ta = document.getElementById("edvi-" + i);
   const vc = document.getElementById("edvoice-" + i).value;
@@ -2106,11 +2125,12 @@ async function openEditor(id) {
   edSegs.forEach((s, i) => { if (s.mute) edMuteState.add(i); });
   edHadFinal = data.has_final;   // job đã render → "Áp dụng giọng" sẽ xoá final, cần cảnh báo
   const vsrc = data.has_final ? `/api/jobs/${id}/video` : `/api/jobs/${id}/source`;
+  const edMix = data.mix_detail || {};   // V13: số đo khớp nhịp per-câu từ lần mix gần nhất
   const rows = edSegs.map((s, i) => {
     const vsel = edVoiceSel(s);
     return `
     <div class="ed-row${s.mute ? " muted" : ""}" id="edrow-${i}" onclick="edRowClick(event, ${i})" ondblclick="edRowPlay(event, ${i})">
-      <div class="ed-t" title="Nhảy video tới câu này">${fmtT(s.start)}${s.speaker ? `<br><span class="ed-spk" title="Cụm người nói (nhận từ giọng trong audio gốc)">${esc(s.speaker)}</span>` : ""}</div>
+      <div class="ed-t" title="Nhảy video tới câu này">${fmtT(s.start)}${s.speaker ? `<br><span class="ed-spk" title="Cụm người nói (nhận từ giọng trong audio gốc)">${esc(s.speaker)}</span>` : ""}${edFitChip(edMix[s.id])}</div>
       <div class="ed-mid">
         ${s.text ? `<div class="ed-zh">${esc(s.text)}</div>` : ""}
         <textarea class="ed-vi" id="edvi-${i}" rows="1" oninput="edMark(${i})">${esc(s.text_vi)}</textarea>
@@ -2396,8 +2416,8 @@ function edSettingsPanel(data) {
 const ED_OV_FIELDS = [
   // [key, nhãn, options|null(ô chữ), nhóm, helptext ⓘ]
   // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
-  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "mix",
-    "Núm TỔNG cho mọi lớp tăng tốc vì khớp thoại (đọc nhanh hơn + tua phần dư, giữ cao độ). <b>1.0× = KHÔNG ép nhanh</b> — giọng đều tự nhiên nhất, chấp nhận câu dài tràn; <b>2.0×</b> = bám hình gắt nhưng câu dài đọc dồn rõ. Giọng lúc nhanh lúc chậm → hạ mức này."],
+  ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "tts",
+    "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine × atempo ≤ mức này); hết ngân sách thì fade + cắt ở biên, KHÔNG đè câu kế. <b>1.0× = KHÔNG ép nhanh</b> — tự nhiên nhất, câu dài bị cắt sớm; <b>2.0×</b> = bám hình gắt nhưng đọc dồn rõ. Đổi núm sẽ ĐỌC LẠI các câu bị ảnh hưởng (ngân sách nằm trong giọng đã đọc)."],
   ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix",
     "Xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: nền to–nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định, dễ nghe. <b>demucs</b>: tách hẳn giọng nói gốc (GPU, chậm) — nền giữ trọn vẹn nhất."],
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)

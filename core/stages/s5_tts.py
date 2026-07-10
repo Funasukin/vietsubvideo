@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import math
 import os
 
 import edge_tts
@@ -15,7 +14,7 @@ import edge_tts
 import time
 
 import config
-from core import emotion, langs, paid_tts, prosody, prosody_transfer
+from core import duration, emotion, langs, paid_tts, prosody, prosody_transfer
 from core.job import Job
 
 RETRIES = 4  # edge-tts hay lỗi NoAudioReceived tạm thời khi gọi song song
@@ -47,8 +46,10 @@ def _voice_sig(seg: dict) -> str:
     # finetune tiếng Việt, clone sang ngôn ngữ khác méo giọng. Sig đổi → tự đọc lại.
     pt = prosody_transfer.sig_tag()   # mức 3 bật/tắt → mọi câu tự xử lý lại
     eng = config.TTS_ENGINE
+    # viXTTS kèm :f{ngân sách} như edge: giờ viXTTS cũng fit theo slot (speed synth
+    # lại — đợt B audit giọng) nên user đổi núm MAX_SPEEDUP → sig lệch → tự đọc lại.
     if langs.is_vi() and seg.get("voice_ref"):
-        return "vix:ref:" + seg["voice_ref"] + pt       # cast clip → luôn viXTTS
+        return "vix:ref:" + seg["voice_ref"] + f":f{_fit_budget()}" + pt  # cast → luôn viXTTS
     nu = _seg_nu(seg)
     # engine trả phí (PLAN 11 C/D): VBee/FPT chỉ tiếng Việt — đích khác rơi về edge
     if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
@@ -57,7 +58,7 @@ def _voice_sig(seg: dict) -> str:
     if langs.is_vi() and eng == "vixtts":
         # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
         return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
-                + emotion.sig_tag(seg) + pt)
+                + emotion.sig_tag(seg) + f":f{_fit_budget()}" + pt)
     # kèm tông giọng (prosody) + nhãn cảm xúc + ngân sách fit — đổi là tự đọc lại
     return ("edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg)
             + f":f{_fit_budget()}" + pt)
@@ -79,51 +80,37 @@ def _write_sig(job: Job, seg: dict, sig: str) -> None:
     _seg_path(job, seg["id"]).with_suffix(".sig").write_text(sig, encoding="utf-8")
 
 
-_FIT_TOL = 1.02          # dung sai 2%: dài hơn slot cỡ này mới phải đọc lại
-_FIT_RATE_MAX = 50       # trần TỔNG rate edge (%) — nhanh hơn nữa nghe máy móc
-
-
 def _fit_budget() -> int:
     """Ngân sách tăng tốc VÌ KHỚP THOẠI (%) theo núm MAX_SPEEDUP — deterministic nên
-    nằm được trong .sig: user đổi núm → sig lệch → các câu edge tự đọc lại đúng mức mới
-    (không tag thì mp3 cũ giữ tốc độ fit cũ, hạ núm xuống cũng không tác dụng)."""
-    return max(0, min(_FIT_RATE_MAX, round((config.MAX_SPEEDUP - 1) * 100)))
+    nằm được trong .sig: user đổi núm → sig lệch → các câu (edge LẪN viXTTS) tự đọc
+    lại đúng mức mới (không tag thì mp3 cũ giữ tốc độ fit cũ, hạ núm cũng vô tác dụng)."""
+    return max(0, min(duration.EDGE_RATE_MAX, round((config.MAX_SPEEDUP - 1) * 100)))
 
 
-def _mp3_dur_s(path) -> float | None:
-    """Thời lượng mp3 (giây) — ffprobe đọc HEADER (audit #7: bản cũ dùng pydub =
-    spawn ffmpeg decode TOÀN BỘ audio chỉ để đếm độ dài, gọi 1 lần/câu)."""
-    import subprocess
-    try:
-        r = subprocess.run(
-            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
-             "-of", "default=nw=1:nk=1", str(path)],
-            capture_output=True, text=True, timeout=15)
-        return float((r.stdout or "").strip())
-    except Exception:
-        return None
-
-
-async def _fit_slot(seg: dict, voice: str, out) -> None:
-    """Chống tràn thoại (#3): bản đọc DÀI hơn slot (khoảng trống tới câu kế) → đọc
-    lại MỘT lần với rate cộng thêm đúng phần vượt — edge rate giữ cao độ và tự nhiên
-    hơn atempo hậu kỳ. S7 vẫn atempo phần dư còn lại → cộng 2 lớp là giọng đọc khớp
-    hoặc hụt hơn giọng gốc một chút. Lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
+async def _fit_slot(seg: dict, voice: str, out, fit_log: dict) -> None:
+    """Chống tràn thoại — bản TRỌNG TÀI (đợt B audit giọng): bản đọc DÀI hơn limit
+    (slot − fade guard) → đọc lại MỘT lần với rate tính bằng CÔNG THỨC CHÉO
+    (duration.edge_total_rate) trên thước ĐÃ CẮT LẶNG — cùng thước với S7, hết
+    "tràn giả" do đuôi câm edge. Phần engine tiêu (engine_speed) ghi vào fit_log
+    để S7 chỉ atempo trong ngân sách CÒN LẠI (tích ≤ MAX_SPEEDUP).
+    Lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
+    entry: dict = {"engine_speed": 1.0}
+    fit_log[str(seg["id"])] = entry
+    dur = duration.trimmed_dur_s(out)
+    if dur:
+        entry["trimmed_ms"] = int(dur * 1000)
     slot = seg.get("_slot_s")
-    if not slot:
+    if not slot or not dur:
         return
-    dur = _mp3_dur_s(out)
-    if not dur or dur <= slot * _FIT_TOL:
+    k = duration.fit_speed(dur, slot)         # 1.0 = đã lọt limit (deadzone)
+    if k <= 1.0:
         return
+    k = min(k, config.MAX_SPEEDUP)            # ngân sách TỔNG của user
     kw = emotion.edge_kwargs(seg)
     base = int(kw.get("rate", "+0%").rstrip("%"))
-    # Ngân sách tăng tốc VÌ KHỚP THOẠI theo đúng núm MAX_SPEEDUP của user (1.0× = không
-    # được ép nhanh, chấp nhận tràn; 2.0× = ép tới +100% nhưng kẹp trần an toàn +50%).
-    # base (prosody/cảm xúc) là diễn cảm, không tính vào ngân sách khớp.
-    allow = min(_FIT_RATE_MAX - base, round((config.MAX_SPEEDUP - 1) * 100))
-    if allow <= 0:
-        return
-    total = base + min(allow, math.ceil((dur / slot - 1) * 100))
+    # base (prosody/cảm xúc) là diễn cảm — giữ nguyên; rate mới = base ⊗ k (có số
+    # hạng chéo), kẹp trần an toàn giọng +50% (nhanh hơn nghe máy móc).
+    total = min(duration.EDGE_RATE_MAX, duration.edge_total_rate(base, k))
     if total <= base:
         return
     kw["rate"] = f"{total:+d}%"
@@ -133,19 +120,28 @@ async def _fit_slot(seg: dict, voice: str, out) -> None:
             edge_tts.Communicate(seg["text_vi"], voice, **kw).save(str(tmp)),
             timeout=config.TTS_TIMEOUT_S)
         if tmp.exists() and tmp.stat().st_size > 0:
-            os.replace(tmp, out)
-            print(f"  ↳ câu {seg['id']}: {dur:.1f}s > slot {slot:.1f}s → đọc lại rate {total:+d}%")
+            dur2 = duration.trimmed_dur_s(tmp)
+            if dur2 and dur2 < dur:   # chỉ nhận bản THẬT SỰ ngắn hơn
+                os.replace(tmp, out)
+                # nén cơ học YÊU CẦU (so với bản đang phát) — variance của engine
+                # không tính vào ngân sách (đồng bộ cách tính với nhánh viXTTS)
+                k_req = (1 + total / 100) / (1 + base / 100)
+                entry["engine_speed"] = round(min(k_req, dur / dur2), 3)
+                entry["speed_got"] = round(dur / dur2, 3)
+                entry["trimmed_ms"] = int(dur2 * 1000)
+                print(f"  ↳ câu {seg['id']}: {dur:.1f}s > slot {slot:.1f}s "
+                      f"→ đọc lại rate {total:+d}% → {dur2:.1f}s")
     except Exception:
         pass
     finally:
         tmp.unlink(missing_ok=True)
 
 
-async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
+async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict, fit_log: dict) -> None:
     out = _seg_path(job, seg["id"])
     # bỏ qua nếu mp3 còn đúng giọng (khớp .sig); 0 byte/khác giọng → đọc lại
     if _seg_ready(job, seg):
-        return  # resume
+        return  # resume — fit_report cũ của câu này còn nguyên trong file
     voice = _edge_voice(seg)
     async with sem:
         for attempt in range(1, RETRIES + 1):
@@ -162,7 +158,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
                 await asyncio.sleep(2 ** attempt)  # 2s, 4s, 8s
                 continue
             if out.exists() and out.stat().st_size > 0:
-                await _fit_slot(seg, voice, out)        # chống tràn: dài quá slot → đọc lại nhanh hơn
+                await _fit_slot(seg, voice, out, fit_log)  # chống tràn: dài quá limit → đọc lại nhanh hơn
                 prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
                 # ghi giọng THỰC tế đã đọc (kèm tông giọng + cảm xúc + ngân sách fit) —
                 # giữ "edge:" tường minh vì nhánh fallback vixtts→edge cần sig LỆCH
@@ -178,9 +174,9 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict) -> None:
             await asyncio.sleep(2 ** attempt)
 
 
-async def _tts_all(job: Job, segments: list[dict]) -> None:
+async def _tts_all(job: Job, segments: list[dict], fit_log: dict) -> None:
     sem = asyncio.Semaphore(config.TTS_CONCURRENCY)
-    await asyncio.gather(*(_tts_one(sem, job, s) for s in segments))
+    await asyncio.gather(*(_tts_one(sem, job, s, fit_log) for s in segments))
 
 
 def _vixtts_ref(seg: dict) -> str:
@@ -212,8 +208,13 @@ def _vixtts_ref(seg: dict) -> str:
     return str(config.VIXTTS_DIR / "vi_sample.wav")  # mẫu đi kèm model
 
 
-def _tts_vixtts(job: Job, segments: list[dict]) -> None:
-    """Lồng tiếng bằng viXTTS (GPU, tuần tự). Resume: bỏ câu đã có file."""
+def _tts_vixtts(job: Job, segments: list[dict], fit_log: dict) -> None:
+    """Lồng tiếng bằng viXTTS (GPU, tuần tự). Resume: bỏ câu đã có file.
+
+    Đợt B audit giọng: viXTTS trước đây THẢ NỔI độ dài (median 2.5× thoại gốc, toàn
+    bộ khớp nhịp dồn cho atempo S7). Giờ đo bản đọc (đã cắt lặng) — vượt limit thì
+    synth LẠI 1 lần với speed của XTTS (nén ngay lúc đọc, tự nhiên hơn atempo);
+    phần dư còn lại S7 lo trong ngân sách MAX_SPEEDUP / engine_speed."""
     from core import vixtts
     if not vixtts.is_available():
         raise RuntimeError("viXTTS không sẵn sàng")
@@ -226,17 +227,49 @@ def _tts_vixtts(job: Job, segments: list[dict]) -> None:
                            "và chưa đặt giọng nam/nữ trong Cấu hình")
     for seg in segments:
         if _seg_ready(job, seg):
-            continue   # mp3 còn đúng giọng
+            continue   # mp3 còn đúng giọng — fit_report cũ của câu này còn nguyên
         out = _seg_path(job, seg["id"])
         out.unlink(missing_ok=True)   # xoá mp3 giọng cũ (nếu có) trước khi đọc lại
-        vixtts.synth(seg["text_vi"], _vixtts_ref(seg), str(out))
+        ref = _vixtts_ref(seg)
+        vixtts.synth(seg["text_vi"], ref, str(out))
+        entry: dict = {"engine_speed": 1.0}
+        fit_log[str(seg["id"])] = entry
+        dur = duration.trimmed_dur_s(out)
+        if dur:
+            entry["trimmed_ms"] = int(dur * 1000)
+        slot = seg.get("_slot_s")
+        if slot and dur:
+            k = duration.fit_speed(dur, slot)   # 1.0 = lọt limit (deadzone) → không đụng
+            speed = min(k, duration.VIXTTS_SPEED_MAX, config.MAX_SPEEDUP)
+            if speed > 1.03:   # chênh dưới 3% không đáng một lần synth GPU
+                tmp = out.with_suffix(".fit.mp3")
+                try:
+                    vixtts.synth(seg["text_vi"], ref, str(tmp), speed=speed)
+                    d2 = duration.trimmed_dur_s(tmp)
+                    # XTTS nondeterministic — chỉ nhận bản THẬT SỰ ngắn hơn
+                    if d2 and d2 < dur:
+                        os.replace(tmp, out)
+                        # ngân sách tính theo mức NÉN CƠ HỌC yêu cầu (speed), không
+                        # tính phần model tình cờ đọc ngắn hơn (variance tự nhiên,
+                        # không phải nén) — kẻo "tổng nén" báo ảo 2.6× dù speed 1.25
+                        entry["engine_speed"] = round(min(speed, dur / d2), 3)
+                        entry["speed_got"] = round(dur / d2, 3)
+                        entry["trimmed_ms"] = int(d2 * 1000)
+                        print(f"  ↳ câu {seg['id']}: {dur:.1f}s > slot {slot:.1f}s "
+                              f"→ viXTTS speed {speed:.2f} → {d2:.1f}s")
+                except Exception as e:   # giữ bản thường, S7 lo phần dư
+                    print(f"  ↳ câu {seg['id']}: synth lại speed lỗi ({e}) — giữ bản thường")
+                finally:
+                    tmp.unlink(missing_ok=True)
         prosody_transfer.apply(job, seg, out)   # mức 3: ép dáng ngữ điệu gốc
         _write_sig(job, seg, _voice_sig(seg))
 
 
-def _tts_paid(job: Job, segments: list[dict]) -> None:
+def _tts_paid(job: Job, segments: list[dict], fit_log: dict) -> None:
     """Đọc bằng engine trả phí (PLAN 11 C/D) — tuần tự + retry, resume theo .sig.
-    Báo TRƯỚC tổng ký tự sẽ gửi (dịch vụ tính phí theo ký tự)."""
+    Báo TRƯỚC tổng ký tự sẽ gửi (dịch vụ tính phí theo ký tự).
+    Chưa có fit lúc synth (speed các provider đang cố định) — chỉ ĐO và ghi
+    engine_speed=1.0 để S7 dùng trọn ngân sách MAX_SPEEDUP như trước."""
     eng = config.TTS_ENGINE
     ok, why = paid_tts.ready(eng)
     if not ok:
@@ -259,6 +292,11 @@ def _tts_paid(job: Job, segments: list[dict]) -> None:
                 if attempt == 3:
                     raise RuntimeError(f"{eng} lỗi ở câu {seg['id']}: {e}")
                 time.sleep(2 * attempt)
+        entry: dict = {"engine_speed": 1.0}
+        dur = duration.trimmed_dur_s(out)
+        if dur:
+            entry["trimmed_ms"] = int(dur * 1000)
+        fit_log[str(seg["id"])] = entry
         prosody_transfer.apply(job, seg, out)   # mức 3 vẫn áp được (xử lý audio output)
         _write_sig(job, seg, _voice_sig(seg))
 
@@ -301,6 +339,9 @@ def run(job: Job) -> None:
         return
 
     (job.dir / "tts").mkdir(exist_ok=True)
+    # Trọng tài thời lượng: sổ đo per-câu (trimmed + engine_speed đã tiêu) cho S7.
+    # Nạp bản cũ trước — câu cache (sig khớp, không đọc lại) giữ nguyên số đo cũ.
+    fit_log = duration.load_report(job.dir)
     eng = config.TTS_ENGINE
     paid = paid_tts.is_paid(eng)
     if paid and eng in paid_tts.VI_ONLY and not langs.is_vi():
@@ -312,26 +353,26 @@ def run(job: Job) -> None:
         # đã chủ động chọn engine trả phí, âm thầm rơi về edge là phản bội lựa chọn đó).
         ref_segs = [s for s in segments if langs.is_vi() and s.get("voice_ref")]
         plain_segs = [s for s in segments if s not in ref_segs]
-        _tts_paid(job, plain_segs)
+        _tts_paid(job, plain_segs, fit_log)
         if ref_segs:
             try:
-                _tts_vixtts(job, ref_segs)
+                _tts_vixtts(job, ref_segs, fit_log)
             except Exception as e:
                 print(f"  viXTTS lỗi cho câu cast giọng ({e}); đọc bằng edge-tts thay thế")
-                asyncio.run(_tts_all(job, ref_segs))
+                asyncio.run(_tts_all(job, ref_segs, fit_log))
     elif not langs.is_vi():
         # #16 đích ≠ tiếng Việt: đọc TẤT CẢ bằng edge-tts giọng của ngôn ngữ đó.
         # viXTTS/casting clone là finetune tiếng Việt — bỏ qua, kể cả câu voice_ref.
         if config.TTS_ENGINE == "vixtts" or any(s.get("voice_ref") for s in segments):
             print(f"  Đích {langs.name()}: viXTTS/casting clone tạm không áp dụng — "
                   f"toàn bộ đọc edge-tts ({langs.edge_voices()[0]})")
-        asyncio.run(_tts_all(job, segments))
+        asyncio.run(_tts_all(job, segments, fit_log))
     elif config.TTS_ENGINE == "vixtts":
         try:
-            _tts_vixtts(job, segments)
+            _tts_vixtts(job, segments, fit_log)
         except Exception as e:
             print(f"  viXTTS lỗi ({e}); fallback edge-tts")
-            asyncio.run(_tts_all(job, segments))
+            asyncio.run(_tts_all(job, segments, fit_log))
     else:
         # Engine mặc định = edge, NHƯNG câu được CAST giọng clip (voice_ref) vẫn phải đọc
         # bằng viXTTS (giọng nhân bản) — casting luôn dùng clone bất kể engine. Câu còn lại
@@ -339,13 +380,14 @@ def run(job: Job) -> None:
         ref_segs = [s for s in segments if s.get("voice_ref")]
         plain_segs = [s for s in segments if not s.get("voice_ref")]
         if plain_segs:
-            asyncio.run(_tts_all(job, plain_segs))
+            asyncio.run(_tts_all(job, plain_segs, fit_log))
         if ref_segs:
             try:
-                _tts_vixtts(job, ref_segs)
+                _tts_vixtts(job, ref_segs, fit_log)
             except Exception as e:
                 print(f"  viXTTS lỗi cho câu cast giọng ({e}); đọc bằng edge-tts thay thế")
-                asyncio.run(_tts_all(job, ref_segs))
+                asyncio.run(_tts_all(job, ref_segs, fit_log))
+    duration.save_report(job.dir, fit_log)
 
     missing = [
         s["id"] for s in segments
