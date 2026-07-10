@@ -880,6 +880,10 @@ async function loadConfig() {
       {"0": "Hạ audio gốc KHI CÓ thoại (duck)", "flat": "Hạ audio gốc ĐỀU suốt video",
        "1": "Tách giọng gốc bằng demucs (GPU)"},
       "", "Cách xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: chỉ hạ lúc có lồng tiếng, chỗ trống giữ nguyên — nền to nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định từ đầu tới cuối, dễ nghe, khỏi render lại vì bơm nền. <b>demucs</b>: tách hẳn giọng nói gốc khỏi nhạc/hiệu ứng (GPU, chậm thêm ~¼ thời lượng) — nền giữ trọn vẹn nhất. Mức hạ chỉnh tiếp được trong Chỉnh sửa (🎚 Âm nền gốc).")
+    + row("DUCK_GAIN_DB", "Âm nền gốc dưới thoại", ["-14", "-17", "-20", "-23", "-26"],
+      {"-14": "-14dB — nền còn rõ (dễ át thoại)", "-17": "-17dB",
+       "-20": "-20dB — thoại nổi rõ (khuyên dùng)", "-23": "-23dB", "-26": "-26dB — nền rất nhỏ"},
+      "", "Hạ audio gốc (nhạc + giọng Trung) bao nhiêu khi có thoại Việt. Đo thật: -14dB giọng chỉ nổi ~+6dB → bị át; -20dB nổi ~+12dB nghe rõ lời. Giọng đọc cũng được tự chuẩn hoá âm lượng đều nhau từng câu. Chỉnh riêng từng video: thanh 🎚 trong editor.")
     + row("VOICE_FX", "Xử lý giọng",
       ["off", "canbang", "amday", "rosang", "dienanh", "toithieu"],
       {off: "Tắt (giữ nguyên)", canbang: "Cân bằng", amday: "Ấm / dày",

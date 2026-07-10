@@ -40,6 +40,28 @@ def _fade_cut(a: np.ndarray, n_keep: int, rate: int, fade_ms: int = 100) -> np.n
     return a
 
 
+_VOICE_TARGET_DBFS = -16.0   # RMS giọng đọc sau chuẩn hoá — nổi ~+12dB trên nền -20dB
+_VOICE_GAIN_CLAMP = 6.0      # chỉnh tối đa ±6dB — không thổi phồng câu cố tình nói nhỏ
+
+
+def _norm_voice(a: np.ndarray) -> tuple[np.ndarray, float]:
+    """Chuẩn hoá RMS giọng về _VOICE_TARGET_DBFS (kẹp ±6dB) → (mảng mới, gain dB đã áp).
+    Sửa 2 vấn đề đo được trên job thật: giọng TTS chỉ nổi hơn nền ~+6dB (bị nhạc/âm
+    gốc át — user phàn nàn) và câu to câu nhỏ lệch nhau ~2.5dB giữa các segment."""
+    if not len(a):
+        return a, 0.0
+    rms = float(np.sqrt((a.astype(np.float64) ** 2).mean()))
+    if rms < 1:   # câu câm/lặng — không chỉnh
+        return a, 0.0
+    cur_db = 20 * np.log10(rms / 32768)
+    gain_db = float(np.clip(_VOICE_TARGET_DBFS - cur_db, -_VOICE_GAIN_CLAMP, _VOICE_GAIN_CLAMP))
+    if abs(gain_db) < 0.1:
+        return a, 0.0
+    g = 10 ** (gain_db / 20)
+    out = np.clip(a.astype(np.float32) * g, -32768, 32767).astype(np.int16)
+    return out, round(gain_db, 1)
+
+
 def run(job: Job) -> None:
     out_path = job.dir / "dubbed_audio.wav"
     if out_path.exists():
@@ -95,6 +117,9 @@ def run(job: Job) -> None:
             else:
                 factor = 1.0
 
+        # chuẩn hoá âm lượng giọng SAU mọi xử lý độ dài, TRƯỚC khi đặt lên nền
+        voice, vgain = _norm_voice(voice)
+
         clipped_ms = 0
         if len(voice) > slot:
             # hết ngân sách mà vẫn vượt biên → fade-out rồi cắt tại slot: KHÔNG đè
@@ -118,6 +143,7 @@ def run(job: Job) -> None:
             "final_ms": _ms(len(voice)),
             "gap_ms": max(0, _ms(slot - len(voice))),
             "clipped_ms": clipped_ms,
+            "voice_gain_db": vgain,
         })
 
         end = min(total, start + len(voice))

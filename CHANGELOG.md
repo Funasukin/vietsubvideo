@@ -6,6 +6,26 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-10 (3) — Desktop (F:\MyProject\vietsubvideo)
+
+### Nền át giọng Việt (user phàn nàn sau khi nghe test) + đổi engine edge 1 giọng
+
+Đo thật trên job test: giọng TTS chỉ nổi hơn nền ~+5.9dB (muốn rõ lời cần
++12–15dB) — nền duck −14dB chưa đủ VÀ giọng edge hơi nhỏ (-18.9 dBFS). Sửa cả 2 đầu:
+- **DUCK_GAIN_DB thành cấu hình** (config.py — trước là hằng số −14 cứng), default
+  mới **−20**; thêm ô "Âm nền gốc dưới thoại" trong tab Cấu hình (SAFE_ENV_KEYS).
+  Per-job 🎚 âm nền trong editor vẫn thắng như cũ.
+- **S7 chuẩn hoá âm lượng giọng** (`_norm_voice`): RMS từng câu về −16 dBFS, kẹp
+  ±6dB (không thổi phồng câu cố tình nói nhỏ) — sẵn tiện hết luôn cảnh câu to câu
+  nhỏ (đo được lệch ~2.5dB giữa các câu). Ghi `voice_gain_db` vào mix_report detail.
+- **.env máy này**: TTS_ENGINE=edge (1 giọng — TTS_SINGLE_VOICE vốn =1),
+  DUCK_GAIN_DB=-20.
+Kết quả đo lại trên job test aaa002 (edge): tách lời **+15dB** (trước +5.9dB),
+voice_gain áp +1.5..+5.4dB. Máy laptop lưu ý: default DUCK_GAIN_DB đổi −14→−20
+trong code — muốn giữ nền to như cũ thì đặt DUCK_GAIN_DB=-14 trong .env.
+
+---
+
 ## 2026-07-10 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Trọng tài thời lượng giọng đọc — ĐỢT A+B theo AUDIT_GIONG_TONGHOP.md (user confirm "làm A B trước")

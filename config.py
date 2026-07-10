@@ -209,8 +209,10 @@ FFMPEG_SHARED_BIN = os.getenv(
 TTS_CONCURRENCY = 2   # 4 luồng dễ bị Microsoft throttle trên video dài
 TTS_TIMEOUT_S = 90    # mỗi lần gọi edge-tts; tránh treo vô hạn khi đứt kết nối
 
-# BGM duck (S6)
-DUCK_GAIN_DB = -14.0
+# BGM duck (S6): hạ audio gốc bao nhiêu dB dưới giọng đọc. Đo thực tế: -14 chỉ cho
+# giọng nổi hơn nền ~+6dB (bị át — user phàn nàn); -20 cho ~+12dB, tách lời rõ.
+# Chỉnh được trong Cấu hình; per-job có 🎚 âm nền trong editor (bed_gain_db) thắng số này.
+DUCK_GAIN_DB = float(os.getenv("DUCK_GAIN_DB", "-20"))
 # Giữ nhạc+SFX gốc bằng demucs (tách giọng Trung ra hẳn) thay vì hạ nhỏ cả audio.
 # Cần GPU + ffmpeg-shared; chậm thêm (~tách bằng ~1/4 thời lượng). Mặc định tắt.
 # KEEP_BGM: "0" = hạ audio gốc KHI CÓ thoại (duck) | "flat" = hạ ĐỀU suốt video
