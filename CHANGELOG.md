@@ -6,6 +6,53 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 — Desktop (F:\MyProject\vietsubvideo)
+
+### Panel ⚙️ đợt U-1+U-2 (user chốt: "1. có / 2. nghiêng codex / 3. U-1+U-2 trước")
+
+Theo AUDIT_GIONG_TUYCHON_TONGHOP.md (đã cập nhật mục 5-6 với quyết định user).
+
+**U-1 — trung thực hoá knob:**
+- **U3 EMOTION**: bật khi transcript CHƯA có nhãn → server tự LEO THANG chạy lại
+  từ DỊCH (`_ov_depth_for` — nhãn chỉ sinh lúc dịch, depth tts là no-op tuyệt
+  đối); client cảnh báo ngay dưới knob + edOvDepth leo thang y hệt để confirm
+  không nói dối. (Biến thể "leo thang + cảnh báo" thay vì disable cứng như bàn
+  ban đầu — vẫn đúng tinh thần: không no-op, hành động rõ giá.)
+- **U4 PROSODY**: ẩn khi engine hiệu lực ≠ edge; mô tả nguồn đo sửa lại theo
+  code thật (ưu tiên vocals.wav đã tách — Codex bắt lỗi mô tả cũ).
+- **U7**: `GET /segments` trả `engines` capability (paid thiếu key/model viXTTS
+  chưa tải → option disable kèm lý do; engine ĐANG chọn không bị khoá để còn
+  chuyển đi được).
+- **U8 VOICE_FX**: dời từ nhóm "Giọng đọc" (gây hiểu lầm re-TTS) sang panel 🎨
+  (đúng chỗ render); thêm lựa chọn "— theo cấu hình chung —" và server CHỈ lưu
+  key `fx` khi user thật sự override → fix hẳn bug ghim `off` vĩnh viễn làm knob
+  VOICE_FX toàn cục chết (audit #12c). RenderOptions.fx default "off"→"".
+- **U13**: 🎚 Âm nền gốc hiện Ở MỌI mode Nhạc/SFX (trước chỉ flat — S6 áp gain
+  cả 3 mode, Codex bắt bug visibility).
+
+**U-2 — hạ tầng tác động:**
+- **`core/voicesig.py` (MỚI)**: resolver chữ ký giọng THUẦN DỮ LIỆU
+  (`TtsSettings.from_env(dict)` + `voice_signature(seg, st)`) — S5 `_voice_sig`
+  giờ gọi qua đây (parity test 65/65 sig thật của 3 job test, cả edge lẫn
+  viXTTS); trả nợ kiến trúc "sig phụ thuộc module config" (finding 11 audit).
+- **`POST /api/jobs/{id}/override-impact`**: dry-run tác động của ⚙️ đề xuất —
+  depth (kèm leo thang EMOTION), stages, `tts_regenerate` (so sig dự kiến vs
+  .sig đĩa — đúng cơ chế resume), `paid_tts_chars`, `manual_edits_at_risk`,
+  `estimated_seconds` [min,max], warnings (PROSODY toggle = chặn trên; engine
+  thiếu key; translate/transcript = không giả vờ đếm, báo mất sạch).
+  Test 5 kịch bản: noop→null; STRETCH_SHORT→mix; MAX_SPEEDUP 1.4→19/19 câu
+  (sig cũ ghi lúc 2.0); EMOTION→translate+cảnh báo; elevenlabs→923 ký tự trả
+  phí + cảnh báo thiếu key.
+- **UI**: confirm trước Áp dụng/Lưu giờ CÓ SỐ từ endpoint (fallback confirm tĩnh
+  cũ nếu lỗi mạng); nút "↺ Về cấu hình chung" xoá mọi override 1 phát (U6).
+
+Lưu ý kỹ thuật: Edit tool lại biến 1 space literal thành U+0000 (bài học cũ) —
+đã quét và thay bằng sentinel "none-selected". Browser pane đổi sang tool ext
+giữa phiên (Chrome extension chưa nối) → UI verify bằng node --check + static
+assert + 5 test API; user xem giao diện thật khi test.
+
+---
+
 ## 2026-07-10 (4) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt C+D audit giọng (user: "thực hiện các bước tiếp theo") — V5-V7, V9-V12, V14

@@ -103,11 +103,20 @@ Kiểu nội dung · Phong cách dịch riêng · Nguồn transcript · Whisper
 - **Đợt U-4 — Tính năng mới:** U14 (nghe thử 10s, sau khi có primitive mix
   chung), U16 (DENOISE + depth extract).
 
-## 5. Ba câu hỏi còn mở cho user
+## 5. Ba câu hỏi còn mở cho user — ĐÃ CHỐT (2026-07-11)
 
-1. U10 mở rộng: có muốn thêm control "Chất lượng dịch: Tiết kiệm/Cân bằng/Tốt
-   nhất" (map model theo provider) trong Nâng cao không, hay bỏ hẳn chọn model
-   per-job?
-2. U11: tôi chốt theo Codex (giữ Whisper/OCR trong Nâng cao) — Gemini muốn bỏ
-   hẳn. Bạn nghiêng bên nào?
-3. Làm theo thứ tự U-1 → U-4 một mạch, hay U-1 + U-2 trước rồi nghe/nhìn thử?
+1. U10 mở rộng: **CÓ** — thêm "Chất lượng dịch: Tiết kiệm/Cân bằng/Tốt nhất"
+   trong Nâng cao (làm ở đợt U-3).
+2. U11: **theo Codex** — giữ Whisper/OCR trong Nâng cao, hiện theo ngữ cảnh.
+3. Thứ tự: **U-1 + U-2 trước**, xem thử rồi mới U-3/U-4.
+
+## 6. Trạng thái thi công
+
+- **Đợt U-1 + U-2: ĐÃ LÀM (2026-07-11)** — U3 (làm theo biến thể "leo thang":
+  bật EMOTION khi chưa có nhãn → server tự nâng depth lên DỊCH, cảnh báo tại chỗ
+  + confirm có số — thay vì disable cứng, vẫn đúng tinh thần "không no-op, hành
+  động rõ giá"), U4, U7, U8 (+fx 3 trạng thái, fix bug ghim), U13, resolver
+  `core/voicesig.py` (parity 65/65 với .sig thật), endpoint
+  `/api/jobs/{id}/override-impact`, confirm có số liệu, nút ↺ Về cấu hình chung.
+- Đợt U-3 (bố cục + U2 bản Codex + Chất lượng dịch + nhãn U11) và U-4 (nghe thử
+  10s, DENOISE depth extract): CHƯA — chờ user xem thử U-1/U-2 rồi gọi.

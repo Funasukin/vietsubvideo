@@ -1909,7 +1909,7 @@ function readOpts(id) {
     cover_top: parseInt(g("ct").value) / 100,
     cover_bottom: parseInt(g("cb").value) / 100,
     cover_width: parseInt(g("cw").value) / 100,
-    fx: (g("fx") && g("fx").value) || "off",
+    fx: (g("fx") && g("fx").value) || "",   // "" = theo cấu hình chung (server không lưu key)
     frame: (g("frm") && g("frm").value) || "none",
     frame_color: (g("frmc") && g("frmc").value) || "#FFD700",
     frame_color2: (g("frmc2") && g("frmc2").value) || "#FFFFFF",
@@ -2049,6 +2049,7 @@ async function scanTrending() {
 /* ---------- Editor lời thoại ---------- */
 let edJobId = null, edSegs = [], edCurIdx = -1, edDirty = new Set(), edVoices = [], edHadFinal = false;
 let edOvOrig = {};   // ⚙️ override theo job lúc MỞ editor — so sánh để biết nhóm nào bị đổi
+let edEngineCaps = {};   // U7: {engine: {ready, reason}} — disable engine thiếu key/model
 let edOvCfg = {};    // giá trị cấu hình CHUNG hiện tại — nền cho ẩn/hiện field phụ thuộc
 let edBedOrig = null; // 🎚 âm nền đang lưu của job — biết user có đổi hay không
 let edCastNames = [];   // nhân vật đã cast của series (nếu có) → gợi ý gán câu trong editor
@@ -2143,6 +2144,7 @@ async function openEditor(id) {
   edJobId = id; edSegs = data.segments; edCurIdx = -1; edDirty = new Set();
   edOvOrig = data.env_overrides || {};
   edOvCfg = data.cfg_defaults || {};
+  edEngineCaps = data.engines || {};   // U7: engine nào thiếu key/model → disable + lý do
   edBedOrig = data.bed_gain_db ?? null;
   edCastNames = data.cast_names || [];   // series có casting → hiện ô gán nhân vật
   edMuteState = new Set();
@@ -2358,6 +2360,12 @@ function edSettingsPanel(data) {
     + pngFrames.map(n => `<option value="png:${esc(n)}" ${frame==="png:"+n?"selected":""}>🖼 ${esc(n)}</option>`).join("");
   return `<details class="ed-settings"><summary>🎨 Phụ đề / che sub gốc / khung viền — xem trước trực tiếp</summary>
     <div oninput="updateEdOverlay()" onchange="updateEdOverlay()">
+    <div class="opts">🎛 Xử lý giọng (áp lúc RENDER):
+      <select id="fx-ed">
+        <option value="" ${!r.fx ? "selected" : ""}>— theo cấu hình chung —</option>
+        ${fxOptionsHtml(r.fx || "none-selected")}
+      </select>
+      <span class="meta">EQ + nén + chuẩn độ to trên audio ĐÃ TRỘN — không đọc lại giọng, chỉ render lại. Chọn "theo cấu hình chung" để núm VOICE_FX ở tab Cấu hình có tác dụng với video này.</span></div>
     <div class="opts">🖼 Khung viền: <select id="frm-ed" onchange="toggleFrameCtl()">${frameOptsHtml}</select>
       Màu: <input type="color" id="frmc-ed" value="${esc(frameColor)}">
       <span id="frmc2-wrap">Màu 2: <input type="color" id="frmc2-ed" value="${esc(frameColor2)}"></span>
@@ -2456,7 +2464,7 @@ const ED_OV_FIELDS = [
   ["TTS_VOICE_NU", "👩 Giọng nữ (edge)", [["vi-VN-HoaiMyNeural", "HoaiMy (nữ)"], ["vi-VN-NamMinhNeural", "NamMinh (nam)"]], "tts",
     "Giọng đọc các câu gắn nhãn NỮ (chỉ áp khi chọn 2 giọng)."],
   ["PROSODY", "🎼 Tông giọng theo audio gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
-    "Đo tốc độ/độ to từng câu GỐC so với nền người nói → chỉnh giọng đọc theo (câu quát → đọc dồn, câu trầm → chậm lại). Đo bảo thủ: mơ hồ (nhạc lấn) thì giữ trung tính."],
+    "Đo tốc độ/độ to từng câu GỐC so với nền người nói → chỉnh giọng đọc theo (câu quát → đọc dồn, câu trầm → chậm lại). Nguồn đo: ƯU TIÊN giọng đã tách demucs (vocals — có khi Nhạc/SFX gốc = demucs đã chạy); chưa tách thì đo trên audio gốc, cảnh nhạc to có thể nhiễu. Chỉ áp engine edge."],
   ["EMOTION", "🎭 Nhãn cảm xúc", [["1", "Bật"], ["0", "Tắt"]], "tts",
     "AI gắn nhãn cảm xúc từng câu khi dịch (gấp/giận/buồn/thì thầm) → giọng đọc chỉnh nhịp/âm lượng theo — bắt được sắc thái audio không lộ (mỉa mai, đe dọa nói nhỏ...)."],
   ["PROSODY_TRANSFER", "📈 Chuyển ngữ điệu gốc", [["1", "Bật"], ["0", "Tắt"]], "tts",
@@ -2517,11 +2525,11 @@ function edOverridePanel(data) {
       <span class="ov-label" id="ovl-${key}">${label}${ovHint(help)}</span>${inner}</div>`;
   };
   // control KHÔNG phải env-override nhưng cùng ngữ cảnh — nhét vào đúng nhóm:
-  // 🎚 Âm nền gốc (bed_gain_db, nhóm Trộn — CHỈ hiện khi Nhạc/SFX = hạ đều, xem applyOvDeps),
-  // 🎙 giọng tất cả câu + Xử lý giọng (nhóm Giọng đọc)
+  // 🎚 Âm nền gốc (bed_gain_db, nhóm Trộn — hiện Ở MỌI mode từ U13),
+  // 🎙 giọng tất cả câu (nhóm Giọng đọc). Xử lý giọng đã dời sang panel 🎨 (U8).
   const extras = {
     mix: `<div class="ov-field" id="ovf-BEDVOL">
-      <span class="ov-label">🎚 Âm nền gốc${ovHint("Mức hạ audio GỐC dưới giọng đọc — output nghe nền to/nhỏ quá thì chỉnh rồi 💾 Lưu &amp; render lại (chỉ trộn lại, KHÔNG đọc lại giọng). Chỉ áp khi Nhạc/SFX gốc = hạ ĐỀU suốt video.")}</span>
+      <span class="ov-label">🎚 Âm nền gốc${ovHint("Mức hạ audio GỐC dưới giọng đọc — nền to/nhỏ quá thì chỉnh rồi 💾 Lưu &amp; render lại (chỉ trộn lại, KHÔNG đọc lại giọng). Áp ở MỌI chế độ Nhạc/SFX: hạ đều = mức toàn video; hạ khi có thoại = mức trong vùng thoại; demucs = mức nền nhạc đã tách.")}</span>
       <select id="ed-bedvol">
         ${[["", "— giữ nguyên —"], ["-8", "To hơn (-8dB)"], ["-14", "Vừa (-14dB, mặc định)"],
            ["-20", "Nhỏ (-20dB)"], ["-26", "Rất nhỏ (-26dB)"], ["-34", "Gần tắt (-34dB)"]]
@@ -2536,10 +2544,7 @@ function edOverridePanel(data) {
           ${edVoices.map(v => `<option value="ref:${esc(v.file)}">🎙 ${esc(v.name)}</option>`).join("")}
         </select>
         <button class="ghost" type="button" onclick="edApplyAllVoice()">↪ Đổi toàn bộ</button>
-      </span></div>
-    <div class="ov-field">
-      <span class="ov-label">🎛 Xử lý giọng${ovHint("Hậu kỳ giọng đọc khi render: EQ + nén + chuẩn độ to. <b>Cân bằng</b> là khởi đầu tốt; <b>Điện ảnh</b> dày, kịch tính; <b>Rõ/sáng</b> cứu giọng bị tối.")}</span>
-      <select id="fx-ed">${fxOptionsHtml((data.render || {}).fx || "off")}</select></div>`,
+      </span></div>`,
   };
   const hint = data.single_voice
     ? ' <span class="meta" style="margin:0">· 🔊 1 giọng: mọi câu đọc giọng chính — nhãn nam/nữ chỉ để casting</span>' : "";
@@ -2549,7 +2554,10 @@ function edOverridePanel(data) {
     <div class="ov-grid">${(extras[g] || "") + ED_OV_FIELDS.filter(f => f[3] === g).map(field).join("")}</div>`).join("");
   // onchange nổi bọt từ mọi select bên trong → cập nhật ẩn/hiện field phụ thuộc
   return `<details class="ed-settings" open onchange="applyOvDeps()">
-    <summary>⚙️ Tùy chọn video này (đè cấu hình chung)</summary>
+    <summary>⚙️ Tùy chọn video này (đè cấu hình chung)
+      <button class="ghost" type="button" style="float:right;font-size:12px"
+        onclick="event.preventDefault();edOvReset()"
+        title="Xoá mọi tùy chọn riêng của video này — quay về theo cấu hình chung (không đụng 🎚 âm nền và panel 🎨)">↺ Về cấu hình chung</button></summary>
     ${groups}
     <div class="meta">Chỉ áp cho VIDEO NÀY — cấu hình chung và video khác giữ nguyên. Bấm
     🔁 Áp dụng để NGHE THỬ (không render) hoặc 💾 Lưu &amp; render lại để xuất video;
@@ -2590,8 +2598,44 @@ function applyOvDeps() {
   show("WHISPER_MODEL", ts !== "ocr");
   show("OCR_FPS", ts !== "whisper");
   show("OCR_CROP_TOP", ts !== "whisper");
-  // 🎚 Âm nền gốc: theo yêu cầu user, chỉ hiện khi Nhạc/SFX gốc = "hạ ĐỀU suốt video"
-  show("BEDVOL", edOvEff("KEEP_BGM") === "flat");
+  // U13: Âm nền gốc hiện Ở MỌI mode — S6 áp gain cả khi duck theo thoại lẫn nền
+  // demucs, không riêng "hạ đều" (review Codex bắt: ẩn là mất control hợp lệ)
+  show("BEDVOL", true);
+  // U4: Tông giọng chỉ áp engine edge (viXTTS bắt chước clip mẫu, paid nhịp riêng)
+  show("PROSODY", edOvEff("TTS_ENGINE") === "edge");
+  // U3: EMOTION — nhãn chỉ sinh LÚC DỊCH; video chưa có nhãn mà chọn Bật thì server
+  // leo thang chạy lại từ DỊCH (edOvDepth cùng logic) → cảnh báo ngay tại chỗ
+  const emoSel = document.getElementById("ov-EMOTION");
+  if (emoSel) {
+    const hasEmo = (edSegs || []).some(s => (s.emotion || "").trim());
+    let warn = document.getElementById("ov-emotion-warn");
+    if (!hasEmo) {
+      if (!warn) {
+        warn = document.createElement("div");
+        warn.id = "ov-emotion-warn";
+        warn.className = "meta";
+        warn.style.gridColumn = "1 / -1";
+        emoSel.parentElement.appendChild(warn);
+      }
+      warn.textContent = edOvEff("EMOTION") === "1"
+        ? "⚠️ Video chưa có nhãn cảm xúc → Bật sẽ DỊCH LẠI TOÀN BỘ để tạo nhãn (mất câu sửa tay, tốn phí API)."
+        : "Video này dịch khi chưa bật nhãn cảm xúc — chọn Bật đồng nghĩa dịch lại toàn bộ để tạo nhãn.";
+    } else if (warn) warn.remove();
+  }
+  // U7: engine thiếu key/model → disable option kèm lý do (giá trị ĐANG chọn thì
+  // giữ chọn được + cảnh báo, kẻo job cũ override engine mất key bị kẹt không sửa được)
+  const engSel = document.getElementById("ov-TTS_ENGINE");
+  if (engSel && typeof edEngineCaps === "object") {
+    for (const opt of engSel.options) {
+      const cap = edEngineCaps[opt.value];
+      if (!opt.value || !cap) continue;
+      if (!cap.ready && !opt.dataset.capmark) {
+        opt.dataset.capmark = "1";
+        opt.text += " — " + cap.reason;
+      }
+      opt.disabled = !cap.ready && engSel.value !== opt.value;
+    }
+  }
 }
 function edCollectOverrides() {
   const out = {};
@@ -2613,8 +2657,48 @@ function edOvDepth(newOv) {
   const g = k => (ED_OV_FIELDS.find(f => f[0] === k) || [])[3];
   if ([...diff].some(k => g(k) === "transcript")) return "transcript";
   if ([...diff].some(k => g(k) === "translate")) return "translate";
-  if ([...diff].some(k => g(k) === "tts")) return "tts";
+  if ([...diff].some(k => g(k) === "tts")) {
+    // U3: bật EMOTION khi video chưa có nhãn → server leo thang chạy lại từ DỊCH
+    // (nhãn chỉ sinh lúc dịch) — client phải cảnh báo Y HỆT kẻo confirm nói dối
+    if (diff.has("EMOTION") && (newOv.EMOTION === "1")
+        && !(edSegs || []).some(s => (s.emotion || "").trim())) return "translate";
+    return "tts";
+  }
   return diff.size ? "mix" : null;
+}
+// U6: xoá mọi ⚙️ override một phát — về theo cấu hình chung (KHÔNG đụng 🎚 âm nền
+// và panel 🎨; vẫn phải bấm Áp dụng/Lưu, hệ thống chạy lại từ nhóm sâu nhất bị đổi)
+function edOvReset() {
+  let n = 0;
+  for (const [key] of ED_OV_FIELDS) {
+    const el = document.getElementById("ov-" + key);
+    if (el && el.value !== "") { el.value = ""; n++; }
+  }
+  applyOvDeps();
+  toast(n ? `Đã bỏ ${n} tùy chọn riêng — bấm 🔁 Áp dụng hoặc 💾 Lưu để chạy lại theo cấu hình chung`
+          : "Không có tùy chọn riêng nào đang đặt");
+}
+// U12: hỏi server tác động THẬT của ⚙️ đề xuất (đọc lại bao nhiêu câu, phí gì) →
+// chuỗi confirm có số liệu. Lỗi mạng/endpoint → trả null, caller dùng confirm cũ.
+async function edOvImpactMsg(env_overrides) {
+  try {
+    const r = await fetch(`/api/jobs/${edJobId}/override-impact`, { method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ env_overrides: env_overrides || {} }) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (!d.depth) return "";   // không đổi gì sâu — khỏi hỏi
+    const names = { mix: "🎛 Trộn âm (nhanh, giọng giữ nguyên)", tts: "🔊 Đọc lại giọng",
+                    translate: "🌐 DỊCH LẠI TOÀN BỘ", transcript: "📝 NHẬN DẠNG LẠI TỪ ĐẦU" };
+    let m = `Tùy chọn ⚙️ thay đổi → chạy lại từ: ${names[d.depth] || d.depth}\n`;
+    if (d.tts_regenerate) m += `• Đọc lại ${d.tts_regenerate}/${d.segments_total} câu\n`;
+    if (d.paid_tts_chars) m += `• Gửi dịch vụ TRẢ PHÍ ~${d.paid_tts_chars} ký tự\n`;
+    if (d.manual_edits_at_risk) m += `• MẤT các câu đã sửa tay\n`;
+    if (d.estimated_seconds && d.estimated_seconds[1])
+      m += `• Ước tính ${d.estimated_seconds[0]}–${d.estimated_seconds[1]} giây\n`;
+    for (const w of (d.warnings || [])) m += `• ⚠️ ${w}\n`;
+    return m + "Tiếp tục?";
+  } catch { return null; }
 }
 
 // #5: xem trước CHÍNH XÁC 1 khung bằng FFmpeg (che + kiểu chữ + phụ đề thật) — tái dùng
@@ -2929,8 +3013,13 @@ async function edSave() {
     const env_overrides = document.getElementById("ov-TTS_SINGLE_VOICE") ? edCollectOverrides() : null;
     // đổi nhóm SÂU (dịch lại / nhận dạng lại) phá nhiều thứ → xác nhận trước
     const depth = env_overrides !== null ? edOvDepth(env_overrides) : null;
-    if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
-    if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
+    if (depth) {   // U12: confirm CÓ SỐ từ /override-impact; endpoint lỗi → confirm tĩnh cũ
+      const m = await edOvImpactMsg(env_overrides);
+      if (m === null) {
+        if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
+        if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) { reset(); edRestoreEditorMedia(); return; }
+      } else if (m && !confirm(m)) { reset(); edRestoreEditorMedia(); return; }
+    }
     const res = await fetch(`/api/jobs/${edJobId}/segments`, { method: "POST",
       headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits, render, bed_gain_db, env_overrides }) });
     const raw = await res.text();
@@ -2978,8 +3067,13 @@ async function edApplyVoices() {
     msg.textContent = "Chưa có thay đổi nào (câu / ⚙️ tùy chọn / 🎚 âm nền) để áp dụng."; return;
   }
   // đổi nhóm SÂU phá nhiều thứ → xác nhận như nút 💾 (áp dụng cũng dịch/nhận dạng lại thật)
-  if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) return;
-  if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) return;
+  if (depth) {   // U12: confirm CÓ SỐ từ /override-impact; endpoint lỗi → confirm tĩnh cũ
+    const m = await edOvImpactMsg(env_overrides);
+    if (m === null) {
+      if (depth === "translate" && !confirm("Tùy chọn nhóm 🌐 Dịch bị đổi → video sẽ DỊCH LẠI TOÀN BỘ:\n- Tốn phí API dịch\n- MẤT các câu bạn đã sửa tay\nTiếp tục?")) return;
+      if (depth === "transcript" && !confirm("Tùy chọn nhóm 📝 Nhận dạng thoại bị đổi → làm lại TỪ TRANSCRIPT:\n- Lâu nhất (OCR/Whisper lại từ đầu)\n- MẤT bản dịch + mọi câu đã sửa tay\nTiếp tục?")) return;
+    } else if (m && !confirm(m)) return;
+  }
   // job đã render xong: đọc lại sẽ xoá bản final hiện tại (phải render lại sau) → hỏi trước
   if (edHadFinal && !confirm("Áp dụng sẽ xoá bản video đã render (final) và cần render lại sau khi ưng. Tiếp tục?")) return;
   const btn = document.getElementById("edapplybtn");

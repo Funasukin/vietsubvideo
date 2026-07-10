@@ -38,30 +38,35 @@ def _edge_voice(seg: dict) -> str:
     return nu if _seg_nu(seg) else nam
 
 
+def _tts_settings():
+    """Ảnh chụp cấu hình giọng HIỆN HÀNH (module config đã áp .env + override job
+    qua FLOWAPP_JOB_OVERRIDES trong tiến trình worker). Cache theo lần gọi stage."""
+    from core import voicesig
+    return voicesig.TtsSettings.from_env({
+        "TARGET_LANG": langs.code(),
+        "TTS_ENGINE": config.TTS_ENGINE,
+        "TTS_SINGLE_VOICE": "1" if config.TTS_SINGLE_VOICE else "0",
+        "TTS_VOICE": config.TTS_VOICE, "TTS_VOICE_NU": config.TTS_VOICE_NU,
+        "VIXTTS_VOICE_NAM": config.VIXTTS_VOICE_NAM,
+        "VIXTTS_VOICE_NU": config.VIXTTS_VOICE_NU,
+        "ELEVENLABS_VOICE_NAM": config.ELEVENLABS_VOICE_NAM,
+        "ELEVENLABS_VOICE_NU": config.ELEVENLABS_VOICE_NU,
+        "VBEE_VOICE_NAM": config.VBEE_VOICE_NAM, "VBEE_VOICE_NU": config.VBEE_VOICE_NU,
+        "FPT_VOICE_NAM": config.FPT_VOICE_NAM, "FPT_VOICE_NU": config.FPT_VOICE_NU,
+        "MAX_SPEEDUP": str(config.MAX_SPEEDUP),
+        "PROSODY_TRANSFER": config.PROSODY_TRANSFER,
+        "EMOTION": config.EMOTION,
+    })
+
+
 def _voice_sig(seg: dict) -> str:
     """Chữ ký giọng DỰ KIẾN của 1 câu (engine + nguồn giọng). Lưu cạnh mp3 (.sig) để
     resume biết file cũ có đúng giọng hiện tại không — nếu khác (đổi giọng/clip/engine,
-    ĐỔI NGÔN NGỮ ĐÍCH, hay mp3 cũ từ trước khi có tính năng) thì đọc lại."""
-    # đích ≠ vi: mọi câu (kể cả cast voice_ref) đọc edge theo ngôn ngữ — viXTTS là
-    # finetune tiếng Việt, clone sang ngôn ngữ khác méo giọng. Sig đổi → tự đọc lại.
-    pt = prosody_transfer.sig_tag()   # mức 3 bật/tắt → mọi câu tự xử lý lại
-    eng = config.TTS_ENGINE
-    # viXTTS kèm :f{ngân sách} như edge: giờ viXTTS cũng fit theo slot (speed synth
-    # lại — đợt B audit giọng) nên user đổi núm MAX_SPEEDUP → sig lệch → tự đọc lại.
-    if langs.is_vi() and seg.get("voice_ref"):
-        return "vix:ref:" + seg["voice_ref"] + f":f{_fit_budget()}" + pt  # cast → luôn viXTTS
-    nu = _seg_nu(seg)
-    # engine trả phí (PLAN 11 C/D): VBee/FPT chỉ tiếng Việt — đích khác rơi về edge
-    if paid_tts.is_paid(eng) and not (eng in paid_tts.VI_ONLY and not langs.is_vi()):
-        nam_v, nu_v = paid_tts.voice_pair(eng)
-        return f"{eng}:" + (nu_v if nu else nam_v) + pt
-    if langs.is_vi() and eng == "vixtts":
-        # kèm nhãn cảm xúc: nhãn đổi → chọn clip mẫu khác → phải đọc lại
-        return ("vix:def:" + (config.VIXTTS_VOICE_NU if nu else config.VIXTTS_VOICE_NAM)
-                + emotion.sig_tag(seg) + f":f{_fit_budget()}" + pt)
-    # kèm tông giọng (prosody) + nhãn cảm xúc + ngân sách fit — đổi là tự đọc lại
-    return ("edge:" + _edge_voice(seg) + prosody.sig_tag(seg) + emotion.sig_tag(seg)
-            + f":f{_fit_budget()}" + pt)
+    ĐỔI NGÔN NGỮ ĐÍCH, hay mp3 cũ từ trước khi có tính năng) thì đọc lại.
+    Đợt U-2: logic thật nằm ở core/voicesig.voice_signature (resolver thuần dữ liệu,
+    endpoint /override-impact dùng CHUNG) — sửa format sig là sửa Ở ĐÓ."""
+    from core import voicesig
+    return voicesig.voice_signature(seg, _tts_settings())
 
 
 def _seg_ready(job: Job, seg: dict) -> bool:
@@ -83,8 +88,9 @@ def _write_sig(job: Job, seg: dict, sig: str) -> None:
 def _fit_budget() -> int:
     """Ngân sách tăng tốc VÌ KHỚP THOẠI (%) theo núm MAX_SPEEDUP — deterministic nên
     nằm được trong .sig: user đổi núm → sig lệch → các câu (edge LẪN viXTTS) tự đọc
-    lại đúng mức mới (không tag thì mp3 cũ giữ tốc độ fit cũ, hạ núm cũng vô tác dụng)."""
-    return max(0, min(duration.EDGE_RATE_MAX, round((config.MAX_SPEEDUP - 1) * 100)))
+    lại đúng mức mới. Logic chung ở core/voicesig.fit_budget (resolver dùng cùng số)."""
+    from core import voicesig
+    return voicesig.fit_budget(config.MAX_SPEEDUP)
 
 
 async def _fit_slot(seg: dict, voice: str, out, fit_log: dict) -> None:

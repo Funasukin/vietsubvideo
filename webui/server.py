@@ -297,7 +297,10 @@ class RenderOptions(BaseModel):
     cover_bottom: float = 1.0     # cạnh DƯỚI của băng che (1.0 = dính đáy)
     cover_width: float = 1.0      # độ rộng vùng blur (1.0 = full width, 0.6 = 60% căn giữa)
     style: dict = {}              # font/size/color... — xem DEFAULT_STYLE trong s8_render
-    fx: str = "off"               # hậu kỳ giọng: off|canbang|amday|rosang|dienanh|toithieu (core/voice_fx)
+    # hậu kỳ giọng khi render: off|canbang|amday|rosang|dienanh|toithieu (core/voice_fx).
+    # "" = THEO CẤU HÌNH CHUNG (U8 audit panel: không ghim vào job — trước đây default
+    # "off" bị lưu chết vào render.fx làm knob VOICE_FX toàn cục vô hiệu vĩnh viễn)
+    fx: str = ""
     frame: str = "none"           # khung viền: none|solid|double|twocolor|corner|png:<file>
     frame_color: str = "#FFD700"  # màu viền procedural
     frame_color2: str = "#FFFFFF" # màu 2 (kiểu "viền 2 màu")
@@ -769,7 +772,8 @@ def rerender_job(job_id: str, opts: RenderOptions) -> dict:
                   "cover": opts.cover, "cover_top": opts.cover_top,
                   "cover_bottom": opts.cover_bottom,
                   "cover_width": opts.cover_width,
-                  "style": opts.style, "fx": opts.fx,
+                  # fx "" = theo cấu hình chung → KHÔNG lưu key (s8 tự fallback config)
+                  "style": opts.style, **({"fx": opts.fx} if opts.fx else {}),
                   "frame": opts.frame, "frame_color": opts.frame_color,
                   "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
                   "frame_pad": opts.frame_pad,
@@ -1042,7 +1046,9 @@ def get_segments(job_id: str) -> dict:
             "has_dub": (job_dir / "dubbed_audio.wav").exists(),
             # V13 audit giọng: số đo khớp nhịp per-câu từ lần mix gần nhất → editor
             # tô cảnh báo câu bị nén mạnh / bị cắt / hụt slot. Job chưa mix → {}.
-            "mix_detail": _mix_detail(job_dir)}
+            "mix_detail": _mix_detail(job_dir),
+            # U7: engine nào sẵn sàng (thiếu key/model thì disable + lý do)
+            "engines": _engine_caps()}
 
 
 def _mix_detail(job_dir) -> dict:
@@ -1287,6 +1293,49 @@ _OV_MIX = {"KEEP_BGM", "STRETCH_SHORT"}
 _JOB_OVERRIDE_KEYS = _OV_TRANSCRIPT | _OV_TRANSLATE | _OV_TTS | _OV_MIX
 
 
+def _has_emotion_labels(job_dir: Path) -> bool:
+    """Transcript có nhãn cảm xúc HỢP LỆ nào không (≠ binhthuong — nhãn chỉ sinh
+    lúc dịch với EMOTION bật)."""
+    try:
+        segs = json.loads((job_dir / "transcript_vi.json").read_text(encoding="utf-8"))["segments"]
+        return any((s.get("emotion") or "").strip().lower()
+                   in ("gap", "gian", "buon", "thitham") for s in segs)
+    except Exception:
+        return False
+
+
+def _ov_depth_for(diff: set, job_dir: Path, new_ov: dict) -> str | None:
+    """Nhóm SÂU NHẤT trong các khóa override bị đổi → chạy lại từ stage nào.
+    U3 audit panel: BẬT EMOTION khi transcript chưa có nhãn → leo thang lên
+    translate (nhãn chỉ sinh lúc dịch — để depth tts thì knob là no-op tuyệt đối).
+    Client (edOvDepth) có logic leo thang Y HỆT để confirm khớp server."""
+    if not diff:
+        return None
+    depth = ("transcript" if diff & _OV_TRANSCRIPT
+             else "translate" if diff & _OV_TRANSLATE
+             else "tts" if diff & _OV_TTS
+             else "mix")
+    if (depth == "tts" and "EMOTION" in diff
+            and str(new_ov.get("EMOTION", "")).strip().lower() not in ("", "0", "false")
+            and not _has_emotion_labels(job_dir)):
+        depth = "translate"
+    return depth
+
+
+def _engine_caps() -> dict:
+    """Trạng thái sẵn sàng từng engine (U7) — KHÔNG lộ secret, chỉ ready+lý do.
+    viXTTS kiểm nhẹ (model dir) — is_available() sẽ nạp model lên GPU, quá đắt."""
+    from core import paid_tts
+    caps = {"edge": {"ready": True, "reason": ""}}
+    caps["vixtts"] = ({"ready": True, "reason": ""}
+                      if (config.VIXTTS_DIR / "config.json").exists()
+                      else {"ready": False, "reason": "Chưa tải model viXTTS"})
+    for eng in ("elevenlabs", "vbee", "fpt"):
+        ok, why = paid_tts.ready(eng)
+        caps[eng] = {"ready": ok, "reason": "" if ok else why}
+    return caps
+
+
 def _unlink_quiet(path: Path, retries: int = 8) -> bool:
     """Xoá file, thử lại nếu Windows còn KHOÁ (trình duyệt đang phát/serve dubbed_audio.wav
     hay final.mp4 giữ handle → WinError 32). Trả True nếu file đã KHÔNG còn (xoá được hoặc
@@ -1357,10 +1406,8 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     env_change = new_ov is not None and new_ov != old_ov
     ov_diff = ({k for k in set(old_ov) | set(new_ov or {})
                 if old_ov.get(k) != (new_ov or {}).get(k)} if env_change else set())
-    ov_depth = ("transcript" if ov_diff & _OV_TRANSCRIPT
-                else "translate" if ov_diff & _OV_TRANSLATE
-                else "tts" if ov_diff & _OV_TTS
-                else "mix") if env_change else None
+    # helper chung với /override-impact — gồm cả leo thang EMOTION→translate (U3)
+    ov_depth = _ov_depth_for(ov_diff, job.dir, new_ov or {}) if env_change else None
     if not changed and not has_render and not bed_change and not env_change:
         return {"changed": 0, **(_job_summary(job.dir) or {})}
 
@@ -1435,7 +1482,8 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
         r = body.render
         job.render = {"subtitle_mode": r.subtitle_mode, "cover": r.cover,
                       "cover_top": r.cover_top, "cover_bottom": r.cover_bottom,
-                      "cover_width": r.cover_width, "style": r.style, "fx": r.fx,
+                      "cover_width": r.cover_width, "style": r.style,
+                      **({"fx": r.fx} if r.fx else {}),   # "" = theo cấu hình chung
                       "frame": r.frame, "frame_color": r.frame_color,
                       "frame_color2": r.frame_color2, "frame_width": r.frame_width}
         job.completed_stages = [s for s in job.completed_stages if s != "rendering"]
@@ -1447,6 +1495,101 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     job.save()
     _enqueue(job_id)
     return {"changed": len(changed), **(_job_summary(job.dir) or {})}
+
+
+class OverrideImpactBody(BaseModel):
+    env_overrides: dict = {}
+
+
+@app.post("/api/jobs/{job_id}/override-impact")
+def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
+    """DRY-RUN tác động của ⚙️ override ĐỀ XUẤT (U12 audit panel): chạy lại từ đâu,
+    bao nhiêu câu phải đọc lại, gửi bao nhiêu ký tự cho dịch vụ trả phí, mất gì.
+    Thuần dữ liệu (core/voicesig — cùng resolver với S5), không đụng config toàn
+    cục, không load model — trả lời trong mili-giây."""
+    _check_job_id(job_id)
+    job_dir = config.JOBS_DIR / job_id
+    tv = job_dir / "transcript_vi.json"
+    if not tv.exists():
+        raise HTTPException(409, "Job chưa dịch xong")
+    try:
+        state = json.loads((job_dir / "state.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        state = {}
+    old_ov = state.get("env_overrides") or {}
+    new_ov = {k: str(v).strip() for k, v in (body.env_overrides or {}).items()
+              if k in _JOB_OVERRIDE_KEYS and str(v).strip() and len(str(v)) <= 200}
+    diff = {k for k in set(old_ov) | set(new_ov) if old_ov.get(k) != new_ov.get(k)}
+    base_depth = ("transcript" if diff & _OV_TRANSCRIPT
+                  else "translate" if diff & _OV_TRANSLATE
+                  else "tts" if diff & _OV_TTS
+                  else "mix") if diff else None
+    depth = _ov_depth_for(diff, job_dir, new_ov)
+    segs = [s for s in json.loads(tv.read_text(encoding="utf-8"))["segments"]
+            if s.get("text_vi", "").strip() and not s.get("mute")]
+    stages_map = {"mix": ["bgm", "mixing", "rendering"],
+                  "tts": ["tts", "bgm", "mixing", "rendering"],
+                  "translate": ["translating", "tts", "bgm", "mixing", "rendering"],
+                  "transcript": ["transcribing", "translating", "tts", "bgm",
+                                 "mixing", "rendering"]}
+    out = {"depth": depth, "stages": stages_map.get(depth or "", []),
+           "segments_total": len(segs), "tts_regenerate": 0, "paid_tts_chars": 0,
+           "manual_edits_at_risk": 0, "estimated_seconds": [0, 0], "warnings": []}
+    if depth is None:
+        return out
+    if base_depth == "tts" and depth == "translate":
+        out["warnings"].append("Bật nhãn cảm xúc khi video CHƯA có nhãn → phải "
+                               "dịch lại toàn bộ để tạo nhãn.")
+
+    from core import voicesig
+    env_eff = {**_read_env(), **new_ov}
+    st = voicesig.TtsSettings.from_env(env_eff)
+    caps = _engine_caps()
+    if st.engine in caps and not caps[st.engine]["ready"]:
+        out["warnings"].append(f"Engine {st.engine}: {caps[st.engine]['reason']}")
+
+    if depth == "mix":
+        out["estimated_seconds"] = [5, 30]
+        return out
+    if depth in ("translate", "transcript"):
+        # chữ ký TƯƠNG LAI phụ thuộc output LLM/ASR — không giả vờ đếm được:
+        # toàn bộ output sau stage bị làm lại
+        out["tts_regenerate"] = len(segs)
+        out["manual_edits_at_risk"] = len(segs)
+        if st.engine in voicesig.PAID_ENGINES:
+            out["paid_tts_chars"] = sum(len(s.get("text_vi", "")) for s in segs
+                                        if not s.get("voice_ref"))
+        out["estimated_seconds"] = [60, 300] if depth == "translate" else [120, 600]
+        out["warnings"].append("Các câu đã sửa tay sẽ MẤT (dịch/nhận dạng lại).")
+        return out
+
+    # depth == "tts": so chữ ký dự kiến với .sig trên đĩa — đúng cơ chế resume của S5
+    prosody_toggled = "PROSODY" in diff
+    regen = 0
+    paid_chars = 0
+    for s in segs:
+        sigf = job_dir / "tts" / f"seg_{s['id']:04d}.sig"
+        try:
+            disk = sigf.read_text(encoding="utf-8")
+        except OSError:
+            disk = None
+        need = disk != voicesig.voice_signature(s, st)
+        # bật/tắt Tông giọng: nhãn prosody ĐO LẠI lúc chạy — không đoán trước được
+        # → tính mọi câu edge không cast là ảnh hưởng (chặn trên) + cảnh báo
+        if prosody_toggled and st.engine == "edge" and not s.get("voice_ref"):
+            need = True
+        if need:
+            regen += 1
+            if st.engine in voicesig.PAID_ENGINES and not s.get("voice_ref"):
+                paid_chars += len(s.get("text_vi", ""))
+    out["tts_regenerate"] = regen
+    out["paid_tts_chars"] = paid_chars
+    if prosody_toggled:
+        out["warnings"].append("Bật/tắt Tông giọng: số câu đọc lại là CHẶN TRÊN "
+                               "(nhãn đo lại lúc chạy mới biết chính xác).")
+    per = {"edge": (0.8, 2.0), "vixtts": (4.0, 9.0)}.get(st.engine, (1.0, 3.0))
+    out["estimated_seconds"] = [int(regen * per[0] + 10), int(regen * per[1] + 30)]
+    return out
 
 
 class TtsPreviewBody(BaseModel):
