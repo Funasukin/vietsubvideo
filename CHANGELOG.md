@@ -6,6 +6,32 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (6) — Desktop (F:\MyProject\vietsubvideo)
+
+### #16 giai đoạn 2: tách cụm route EDITOR khỏi server.py
+
+Tiếp mạch giai đoạn 1 (worker) — refactor CƠ HỌC, chuyển NGUYÊN VĂN bằng splice
+có kiểm chứng biên từng khối:
+- **`webui/routes_editor.py` (MỚI, ~915 dòng, APIRouter)**: RenderOptions,
+  rerender + preview khung, segments GET/POST (+ _save_segments_inner),
+  SegmentEdit(s), nhóm _OV_* + _JOB_OVERRIDE_KEYS, _has_emotion_labels,
+  _ov_depth_for, _engine_caps, _mix_detail, override-impact, mix-preview,
+  tts-preview + _resolve_voice_ref. Server chỉ còn `include_router`.
+- **`webui/common.py` (MỚI, 130 dòng)**: helper dùng CHUNG giữa server và route
+  module — _JOB_ID_RE/_check_job_id, _job_summary (+_cached_seg_total/_cached_
+  tts_done), _unlink_quiet.
+- **server.py: 2208 → ~1210 dòng** (giảm ~45%; trước toàn bộ đợt #16: 2306).
+- 2 lỗi splice bắt được nhờ verify: `_QC_CJK` bị cuốn nhầm theo khối editor
+  (trả về route /qc còn ở server) và routes_editor thiếu import `_JOB_ID_RE`
+  (tts-preview 500 — smoke test bắt được, đã sửa).
+- Verify: 54 route đăng ký đủ; smoke 16/16 endpoint (5 cụm đã dời + 11 cụm ở
+  lại, gồm cả trang chủ) đều 200 qua server thật.
+
+Còn lại của #16: server.py giờ chủ yếu là jobs/media/config/glossary/series/
+youtube — đã ở mức dễ bảo trì; tách tiếp nếu cần sau #17 (index.html).
+
+---
+
 ## 2026-07-11 (5) — Desktop (F:\MyProject\vietsubvideo)
 
 ### #16 giai đoạn 1: tách worker/queue khỏi server.py → webui/worker.py
