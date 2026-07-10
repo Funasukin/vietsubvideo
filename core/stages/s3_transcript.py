@@ -58,17 +58,24 @@ def _add_cuda_dll_dirs() -> None:
 
 
 def _whisper_segments(job: Job, duration: float = 0.0) -> tuple[list[dict], str]:
+    import time as _time
     from core import progress
     _add_cuda_dll_dirs()
+    _t0 = _time.perf_counter()
     from faster_whisper import WhisperModel  # import muộn: model nặng
 
     try:
         model = WhisperModel(config.WHISPER_MODEL, device=config.WHISPER_DEVICE,
                              compute_type=config.WHISPER_COMPUTE)
+        _dev = config.WHISPER_DEVICE
     except Exception as e:
         # GPU/CUDA không sẵn (thiếu cublas...) → CPU int8 luôn chạy được
         print(f"  Whisper {config.WHISPER_DEVICE} lỗi ({e}); fallback CPU int8")
         model = WhisperModel(config.WHISPER_MODEL, device="cpu", compute_type="int8")
+        _dev = "cpu"
+    # Telemetry W-0: chi phí nạp (gồm import) — dữ liệu quyết định model host
+    print(f"MODEL backend=whisper event=load seconds={_time.perf_counter() - _t0:.1f} "
+          f"model={config.WHISPER_MODEL} device={_dev}")
     from core import glossary, series
     # glossary tập + glossary DÙNG CHUNG của series (nếu có) → Whisper nghe đúng tên riêng
     gloss_text = (series.glossary_for(job.series) + "\n" + job.glossary).strip()

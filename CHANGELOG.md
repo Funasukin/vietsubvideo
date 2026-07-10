@@ -6,6 +6,33 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (4) — Desktop (F:\MyProject\vietsubvideo)
+
+### W-0: benchmark model + telemetry (user chốt "W-0 trước, gọn rồi qua #16")
+
+- **`scripts/bench_models.py`**: đo cold/warm theo kỷ luật Codex — MỖI case một
+  subprocess mới (đo chung 1 tiến trình là torch ấm, số đẹp giả), 3 lượt,
+  median[min–max], append `data/bench_models.jsonl` để so sau nâng cấp package.
+- **Telemetry 1-dòng vào run.log** (tự tích luỹ từ giờ): `STAGE name=<stage>
+  seconds=X` (core/pipeline.py); `MODEL backend=whisper event=load seconds=X
+  model= device=` (s3); `MODEL backend=vixtts event=load seconds=X vram_mb=`
+  (vixtts._build_model); `MODEL backend=demucs event=run seconds=X` (separate).
+- **SỐ ĐO THẬT (RTX 3070, máy này, 2026-07-11):**
+  | case | median [min–max] |
+  |---|---|
+  | import pipeline (mỗi job trả) | **1.6s** [1.5–1.6] |
+  | whisper small cpu: import + load | **16.1 + 7.9s** [cold máy: 44 + 14s] |
+  | viXTTS: load lên GPU | **25.7s** [cold máy: 84s]; synth warm 2.9–3.2s/câu |
+  | demucs: import + load weights | 1.7 + 0.2s (tách mới tốn, load không đáng) |
+  | OCR RapidOCR init | ~0.3s |
+  → Kết luận số: workflow OCR+edge hiện tại chỉ phí 1.6s/job (model host KHÔNG
+  lãi); job dùng Whisper lãi ~25–60s, dùng viXTTS lãi ~30–90s. Ngưỡng 20–30s/job
+  của Codex đạt NGAY khi 2 backend đó được dùng — telemetry sẽ đếm tần suất
+  thật, đủ 20–30 job thì quyết W-2 (model host riêng, thiết kế đã chốt).
+- Verify: chạy lại mixing→metadata job test, run.log có đủ dòng STAGE.
+
+---
+
 ## 2026-07-11 (3) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Nhóm bug #12–15 audit gốc (user: "thực hiện tiếp") — cả 4 đã sửa + verify

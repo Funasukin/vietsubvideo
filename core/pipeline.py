@@ -5,6 +5,7 @@ nên job chết giữa chừng chỉ cần gọi run() lại là tiếp tục đ
 """
 from __future__ import annotations
 
+import time
 from typing import Callable
 
 from core import progress
@@ -57,6 +58,7 @@ def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
         if on_stage:
             on_stage(job, stage)
 
+        t0 = time.perf_counter()
         try:
             STAGE_RUNNERS[stage](job)
         except Exception as e:
@@ -65,6 +67,11 @@ def run(job: Job, on_stage: ProgressCallback | None = None) -> Job:
             job.save()
             progress.clear(job.dir)   # bỏ tiến độ dở của stage lỗi (khỏi treo thanh cũ)
             raise
+
+        # Telemetry W-0 (DEXUAT_WORKER_THUONGTRU_TONGHOP): 1 dòng/stage vào run.log
+        # (stdout đã redirect) — greppable, tích luỹ số liệu thật để quyết định
+        # worker thường trú/model host bằng dữ liệu thay vì cảm giác.
+        print(f"STAGE name={stage.value} seconds={time.perf_counter() - t0:.1f}")
 
         job.completed_stages.append(stage.value)
         job.save()

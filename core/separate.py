@@ -37,9 +37,14 @@ def no_vocals(job: Job) -> str:
     _setup_dll_dirs()
 
     outroot = job.dir / "_demucs"
+    import time as _time
+    _t0 = _time.perf_counter()
     from demucs.separate import main
     main(["--two-stems=vocals", "-d", config.VIXTTS_DEVICE,
           "-o", str(outroot), str(src)])
+    # Telemetry W-0: load + tách gộp chung (demucs gọi qua CLI, chưa tách được load)
+    print(f"MODEL backend=demucs event=run seconds={_time.perf_counter() - _t0:.1f} "
+          f"device={config.VIXTTS_DEVICE}")
 
     produced = outroot / "htdemucs" / src.stem / "no_vocals.wav"
     if not produced.exists():

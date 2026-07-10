@@ -68,6 +68,8 @@ def _build_model():
     if not (config.VIXTTS_DIR / "config.json").exists():
         raise RuntimeError(f"Chưa có model viXTTS tại {config.VIXTTS_DIR} "
                            "(tải capleaf/viXTTS)")
+    import time as _time
+    _t0 = _time.perf_counter()
     _setup_dll_dirs()
 
     from TTS.tts.configs.xtts_config import XttsConfig
@@ -96,6 +98,14 @@ def _build_model():
         model.tokenizer.char_limits["vi"] = 250
     except Exception:
         pass
+    # Telemetry W-0: chi phí nạp model lên GPU — dữ liệu quyết định model host
+    try:
+        import torch
+        _vram = int(torch.cuda.memory_allocated() / 1e6) if torch.cuda.is_available() else 0
+    except Exception:
+        _vram = 0
+    print(f"MODEL backend=vixtts event=load seconds={_time.perf_counter() - _t0:.1f} "
+          f"device={config.VIXTTS_DEVICE} vram_mb={_vram}")
     return model
 
 
