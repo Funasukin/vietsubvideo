@@ -97,6 +97,34 @@ def _enqueue(job_id: str) -> bool:
     return True
 
 
+def _reserve_job(job_id: str) -> None:
+    """Bug #12 (audit): GIỮ CHỖ job trong _active TRƯỚC khi endpoint sửa file của nó
+    (save_segments/rerender xoá transcript/mp3/final giữa chừng). Trước đây chỉ check
+    `in _active` rồi buông lock — 'Chạy tất cả'/resume có thể xếp job chạy ĐÚNG LÚC
+    đang xoá dở → cli đọc dữ liệu nửa vời. Caller PHẢI kết thúc bằng
+    _enqueue_reserved() (thành công) hoặc _release_job() (mọi đường lỗi/không đổi)."""
+    with _lock:
+        if job_id in _active or job_id in _cancel:
+            raise HTTPException(409, "Job đang chạy hoặc đã trong hàng đợi")
+        _active.add(job_id)
+
+
+def _release_job(job_id: str) -> None:
+    with _lock:
+        _active.discard(job_id)
+
+
+def _enqueue_reserved(job_id: str) -> None:
+    """Xếp job ĐÃ giữ chỗ (_reserve_job) vào hàng — như _enqueue nhưng bỏ bước
+    check/add _active (đã giữ từ trước khi sửa file)."""
+    try:
+        from core import vixtts
+        vixtts.unload()
+    except Exception:
+        pass
+    _pending.put(job_id)
+
+
 def _auto_retry_limit() -> int:
     """Đọc AUTO_RETRY tươi từ .env mỗi lần (sửa từ UI có hiệu lực ngay, khỏi restart)."""
     try:
@@ -760,41 +788,45 @@ def prioritize_job(job_id: str) -> dict:
 @app.post("/api/jobs/{job_id}/rerender")
 def rerender_job(job_id: str, opts: RenderOptions) -> dict:
     _check_job_id(job_id)
-    with _lock:
-        if job_id in _active:
-            raise HTTPException(409, "Job đang chạy hoặc đã trong hàng đợi")
+    # Bug #12: giữ chỗ TRƯỚC khi sửa state/xoá final — chặn "Chạy tất cả"/resume
+    # xếp job chạy giữa lúc đang mutation (trước đây check xong buông lock)
+    _reserve_job(job_id)
     try:
-        job = Job.load(job_id)
-    except FileNotFoundError:
-        raise HTTPException(404, "Không có job này")
+        try:
+            job = Job.load(job_id)
+        except FileNotFoundError:
+            raise HTTPException(404, "Không có job này")
 
-    job.render = {"subtitle_mode": opts.subtitle_mode,
-                  "cover": opts.cover, "cover_top": opts.cover_top,
-                  "cover_bottom": opts.cover_bottom,
-                  "cover_width": opts.cover_width,
-                  # fx "" = theo cấu hình chung → KHÔNG lưu key (s8 tự fallback config)
-                  "style": opts.style, **({"fx": opts.fx} if opts.fx else {}),
-                  "frame": opts.frame, "frame_color": opts.frame_color,
-                  "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
-                  "frame_pad": opts.frame_pad,
-                  "wm_method": opts.wm_method, "wm_box": opts.wm_box,
-                  "crop": opts.crop, "sub_split": opts.sub_split}
-    job.pause_before_render = False
-    # gate như save_segments: final/srt có thể đang bị trình duyệt phát giữ khoá —
-    # xoá hụt mà cứ enqueue thì S8 thấy file còn → bỏ qua → "render lại" giả
-    locked = [n for n in ("final.mp4", "sub_vi.srt") if not _unlink_quiet(job.dir / n)]
-    if locked:
-        raise HTTPException(409, "Tệp đang được phát/khoá: " + ", ".join(locked)
-                            + ". Dừng phát (hoặc đợi vài giây) rồi thử lại.")
-    # job.mode=="visual": không có transcript nên KHÔNG được đụng stage "metadata"
-    # (s9_metadata.run đọc transcript_vi.json → crash nếu chạy nhầm cho job visual).
-    drop_stages = ("rendering",) if job.mode == "visual" else ("rendering", "metadata")
-    if job.mode != "visual":
-        _unlink_quiet(job.dir / "metadata.json")
-    job.completed_stages = [s for s in job.completed_stages if s not in drop_stages]
-    job.error = None
-    job.save()
-    _enqueue(job_id)
+        job.render = {"subtitle_mode": opts.subtitle_mode,
+                      "cover": opts.cover, "cover_top": opts.cover_top,
+                      "cover_bottom": opts.cover_bottom,
+                      "cover_width": opts.cover_width,
+                      # fx "" = theo cấu hình chung → KHÔNG lưu key (s8 tự fallback config)
+                      "style": opts.style, **({"fx": opts.fx} if opts.fx else {}),
+                      "frame": opts.frame, "frame_color": opts.frame_color,
+                      "frame_color2": opts.frame_color2, "frame_width": opts.frame_width,
+                      "frame_pad": opts.frame_pad,
+                      "wm_method": opts.wm_method, "wm_box": opts.wm_box,
+                      "crop": opts.crop, "sub_split": opts.sub_split}
+        job.pause_before_render = False
+        # gate như save_segments: final/srt có thể đang bị trình duyệt phát giữ khoá —
+        # xoá hụt mà cứ enqueue thì S8 thấy file còn → bỏ qua → "render lại" giả
+        locked = [n for n in ("final.mp4", "sub_vi.srt") if not _unlink_quiet(job.dir / n)]
+        if locked:
+            raise HTTPException(409, "Tệp đang được phát/khoá: " + ", ".join(locked)
+                                + ". Dừng phát (hoặc đợi vài giây) rồi thử lại.")
+        # job.mode=="visual": không có transcript nên KHÔNG được đụng stage "metadata"
+        # (s9_metadata.run đọc transcript_vi.json → crash nếu chạy nhầm cho job visual).
+        drop_stages = ("rendering",) if job.mode == "visual" else ("rendering", "metadata")
+        if job.mode != "visual":
+            _unlink_quiet(job.dir / "metadata.json")
+        job.completed_stages = [s for s in job.completed_stages if s not in drop_stages]
+        job.error = None
+        job.save()
+    except BaseException:
+        _release_job(job_id)   # mọi đường lỗi phải nhả chỗ, kẻo job kẹt "active" mãi
+        raise
+    _enqueue_reserved(job_id)
     return _job_summary(job.dir)
 
 
@@ -1130,7 +1162,8 @@ def job_log(job_id: str, lines: int = 200) -> dict:
 # "Sửa lời thoại" sau pipeline tự tách audio lại từ source (chậm hơn chút, không hỏng).
 _CLEAN_FILES = ["audio_16k.wav", "audio_full.wav", "vocals.wav", "no_vocals.wav",
                 "ducked.wav", "dubbed_audio.wav", "dubbed_render.wav",
-                "vf_auto.txt", "ocr_raw.json"]
+                "vf_auto.txt", "ocr_raw.json",
+                "final_io.mp4"]   # bug #15: bản ghép intro/outro dở từ code cũ
 _CLEAN_STAGES = {"extracting", "bgm", "mixing"}
 
 
@@ -1360,11 +1393,24 @@ def _unlink_quiet(path: Path, retries: int = 8) -> bool:
 
 @app.post("/api/jobs/{job_id}/segments")
 def save_segments(job_id: str, body: SegmentEdits) -> dict:
-    """Lưu sửa lời thoại + giọng; chỉ đọc lại TTS các câu ĐÃ ĐỔI rồi mix+render lại."""
+    """Lưu sửa lời thoại + giọng; chỉ đọc lại TTS các câu ĐÃ ĐỔI rồi mix+render lại.
+    Bug #12: giữ chỗ _active TRƯỚC khi mutation (xoá mp3/transcript/final) — chặn
+    'Chạy tất cả'/resume xếp job chạy đúng lúc file đang bị xoá dở."""
     _check_job_id(job_id)
-    with _lock:
-        if job_id in _active:
-            raise HTTPException(409, "Job đang chạy — chờ xong rồi sửa")
+    _reserve_job(job_id)   # 409 nếu đang chạy/chờ; giữ chỗ trong suốt mutation
+    try:
+        out = _save_segments_inner(job_id, body)
+    except BaseException:
+        _release_job(job_id)   # mọi đường lỗi (404/409 khoá file/exception) nhả chỗ
+        raise
+    if out.pop("_enqueue", False):
+        _enqueue_reserved(job_id)
+    else:
+        _release_job(job_id)   # không có gì thay đổi → không chạy lại
+    return out
+
+
+def _save_segments_inner(job_id: str, body: SegmentEdits) -> dict:
     try:
         job = Job.load(job_id)
     except FileNotFoundError:
@@ -1501,8 +1547,10 @@ def save_segments(job_id: str, body: SegmentEdits) -> dict:
     job.pause_before_render = bool(body.rebuild_only)
     job.error = None
     job.save()
-    _enqueue(job_id)
-    return {"changed": len(changed), **(_job_summary(job.dir) or {})}
+    # KHÔNG _enqueue ở đây — wrapper save_segments xếp hàng qua _enqueue_reserved
+    # (job đã được giữ chỗ từ trước khi mutation)
+    return {"changed": len(changed), "_enqueue": True,
+            **(_job_summary(job.dir) or {})}
 
 
 class OverrideImpactBody(BaseModel):

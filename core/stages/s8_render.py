@@ -352,8 +352,13 @@ def _run_visual(job: Job) -> None:
     if intro not in ("", "none") or outro not in ("", "none"):
         cw2, ch2 = ffmpeg.probe_dims(out_path)
         io_tmp = job.dir / "final_io.mp4"
-        if brand.concat_io(intro, out_path, outro, io_tmp, cw2, ch2):
-            os.replace(io_tmp, out_path)
+        try:
+            if brand.concat_io(intro, out_path, outro, io_tmp, cw2, ch2):
+                os.replace(io_tmp, out_path)
+        finally:
+            # bug #15 audit: ffmpeg chết giữa chừng để lại final_io.mp4 dở dang
+            # chiếm chỗ mãi (không nằm trong danh sách dọn nào) — luôn quét sạch
+            io_tmp.unlink(missing_ok=True)
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     # tên ỔN ĐỊNH theo job (audit #2): re-render GHI ĐÈ bản cũ thay vì tích thêm
@@ -495,8 +500,11 @@ def run(job: Job) -> None:
     if intro not in ("", "none") or outro not in ("", "none"):
         cw2, ch2 = ffmpeg.probe_dims(out_path)
         io_tmp = job.dir / "final_io.mp4"
-        if brand.concat_io(intro, out_path, outro, io_tmp, cw2, ch2):
-            os.replace(io_tmp, out_path)
+        try:
+            if brand.concat_io(intro, out_path, outro, io_tmp, cw2, ch2):
+                os.replace(io_tmp, out_path)
+        finally:
+            io_tmp.unlink(missing_ok=True)   # bug #15: không rơi rớt file ghép dở
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     # tên ổn định theo job — re-render ghi đè, không tích bản trùng (audit #2)

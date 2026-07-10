@@ -50,39 +50,56 @@ def apply_duck(bed, rate: int, segments: list[dict], gain_db: float,
     return bed
 
 
+def _win_sig(segments: list[dict]) -> str:
+    """Vân tay CỬA SỔ THOẠI (câu có lồng tiếng, mốc thời gian) — bug #13 audit:
+    marker cũ không chứa phần này nên dịch lại/đổi Mute xong stage bgm chạy lại
+    mà marker vẫn khớp → nền duck theo cửa sổ CŨ (hạ nhạc sai chỗ) không ai hay."""
+    import hashlib
+    key = ";".join(f"{s['start']:.2f}-{s['end']:.2f}" for s in segments
+                   if s.get("text_vi", "").strip() and not s.get("mute"))
+    return hashlib.md5(key.encode("utf-8")).hexdigest()[:10]
+
+
 def run(job: Job) -> None:
     out_path = job.dir / "ducked.wav"
     no_vocals_path = job.dir / "no_vocals.wav"
     # Âm lượng nền: override theo JOB (chỉnh từ editor) thắng cấu hình chung
     gain_db = job.bed_gain_db if job.bed_gain_db is not None else config.DUCK_GAIN_DB
-    # ducked.wav phải KHỚP mode hiện tại (demucs? hạ đều hay theo thoại? gain nào?) —
-    # đổi bất kỳ tham số nào rồi chạy lại là dựng lại nền, không kẹt bản cũ.
-    mode = f"{int(config.KEEP_BGM)}:{'all' if config.DUCK_ALL else 'speech'}:{gain_db:g}"
+    data = json.loads((job.dir / "transcript_vi.json").read_text(encoding="utf-8"))
+    # ducked.wav phải KHỚP trạng thái hiện tại: mode + gain + CỬA SỔ THOẠI (đổi
+    # transcript/Mute là vân tay lệch) — đổi bất kỳ thứ gì là dựng lại, không kẹt bản cũ.
+    mode = (f"{int(config.KEEP_BGM)}:{'all' if config.DUCK_ALL else 'speech'}"
+            f":{gain_db:g}:w{_win_sig(data['segments'])}")
     marker = job.dir / "ducked.mode"
     try:
-        if out_path.exists() and marker.read_text(encoding="utf-8") == mode:
+        old = marker.read_text(encoding="utf-8")
+        # đuôi ':src=' ghi NGUỒN NỀN THẬT của lần dựng trước (bug #13): muốn demucs
+        # mà lần trước rơi về audio gốc (GPU lỗi...) → phải thử tách lại, không tái dùng
+        if (out_path.exists() and old.startswith(mode + ":src=")
+                and not (config.KEEP_BGM and old.endswith(":src=full"))):
             return
     except OSError:
         pass   # thiếu marker (job cũ) → dựng lại một lần cho chắc
 
-    data = json.loads((job.dir / "transcript_vi.json").read_text(encoding="utf-8"))
     # KEEP_BGM: tách giọng gốc bằng demucs → nền chỉ còn nhạc+SFX (sạch tiếng Trung).
     # Best-effort: gồm CẢ lúc đọc kết quả; bất kỳ lỗi nào (kể cả SystemExit do demucs
     # gọi sys.exit khi thiếu ffmpeg/model) → quay về duck audio gốc.
     bed = rate = None
+    src_tag = "full"
     if config.KEEP_BGM:
         try:
             from core import separate
             bed, rate = audio_np.read_wav(separate.no_vocals(job))
+            src_tag = "nv"
         except (Exception, SystemExit) as e:
             print(f"  demucs lỗi ({e}); duck audio gốc thay thế")
             bed = None
     if bed is None:
-        no_vocals_path.unlink(missing_ok=True)  # marker: nền = audio gốc (duck)
+        no_vocals_path.unlink(missing_ok=True)  # nền = audio gốc (duck)
         bed, rate = audio_np.read_wav(job.dir / "audio_full.wav")
     # Hạ đều (DUCK_ALL) hoặc theo cửa sổ thoại — logic ở apply_duck (dùng chung
     # với /mix-preview để bản nghe thử 10s dựng ĐÚNG như render thật)
     bed = apply_duck(bed, rate, data["segments"], gain_db, config.DUCK_ALL)
 
     audio_np.write_wav(out_path, bed, rate)
-    marker.write_text(mode, encoding="utf-8")
+    marker.write_text(mode + ":src=" + src_tag, encoding="utf-8")

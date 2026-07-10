@@ -6,6 +6,40 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (3) — Desktop (F:\MyProject\vietsubvideo)
+
+### Nhóm bug #12–15 audit gốc (user: "thực hiện tiếp") — cả 4 đã sửa + verify
+
+- **#12 race sửa-file vs xếp-chạy**: `save_segments`/`rerender_job` trước đây chỉ
+  CHECK `_active` rồi buông lock — "Chạy tất cả"/resume có thể xếp job chạy ĐÚNG
+  LÚC endpoint đang xoá transcript/mp3/final dở → cli đọc dữ liệu nửa vời. Thêm
+  `_reserve_job/_release_job/_enqueue_reserved`: giữ chỗ trong `_active` suốt
+  mutation; mọi đường lỗi nhả chỗ; không đổi gì thì nhả không xếp hàng.
+  Verify API: save no-change ×2 đều 200 (không kẹt); rerender xong save ngay → 409.
+- **#13 `ducked.mode` thiếu trạng thái**: marker cũ chỉ có mode:gain → (a) dịch
+  lại/đổi Mute xong stage bgm chạy lại mà marker VẪN khớp → nền duck theo cửa sổ
+  thoại CŨ; (b) KEEP_BGM=1 nhưng demucs lỗi rơi về audio gốc, marker vẫn ghi như
+  demucs → không bao giờ thử tách lại. Marker mới:
+  `{mode}:{gain}:w{md5-cửa-sổ-thoại}:src={nv|full}` — cửa sổ đổi là dựng lại;
+  muốn demucs mà lần trước fallback → thử tách lại. Verify: mute 1 câu → vân tay
+  lệch → ducked.wav dựng lại; không đổi → tái dùng.
+- **#14 loudnorm 1-pass dynamic**: master trong `brand.build_audio` là loudnorm
+  1-pass — chế độ DYNAMIC đổi gain theo thời gian (đầu video một mức cuối mức
+  khác, "bơm"), ngược triết lý chuẩn hoá tuyến tính của S7. Giờ 2-PASS: đo trước
+  (print_format=json) rồi áp `measured_* + linear=true` — MỘT hệ số gain cả
+  video, tương quan giọng/nền giữ nguyên; đo lỗi thì rơi về 1-pass như cũ.
+  Verify: output −14.11 LUFS / TP −0.99 (đích −14/−1).
+- **#15 rơi rớt `final_io.mp4`**: ghép intro/outro chết giữa chừng để lại file
+  dở vĩnh viễn (không nằm trong danh sách dọn nào). Bọc try/finally unlink ở CẢ
+  2 nhánh render (dub + visual) + thêm vào `_CLEAN_FILES` của 🧹 Dọn dẹp để quét
+  bản rơi rớt từ trước.
+
+Đã xử xong toàn bộ nhóm bug audit. Còn treo (việc lớn, chờ confirm riêng):
+worker thường trú giữ model RAM (#3), tách monolith server.py/index.html
+(#16/17), tab phối/test giọng (mới đánh giá).
+
+---
+
 ## 2026-07-11 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Panel ⚙️ đợt U-3+U-4 (user: "làm U-3 và U-4") — HOÀN TẤT toàn bộ U1–U16

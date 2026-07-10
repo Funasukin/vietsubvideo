@@ -60,6 +60,25 @@ def audio_needed(fx, music, master) -> bool:
     return bool(voice_fx.chain(fx) or _pick(music, MUSIC_DIR, _MUSIC_EXTS) or master)
 
 
+_LN_TARGET = "I=-14:TP=-1:LRA=11"   # chuẩn YouTube -14 LUFS
+
+
+def _measure_loudnorm(inputs: list[str], graph_core: str) -> dict | None:
+    """Pass 1 của loudnorm 2 lượt (bug #14 audit): render graph ra null để ĐO mức
+    thật (loudnorm in JSON ở stderr). Lỗi bất kỳ → None (pass 2 rơi về 1-pass như cũ)."""
+    import json
+    import re
+    try:
+        g = graph_core + f";[mix]loudnorm={_LN_TARGET}:print_format=json[out]"
+        r = subprocess.run(["ffmpeg", "-hide_banner", "-y", *inputs,
+                            "-filter_complex", g, "-map", "[out]", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=600)
+        m = re.findall(r"\{[^{}]*\"input_i\"[^{}]*\}", r.stderr or "", re.S)
+        return json.loads(m[-1]) if m else None
+    except Exception:
+        return None
+
+
 def build_audio(dubbed, out, fx, music, music_vol, master, job_dir) -> bool:
     """Xử lý audio → out (dubbed_render.wav). Trả True nếu đã tạo out; False nếu không
     có gì để làm (dùng thẳng dubbed)."""
@@ -82,7 +101,22 @@ def build_audio(dubbed, out, fx, music, music_vol, master, job_dir) -> bool:
     else:
         graph = f"[0:a]{vbranch}[mix]"
     if master or mpath:   # có nhạc → phải master lại kẻo lệch mức / clip
-        graph += ";[mix]loudnorm=I=-14:TP=-1:LRA=11,aresample=48000[out]"
+        # Bug #14 audit: loudnorm 1-pass là chế độ DYNAMIC — gain tự đổi theo thời
+        # gian (đầu video một mức cuối mức khác, nghe "bơm"), lệch hẳn với triết lý
+        # chuẩn hoá tuyến tính của S7. Đo trước (pass 1) rồi áp linear=true: MỘT hệ
+        # số gain cho cả video, tương quan giọng/nền giữ nguyên. Đo lỗi → 1-pass như cũ.
+        ln = f"loudnorm={_LN_TARGET}"
+        meas = _measure_loudnorm(inputs, graph)
+        if meas:
+            try:
+                ln += (f":measured_I={float(meas['input_i']):g}"
+                       f":measured_TP={float(meas['input_tp']):g}"
+                       f":measured_LRA={float(meas['input_lra']):g}"
+                       f":measured_thresh={float(meas['input_thresh']):g}"
+                       f":offset={float(meas.get('target_offset', 0)):g}:linear=true")
+            except (KeyError, TypeError, ValueError):
+                ln = f"loudnorm={_LN_TARGET}"   # JSON thiếu trường → 1-pass
+        graph += f";[mix]{ln},aresample=48000[out]"
     else:
         graph += ";[mix]aresample=48000[out]"
     ffmpeg.run(*inputs, "-filter_complex", graph, "-map", "[out]", str(out))
