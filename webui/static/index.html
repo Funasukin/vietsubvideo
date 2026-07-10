@@ -326,6 +326,11 @@
   <div id="pane-over" style="display:none">
     <div class="stats" id="stats"></div>
     <div class="note">Chi phí dịch là ước tính theo số câu (~$0.001/câu với Haiku). Số liệu cập nhật mỗi 10 giây.</div>
+    <div class="row">
+      <button class="ghost" id="cleanupbtn" onclick="runCleanup()">🧹 Dọn dẹp ổ đĩa (job xong + output trùng)</button>
+      <span class="meta" id="cleanupmsg"></span>
+    </div>
+    <div class="note">Xóa file âm thanh trung gian của các job ĐÃ XONG (giữ final/phụ đề/bản dịch/giọng đã đọc — cần "Chỉnh sửa" lại thì app tự tách audio từ nguồn) + xóa bản final trùng nguyên vẹn trong <code>output/</code> (giữ bản mới nhất).</div>
   </div>
 
   <div id="pane-jobs">
@@ -1298,7 +1303,17 @@ function cardHtml(j) {
 }
 
 let refreshGen = 0;   // tem thứ tự: phân biệt refresh có snapshot CŨ HƠN lúc edSave enqueue
+let _refreshIdleTick = 0;
 async function refresh() {
+  // Audit #8: tab Jobs ẩn + không có editor/render đang theo dõi → giãn nhịp poll
+  // 3s→15s (chạy 1/5 tick) thay vì tắt hẳn — notification "job xong" vẫn tới, chỉ
+  // trễ tối đa ~15s; đỡ 80% fetch + stringify khi ngồi ở tab khác.
+  const jobsHidden = document.getElementById("pane-jobs").style.display === "none";
+  if (jobsHidden && !edJobId && !edRenderWatch) {
+    if ((_refreshIdleTick = (_refreshIdleTick + 1) % 5) !== 0) return;
+  } else {
+    _refreshIdleTick = 0;
+  }
   const myGen = ++refreshGen;   // chụp trước khi fetch (sống qua await)
   let jobs;
   try { jobs = await (await fetch("/api/jobs")).json(); }
@@ -2995,6 +3010,33 @@ async function deleteJob(id) {
   if (!res.ok) toast((await res.json()).detail || "Không xóa được");
   delete lastJson[id];
   refresh();
+}
+
+// 🧹 Dọn dẹp toàn cục (audit #2): dry-run đếm trước → confirm với con số thật → dọn
+async function runCleanup() {
+  const btn = document.getElementById("cleanupbtn");
+  const msg = document.getElementById("cleanupmsg");
+  btn.disabled = true; msg.textContent = "Đang đo…";
+  try {
+    const d = await (await fetch("/api/cleanup?dry=true", { method: "POST" })).json();
+    if (d.total_freed_mb < 1) {
+      msg.textContent = "Không có gì đáng dọn (" + d.total_freed_mb + " MB).";
+      return;
+    }
+    const ask = `Sẽ lấy lại ~${Math.round(d.total_freed_mb)} MB:\n` +
+      `- ${d.jobs_cleaned} job xong: xóa WAV trung gian (~${Math.round(d.jobs_freed_mb)} MB)\n` +
+      `- output/: xóa ${d.output_dupes_removed} bản final trùng nguyên vẹn (~${Math.round(d.output_freed_mb)} MB, giữ bản mới nhất)\n` +
+      (d.skipped_running ? `- bỏ qua ${d.skipped_running} job đang chạy\n` : "") +
+      `\nGiữ nguyên: final, phụ đề, bản dịch, giọng đã đọc, video nguồn. Tiếp tục?`;
+    if (!confirm(ask)) { msg.textContent = ""; return; }
+    msg.textContent = "Đang dọn…";
+    const r = await (await fetch("/api/cleanup", { method: "POST" })).json();
+    msg.textContent = `✓ Đã lấy lại ${Math.round(r.total_freed_mb)} MB `
+      + `(${r.jobs_cleaned} job + ${r.output_dupes_removed} bản output trùng).`;
+    refreshStats();
+  } catch (e) {
+    msg.textContent = "Lỗi: " + e;
+  } finally { btn.disabled = false; }
 }
 
 // ========== #task "Chỉnh giao diện" (job.mode=="visual"): chỉ tải video về rồi áp

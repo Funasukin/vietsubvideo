@@ -905,6 +905,7 @@ def regen_thumbnail(job_id: str) -> dict:
 
 @app.get("/api/jobs/{job_id}/video")
 def job_video(job_id: str) -> FileResponse:
+    _check_job_id(job_id)   # audit #11: chặn path traversal (2 endpoint này từng thiếu)
     path = config.JOBS_DIR / job_id / "final.mp4"
     if not path.exists():
         raise HTTPException(404, "Chưa có final.mp4")
@@ -913,6 +914,7 @@ def job_video(job_id: str) -> FileResponse:
 
 @app.get("/api/jobs/{job_id}/srt")
 def job_srt(job_id: str) -> FileResponse:
+    _check_job_id(job_id)
     path = config.JOBS_DIR / job_id / "sub_vi.srt"
     if not path.exists():
         raise HTTPException(404, "Chưa có sub_vi.srt")
@@ -1110,19 +1112,9 @@ _CLEAN_FILES = ["audio_16k.wav", "audio_full.wav", "vocals.wav", "no_vocals.wav"
 _CLEAN_STAGES = {"extracting", "bgm", "mixing"}
 
 
-@app.post("/api/jobs/{job_id}/clean")
-def clean_job(job_id: str) -> dict:
-    """🧹 Dọn file trung gian của job đã XONG — thường lấy lại 200–500MB/job."""
-    _check_job_id(job_id)
-    with _lock:
-        if job_id in _active:
-            raise HTTPException(409, "Job đang chạy/chờ — không dọn được")
-    try:
-        job = Job.load(job_id)
-    except FileNotFoundError:
-        raise HTTPException(404, "Không có job này")
-    if job.stage != Stage.DONE:
-        raise HTTPException(409, "Chỉ dọn job đã hoàn thành (tránh hỏng job dở dang)")
+def _clean_job_files(job: Job) -> int:
+    """Xóa file trung gian của 1 job (WAV các loại, sped, artifact) + gỡ stage sinh
+    ra chúng khỏi completed để lần 'Chỉnh sửa' sau tự dựng lại từ source. Trả bytes."""
     freed = 0
     for name in _CLEAN_FILES:
         p = job.dir / name
@@ -1140,7 +1132,106 @@ def clean_job(job_id: str) -> dict:
             pass
     job.completed_stages = [s for s in job.completed_stages if s not in _CLEAN_STAGES]
     job.save()
-    return {"freed_mb": round(freed / 1e6, 1)}
+    return freed
+
+
+@app.post("/api/jobs/{job_id}/clean")
+def clean_job(job_id: str) -> dict:
+    """🧹 Dọn file trung gian của job đã XONG — thường lấy lại 200–500MB/job."""
+    _check_job_id(job_id)
+    with _lock:
+        if job_id in _active:
+            raise HTTPException(409, "Job đang chạy/chờ — không dọn được")
+    try:
+        job = Job.load(job_id)
+    except FileNotFoundError:
+        raise HTTPException(404, "Không có job này")
+    if job.stage != Stage.DONE:
+        raise HTTPException(409, "Chỉ dọn job đã hoàn thành (tránh hỏng job dở dang)")
+    return {"freed_mb": round(_clean_job_files(job) / 1e6, 1)}
+
+
+@app.post("/api/cleanup")
+def cleanup_all(dry: bool = False) -> dict:
+    """🧹 Dọn dẹp TOÀN CỤC (audit #2): (1) file trung gian của MỌI job đã xong,
+    (2) bản final-*.mp4 TRÙNG NGUYÊN VẸN trong output/ (giữ bản mới nhất mỗi nhóm).
+    dry=true chỉ đếm, không xóa — để UI hiện trước số MB sẽ lấy lại."""
+    freed_jobs = 0
+    n_jobs = 0
+    skipped_running = 0
+    if config.JOBS_DIR.exists():
+        for d in config.JOBS_DIR.iterdir():
+            if not d.is_dir():
+                continue
+            with _lock:
+                if d.name in _active:
+                    skipped_running += 1
+                    continue
+            try:
+                job = Job.load(d.name)
+            except Exception:
+                continue
+            if job.stage != Stage.DONE:
+                continue
+            if dry:
+                for name in _CLEAN_FILES:
+                    p = job.dir / name
+                    try:
+                        freed_jobs += p.stat().st_size if p.exists() else 0
+                    except OSError:
+                        pass
+                for sped in (job.dir / "tts").glob("seg_*_sped.wav"):
+                    try:
+                        freed_jobs += sped.stat().st_size
+                    except OSError:
+                        pass
+                n_jobs += 1
+            else:
+                got = _clean_job_files(job)
+                if got:
+                    n_jobs += 1
+                freed_jobs += got
+
+    # output/: gom file cùng KÍCH THƯỚC rồi mới hash (đỡ hash cả GB) — trùng md5
+    # nguyên vẹn thì giữ bản mtime mới nhất, xóa phần còn lại
+    import hashlib
+    freed_out = 0
+    n_out = 0
+    if config.OUTPUT_DIR.exists():
+        by_size: dict[int, list[Path]] = {}
+        for p in config.OUTPUT_DIR.glob("*.mp4"):
+            try:
+                by_size.setdefault(p.stat().st_size, []).append(p)
+            except OSError:
+                pass
+        for size, group in by_size.items():
+            if len(group) < 2:
+                continue
+            by_hash: dict[str, list[Path]] = {}
+            for p in group:
+                try:
+                    h = hashlib.md5(p.read_bytes()).hexdigest()
+                except OSError:
+                    continue
+                by_hash.setdefault(h, []).append(p)
+            for dupes in by_hash.values():
+                if len(dupes) < 2:
+                    continue
+                dupes.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+                for p in dupes[1:]:   # giữ bản mới nhất
+                    freed_out += size
+                    n_out += 1
+                    if not dry:
+                        try:
+                            p.unlink()
+                        except OSError:
+                            freed_out -= size
+                            n_out -= 1
+    return {"dry": dry,
+            "jobs_cleaned": n_jobs, "jobs_freed_mb": round(freed_jobs / 1e6, 1),
+            "output_dupes_removed": n_out, "output_freed_mb": round(freed_out / 1e6, 1),
+            "skipped_running": skipped_running,
+            "total_freed_mb": round((freed_jobs + freed_out) / 1e6, 1)}
 
 
 class SegmentEdit(BaseModel):

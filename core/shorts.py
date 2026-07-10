@@ -110,7 +110,7 @@ def _cut(src: Path, start: float, dur: float, out: Path, vertical: bool) -> None
     vf = ["-filter_complex", _VERTICAL_VF] if vertical else []
     tail = ["-c:a", "aac", "-b:a", "192k", "-avoid_negative_ts", "make_zero", str(out)]
     try:
-        ffmpeg.run(*base, *vf, "-c:v", "h264_qsv", "-global_quality", "23", *tail)
+        ffmpeg.run(*base, *vf, *ffmpeg.h264_args(), *tail)   # NVENC/QSV/x264 dò theo máy
     except RuntimeError:
         ffmpeg.run(*base, *vf, "-c:v", "libx264", "-preset", "veryfast",
                    "-crf", "21", *tail)

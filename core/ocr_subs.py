@@ -146,6 +146,14 @@ def _auto_crop_top(video: Path, work_dir: Path, sample: int = 16) -> float | Non
     return max(0.30, min(0.80, round(min(members) - 0.06, 3)))
 
 
+def probe_crop_top(video: Path, work_dir: Path) -> float | None:
+    """Dò dải phụ đề (rẻ, ~16 frame). Trả crop_top hoặc None = KHÔNG thấy dải sub ổn
+    định. Audit #4: chế độ transcript 'auto' dùng làm CỬA SƠ LOẠI — video không có
+    hardsub thì khỏi OCR full (từng quét cả nghìn frame rồi vứt), đi thẳng Whisper.
+    Kết quả truyền lại extract(crop_top=...) để khỏi dò lần 2."""
+    return _auto_crop_top(video, work_dir)
+
+
 def _resolve_crop_top(video: Path, work_dir: Path) -> float:
     """Giải nghĩa config.OCR_CROP_TOP: 'auto' → tự đo (fallback 0.70); số → dùng thẳng."""
     raw = config.OCR_CROP_TOP
@@ -162,14 +170,18 @@ def _resolve_crop_top(video: Path, work_dir: Path) -> float:
         return 0.70
 
 
-def extract(video: Path, work_dir: Path) -> list[dict]:
-    """OCR video → list segment. work_dir dùng chứa frame tạm (tự dọn khi xong)."""
+def extract(video: Path, work_dir: Path, crop_top: float | None = None) -> list[dict]:
+    """OCR video → list segment. work_dir dùng chứa frame tạm (tự dọn khi xong).
+    crop_top: caller đã dò sẵn (probe_crop_top) thì truyền vào — khỏi dò lần 2."""
     frames_dir = work_dir / "ocr_frames"
     if frames_dir.exists():
         shutil.rmtree(frames_dir)
     frames_dir.mkdir(parents=True)
 
-    crop_top = _resolve_crop_top(video, work_dir)
+    if crop_top is None:
+        crop_top = _resolve_crop_top(video, work_dir)
+    else:
+        print(f"  OCR: dùng dải phụ đề đã dò → crop_top={crop_top}")
     crop_h = 1.0 - crop_top
     ffmpeg.run(
         "-i", str(video),

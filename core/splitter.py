@@ -58,11 +58,11 @@ def _boundaries(duration: float, parts: int, cuts: list[float]) -> list[tuple[fl
 def _cut(src: Path, start: float, dur: float, out: Path) -> None:
     """Cắt CHÍNH XÁC 1 đoạn [start, start+dur) → out. RE-ENCODE (không dùng -c copy) để
     mốc cắt đúng vị trí + timestamp reset về 0 (copy chỉ cắt được ở keyframe → lệch/sai
-    độ dài). QSV cho nhanh trên Intel, fallback libx264. -ss trước -i = seek nhanh."""
+    độ dài). Encoder GPU dò theo máy (NVENC/QSV), fallback libx264. -ss trước -i = seek nhanh."""
     base = ["-ss", f"{start:.2f}", "-i", str(src), "-t", f"{dur:.2f}"]
     tail = ["-c:a", "aac", "-b:a", "192k", "-avoid_negative_ts", "make_zero", str(out)]
     try:
-        ffmpeg.run(*base, "-c:v", "h264_qsv", "-global_quality", "23", *tail)
+        ffmpeg.run(*base, *ffmpeg.h264_args(), *tail)
     except RuntimeError:
         ffmpeg.run(*base, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", *tail)
 

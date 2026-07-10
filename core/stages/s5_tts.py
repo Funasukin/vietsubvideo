@@ -91,10 +91,15 @@ def _fit_budget() -> int:
 
 
 def _mp3_dur_s(path) -> float | None:
-    """Thời lượng mp3 (giây) — decode bằng pydub (đã là dependency của S7)."""
+    """Thời lượng mp3 (giây) — ffprobe đọc HEADER (audit #7: bản cũ dùng pydub =
+    spawn ffmpeg decode TOÀN BỘ audio chỉ để đếm độ dài, gọi 1 lần/câu)."""
+    import subprocess
     try:
-        from pydub import AudioSegment
-        return len(AudioSegment.from_file(path)) / 1000.0
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(path)],
+            capture_output=True, text=True, timeout=15)
+        return float((r.stdout or "").strip())
     except Exception:
         return None
 

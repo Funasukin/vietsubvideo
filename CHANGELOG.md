@@ -6,6 +6,55 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-10 — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt tối ưu theo audit toàn app (user confirm "thực hiện hết theo thứ tự")
+
+Audit đa-agent toàn codebase (có bước phản biện loại 4 phát hiện SAI: XSS innerHTML,
+.env không gitignore, FileResponse thiếu Range, subprocess ×9/job — đều đã refute).
+5 nhóm được confirm làm ngay; đã làm + VERIFY từng mục trên máy này:
+
+1. **GPU encode (`core/ffmpeg.py: h264_args()`)** — dò encoder 1 lần/process bằng
+   nullsrc probe: h264_nvenc → h264_qsv → libx264. Máy này (RTX 3070) chọn
+   `h264_nvenc -preset p5 -cq 23`. Trước đây MỌI render đều libx264 CPU. Áp vào
+   s8_render (cả 2 nhánh encode), splitter, shorts — giữ fallback libx264 nếu
+   NVENC chết giữa chừng. Verify end-to-end: job visual test render 10.5s clip
+   trong ~4s, run.log ghi `encoder H.264: h264_nvenc`, tag stream xác nhận.
+2. **Dọn ổ đĩa** — (a) output/ đổi tên `final-{timestamp}.mp4` → `final-{job.id}.mp4`
+   (ổn định: re-render GHI ĐÈ thay vì sinh bản mới — nguyên nhân 1.5GB rác trùng);
+   (b) endpoint mới `POST /api/cleanup?dry=` dọn file trung gian (WAV/tts sped/…)
+   của mọi job DONE + khử output trùng byte (group size→md5, giữ bản mới nhất);
+   (c) nút "🧹 Dọn dẹp ổ đĩa" ở tab Tổng quan: dry-run → confirm số MB → dọn thật.
+   Đã bấm thật: lấy lại 296MB (data/jobs 1.1GB→846MB, output 1.5GB→1.4GB).
+3. **Vá path traversal** — `_check_job_id()` (regex id) áp vào `/api/jobs/{id}/video`
+   + `/srt` (trước đây ghép thẳng vào path → `..%2F..` đọc được file ngoài data/).
+   Verify: cả 2 endpoint trả 404 với payload traversal.
+4. **Cửa sơ loại OCR (auto)** — `ocr_subs.probe_crop_top()` (~16 frame) chạy TRƯỚC
+   OCR full khi `TRANSCRIPT_SOURCE=auto` + `OCR_CROP_TOP=auto`: không thấy dải sub
+   ổn định → đi thẳng Whisper, khỏi quét cả nghìn frame rồi vứt. Thấy sub → truyền
+   crop_top đã dò cho `extract()` (không dò lại lần 2). Verify: video không sub →
+   None (skip); 0706.mp4 → 0.765.
+5. **Tối ưu lặt vặt đã đo**: S2 gộp 2 lệnh ffmpeg thành 1 lệnh đa-output (decode
+   nguồn 1 lần, 0.91s cho clip test); `s5_tts._mp3_dur_s` pydub→ffprobe (21ms vs
+   49ms warm, không nạp cả file vào RAM); `refresh()` index.html chỉ poll 1/5 tick
+   (10s) khi KHÔNG ở tab Jobs và không mở editor (verify: ẩn tab 1/5 fetch, hiện
+   tab 3/3).
+
+**Chưa làm (chờ confirm riêng, đúng luật "confirm mới làm")**: #3 worker thường trú
+giữ model trong RAM; #16/#17 tách monolith server.py/index.html; nhóm bug #12–15
+(race cancel rerender, ducked-mode state, loudnorm 1-pass/2-pass lệch nhau, temp
+final_io.mp4 rơi rớt).
+
+### Giọng mới: voices/rieng-nam-review.wav (giọng CỦA USER tự lồng)
+
+User xác nhận chính họ là người lồng tiếng trong clip nguồn. Tách bằng demucs
+(two-stems, GPU ~15s/10phút; cần `os.add_dll_directory(FFMPEG_SHARED_BIN)` trước
+import — torchcodec thiếu DLL y hệt core/separate.py). Tự động quét cửa sổ 20s
+sạch nhất (RMS 1s, ≥85% voiced), chọn 05:57–06:17, trim lặng + loudnorm I=-18 →
+mono 24kHz cho viXTTS clone.
+
+---
+
 ## 2026-07-06 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Tính năng MỚI: tab "🎨 Chỉnh giao diện" — chỉ nạp video để thêm khung/logo/watermark, KHÔNG dịch/lồng tiếng

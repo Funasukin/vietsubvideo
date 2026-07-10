@@ -25,8 +25,8 @@ def _video_duration(path) -> float:
     return float(out.stdout.strip())
 
 
-def _ocr_segments(job: Job) -> list[dict]:
-    return ocr_subs.extract(job.find_source(), job.dir)
+def _ocr_segments(job: Job, crop_top: float | None = None) -> list[dict]:
+    return ocr_subs.extract(job.find_source(), job.dir, crop_top=crop_top)
 
 
 def _add_cuda_dll_dirs() -> None:
@@ -110,8 +110,21 @@ def run(job: Job) -> None:
         print(f"  Video {duration / 60:.0f} phút > {config.OCR_MAX_MINUTES} phút "
               f"→ bỏ OCR, dùng Whisper cho nhanh")
 
+    # Audit #4 — CỬA SƠ LOẠI cho auto: dò ~16 frame trước; KHÔNG thấy dải phụ đề ổn
+    # định → video không có hardsub → khỏi OCR full (từng quét cả nghìn frame rồi vứt
+    # vì "quá thưa"), đi thẳng Whisper. Chỉ áp khi OCR_CROP_TOP=auto (user ép số tay
+    # nghĩa là họ BIẾT video có sub ở đó → tôn trọng, không sơ loại). mode="ocr" ép
+    # buộc cũng không sơ loại.
+    probed_crop: float | None = None
+    raw_crop = str(config.OCR_CROP_TOP).strip().lower()
+    if try_ocr and mode == "auto" and raw_crop == "auto":
+        probed_crop = ocr_subs.probe_crop_top(job.find_source(), job.dir)
+        if probed_crop is None:
+            print("  auto: dò nhanh không thấy hardsub → bỏ OCR, dùng Whisper")
+            try_ocr = False
+
     if try_ocr:
-        segments = _ocr_segments(job)
+        segments = _ocr_segments(job, crop_top=probed_crop)
         # video không có hardsub → OCR chỉ nhặt được vài mẩu rời rạc
         dense_enough = len(segments) >= max(3, duration / 30)
         if dense_enough or mode == "ocr":

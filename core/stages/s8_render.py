@@ -11,8 +11,6 @@ import os
 import re
 import shutil
 import textwrap
-from datetime import datetime
-
 import config
 from core import brand, ffmpeg, frames, watermark
 from core.job import Job
@@ -341,8 +339,10 @@ def _run_visual(job: Job) -> None:
             ffmpeg.run(*args, *maps, *codec_args, *audio_args,
                       "-shortest", "final.mp4", cwd=job.dir)
 
+        # encoder dò sẵn theo máy (NVENC/QSV/x264); fallback x264 nếu GPU encode
+        # fail giữa chừng với video THẬT (driver/format lạ — probe không bắt được)
         try:
-            encode("-c:v", "h264_qsv", "-global_quality", "23")
+            encode(*ffmpeg.h264_args())
         except RuntimeError:
             encode("-c:v", "libx264", "-preset", "fast", "-crf", "20")
 
@@ -356,8 +356,9 @@ def _run_visual(job: Job) -> None:
             os.replace(io_tmp, out_path)
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    shutil.copy2(out_path, config.OUTPUT_DIR / f"final-{ts}.mp4")
+    # tên ỔN ĐỊNH theo job (audit #2): re-render GHI ĐÈ bản cũ thay vì tích thêm
+    # final-<timestamp>.mp4 mỗi lần — output/ từng phình 1.5GB toàn bản trùng
+    shutil.copy2(out_path, config.OUTPUT_DIR / f"final-{job.id}.mp4")
 
 
 def run(job: Job) -> None:
@@ -474,8 +475,8 @@ def run(job: Job) -> None:
                        "-shortest", "final.mp4", cwd=job.dir)
 
         try:
-            # Intel QuickSync: nhanh gấp nhiều lần x264 trên CPU
-            encode("-c:v", "h264_qsv", "-global_quality", "23")
+            # encoder GPU dò sẵn theo máy (NVENC/QSV), fallback CPU nếu fail video thật
+            encode(*ffmpeg.h264_args())
         except RuntimeError:
             encode("-c:v", "libx264", "-preset", "fast", "-crf", "20")
     else:  # none
@@ -498,5 +499,5 @@ def run(job: Job) -> None:
             os.replace(io_tmp, out_path)
 
     config.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    shutil.copy2(out_path, config.OUTPUT_DIR / f"final-{ts}.mp4")
+    # tên ổn định theo job — re-render ghi đè, không tích bản trùng (audit #2)
+    shutil.copy2(out_path, config.OUTPUT_DIR / f"final-{job.id}.mp4")

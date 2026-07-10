@@ -31,10 +31,16 @@ def run(job: Job) -> None:
     asr_wav = job.dir / "audio_16k.wav"
     full_wav = job.dir / "audio_full.wav"
 
+    # Audit #5: gộp thành MỘT lệnh ffmpeg nhiều output — decode video nguồn 1 lần
+    # thay vì 2 (trước đây 2 lệnh riêng = 2 lần decode + 2 lần spawn). Tuỳ chọn -ac/
+    # -ar/-af đứng TRƯỚC path output nào thì áp cho output đó.
+    args: list[str] = ["-i", str(source)]
     if not asr_wav.exists():
-        args = ["-i", str(source), "-vn", "-ac", "1", "-ar", "16000"]
+        args += ["-vn", "-ac", "1", "-ar", "16000"]
         if config.DENOISE:  # nguồn chắc chắn có audio (đã chặn video câm ở trên)
             args += ["-af", _DENOISE_AF]
-        ffmpeg.run(*args, str(asr_wav))
+        args += [str(asr_wav)]
     if not full_wav.exists():
-        ffmpeg.run("-i", str(source), "-vn", "-ac", "2", "-ar", "44100", str(full_wav))
+        args += ["-vn", "-ac", "2", "-ar", "44100", str(full_wav)]
+    if len(args) > 2:   # có ít nhất 1 output cần tạo
+        ffmpeg.run(*args)
