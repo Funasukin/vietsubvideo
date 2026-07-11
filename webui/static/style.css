@@ -208,6 +208,48 @@
   .cfg h4 { font-size: 12px; text-transform: uppercase; letter-spacing: .6px;
             color: var(--accent); }
   .cfg .hint { color: var(--dim); font-size: 11px; margin: -6px 0 10px 202px; }
+  /* ---- Đợt G: tab Cấu hình mới ---- */
+  .cfgtop { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 10px 0 0; }
+  .cfgtop input[type=search] { flex: 1; min-width: 220px; background: var(--card);
+    color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; font: inherit; font-size: 13px; }
+  .cfgprof { display: flex; gap: 4px; align-items: center; }
+  .cfgprof select { max-width: 180px; }
+  /* card Trạng thái máy: chip xanh = ok, vàng = hạn chế, đỏ = thiếu */
+  .capscard { display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 14px; margin-top: 10px; }
+  .capchip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+    padding: 4px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--bg2); color: var(--dim); cursor: default; }
+  .capchip.ok { border-color: color-mix(in srgb, var(--ok) 55%, var(--border)); color: var(--ok); }
+  .capchip.warn { border-color: color-mix(in srgb, var(--warn) 55%, var(--border)); color: var(--warn); }
+  .capchip.bad { border-color: color-mix(in srgb, var(--err) 55%, var(--border)); color: var(--err); }
+  .cfgbanner { display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+    margin-top: 10px; padding: 12px 16px; font-size: 13px;
+    background: color-mix(in srgb, var(--accent) 12%, var(--card));
+    border: 1px solid var(--accent); border-radius: var(--radius); }
+  /* chấm "khác mặc định gốc" cạnh nhãn + nút ↺ về mặc định */
+  .cfgdot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent);
+    display: inline-block; vertical-align: middle; flex: none; }
+  .rstbtn { flex: none; padding: 2px 8px; font-size: 12px; }
+  /* khối "Nâng cao" trong từng nhóm */
+  details.cfgadv { margin: 4px 0 8px; border-top: 1px dashed var(--border); padding-top: 8px; }
+  details.cfgadv > summary { color: var(--dim); font-size: 12px; list-style: none; }
+  details.cfgadv > summary::-webkit-details-marker { display: none; }
+  details.cfgadv > summary::before { content: "▸ "; font-size: 11px; }
+  details.cfgadv[open] > summary::before { content: "▾ "; }
+  details.cfgadv > .advbody { margin-top: 10px; }
+  /* tiểu mục trong nhóm Tích hợp & khóa truy cập */
+  .cfgsub { margin: 6px 0 10px; }
+  .cfgsub h5 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--dim); border-bottom: 1px dashed var(--border);
+    padding-bottom: 4px; }
+  /* nháy sáng dòng vừa nhảy tới từ nút "→ Nhập key" */
+  .frow.flash { animation: cfgflash 2s ease-out; border-radius: 8px; }
+  @keyframes cfgflash { 0% { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+    100% { background: transparent; } }
+  #cfgdiff { color: var(--warn); }
   .pending-bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
                  margin: 10px 0; padding: 10px 14px; background: var(--card);
                  border: 1px solid var(--accent); border-radius: 8px; font-size: 13px; }

@@ -16,7 +16,8 @@ from pydantic import BaseModel
 import config
 from core.job import Job
 from webui import worker
-from webui.common import _JOB_ID_RE, _check_job_id, _job_summary, _unlink_quiet
+from webui.common import (_JOB_ID_RE, _check_job_id, _job_summary, _unlink_quiet,
+                          engine_caps)
 from webui.envfile import read_env as _read_env
 from webui.worker import _enqueue_reserved, _release_job, _reserve_job
 
@@ -246,8 +247,9 @@ def get_segments(job_id: str) -> dict:
             # V13 audit giọng: số đo khớp nhịp per-câu từ lần mix gần nhất → editor
             # tô cảnh báo câu bị nén mạnh / bị cắt / hụt slot. Job chưa mix → {}.
             "mix_detail": _mix_detail(job_dir),
-            # U7: engine nào sẵn sàng (thiếu key/model thì disable + lý do)
-            "engines": _engine_caps()}
+            # U7: engine nào sẵn sàng (thiếu key/model thì disable + lý do) —
+            # env TƯƠI, hết stale sau khi lưu key mới (Codex G10)
+            "engines": engine_caps(_read_env())}
 
 
 def _mix_detail(job_dir) -> dict:
@@ -329,18 +331,7 @@ def _ov_depth_for(diff: set, job_dir: Path, new_ov: dict) -> str | None:
     return depth
 
 
-def _engine_caps() -> dict:
-    """Trạng thái sẵn sàng từng engine (U7) — KHÔNG lộ secret, chỉ ready+lý do.
-    viXTTS kiểm nhẹ (model dir) — is_available() sẽ nạp model lên GPU, quá đắt."""
-    from core import paid_tts
-    caps = {"edge": {"ready": True, "reason": ""}}
-    caps["vixtts"] = ({"ready": True, "reason": ""}
-                      if (config.VIXTTS_DIR / "config.json").exists()
-                      else {"ready": False, "reason": "Chưa tải model viXTTS"})
-    for eng in ("elevenlabs", "vbee", "fpt"):
-        ok, why = paid_tts.ready(eng)
-        caps[eng] = {"ready": ok, "reason": "" if ok else why}
-    return caps
+# _engine_caps đã dời sang webui/common.engine_caps(env) — đọc env TƯƠI (đợt G-A)
 
 
 
@@ -556,7 +547,7 @@ def override_impact(job_id: str, body: OverrideImpactBody) -> dict:
     from core import voicesig
     env_eff = {**_read_env(), **new_ov}
     st = voicesig.TtsSettings.from_env(env_eff)
-    caps = _engine_caps()
+    caps = engine_caps(env_eff)   # theo đúng override đề xuất, env tươi
     if st.engine in caps and not caps[st.engine]["ready"]:
         out["warnings"].append(f"Engine {st.engine}: {caps[st.engine]['reason']}")
 
@@ -734,6 +725,14 @@ class TtsPreviewBody(BaseModel):
     emotion: str = ""     # nhãn cảm xúc của câu → nghe thử ĐÚNG sắc thái sẽ render
     job_id: str = ""      # V11 audit giọng: áp ⚙️ override của job (engine/giọng) —
                           # không có thì nghe thử theo cấu hình CHUNG như cũ
+    settings: dict = {}   # G12: tab Cấu hình gửi BẢN NHÁP đang chỉnh (chưa Lưu) —
+                          # chỉ nhận khóa trong _PREVIEW_TTS_KEYS
+
+
+# allowlist khóa draft được phép ảnh hưởng nghe thử — không cho client đẩy khóa tuỳ ý
+_PREVIEW_TTS_KEYS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TARGET_LANG",
+                     "TTS_VOICE", "TTS_VOICE_NU",
+                     "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU"}
 
 
 def _resolve_voice_ref(name: str) -> str | None:
@@ -795,8 +794,16 @@ def tts_preview(body: TtsPreviewBody):
             ov = json.loads(sp.read_text(encoding="utf-8")).get("env_overrides") or {}
         except (OSError, json.JSONDecodeError):
             ov = {}
+    # G12: draft tab Cấu hình thắng cả override job (tab đó không gửi job_id nên
+    # thực tế không đụng nhau) — nghe thử đúng giọng ĐANG chọn trước khi Lưu.
+    # Draft giữ CẢ giá trị rỗng (review đối kháng F4: chọn "(giọng mặc định model)"
+    # = VIXTTS_VOICE_NAM rỗng phải THẮNG clip đang lưu trong .env, không fallback).
+    draft = ({k: str(v).strip() for k, v in body.settings.items()
+              if k in _PREVIEW_TTS_KEYS} if body.settings else {})
 
     def _ov(key: str, cur):
+        if key in draft:
+            return draft[key]
         v = str(ov.get(key, "")).strip()
         return v if v else cur
 

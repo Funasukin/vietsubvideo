@@ -36,29 +36,11 @@ from pydantic import BaseModel
 import config
 from core.job import Job, Stage
 
-# Các khóa .env được phép sửa từ giao diện (không bao giờ gồm API key)
-SAFE_ENV_KEYS = ["CLAUDE_MODEL", "TRANSLATE_PROVIDER", "GEMINI_MODEL",
-                 "GEMINI_MIN_INTERVAL", "TRANSLATE_STYLE_EXTRA",
-                 "CONTENT_STYLE", "TARGET_LANG", "MAX_SPEEDUP", "STRETCH_SHORT",
-                 "TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
-                 "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "KEEP_BGM", "DUCK_GAIN_DB",
-                 "VOICE_FX", "EMOTION", "PROSODY_TRANSFER",
-                 "ELEVENLABS_VOICE_NAM", "ELEVENLABS_VOICE_NU", "ELEVENLABS_MODEL",
-                 "VBEE_APP_ID", "VBEE_VOICE_NAM", "VBEE_VOICE_NU",
-                 "FPT_VOICE_NAM", "FPT_VOICE_NU", "PROSODY",
-                 "WHISPER_MODEL", "TRANSCRIPT_SOURCE", "SUBTITLE_MODE", "SUB_SPLIT",
-                 "OCR_WORKERS", "OCR_FPS", "OCR_CROP_TOP",
-                 "AUTO_RETRY", "DIARIZE", "DIARIZE_MAX_SPK",
-                 "MUSIC", "MUSIC_VOL", "LOGO", "LOGO_POS", "LOGO_SCALE", "LOGO_OPACITY",
-                 "INTRO", "OUTRO", "MASTER",
-                 "SHORTS_COUNT", "SHORTS_LEN", "SHORTS_STYLE",
-                 "DENOISE", "SUBSCRIBE", "SUBSCRIBE_TEXT",
-                 "TELEGRAM_CHAT_ID", "YOUTUBE_CLIENT_SECRETS", "YOUTUBE_PRIVACY"]
-# Khóa bí mật: cho GHI qua UI nhưng KHÔNG bao giờ trả giá trị về (chỉ báo đã-đặt-hay-chưa),
-# giống ANTHROPIC_API_KEY. Bot token điều khiển bot của người dùng → coi như credential.
-# HF_TOKEN là token tài khoản HuggingFace (diarization #8) → cũng là credential.
-SECRET_ENV_KEYS = {"ANTHROPIC_API_KEY", "TELEGRAM_BOT_TOKEN", "HF_TOKEN", "GEMINI_API_KEY",
-                   "ELEVENLABS_API_KEY", "VBEE_TOKEN", "FPT_TTS_API_KEY"}
+# G16 (đợt G-A): whitelist khóa SINH TỪ settings schema — một nguồn sự thật,
+# hết cảnh 3 danh sách (config.py / server / UI) lệch nhau âm thầm.
+from webui import envfile, settings_schema
+from webui.settings_schema import SAFE_ENV_KEYS, SECRET_ENV_KEYS
+
 ENV_PATH = config.BASE_DIR / ".env"
 
 app = FastAPI(title="FlowApp")
@@ -1148,11 +1130,17 @@ def upload_youtube(job_id: str) -> dict:
 
 @app.get("/api/config")
 def get_config() -> dict:
-    from core import brand
+    from core import brand, frames
     env = _read_env()
-    defaults = {k: str(getattr(config, k, "")) for k in SAFE_ENV_KEYS}
+    # values = .env thắng, thiếu key → factory default của SCHEMA (G16 — không dùng
+    # getattr(config,...) vì module config đã nhiễm .env, không phải factory thật)
     return {
-        "values": {k: env.get(k, defaults[k]) for k in SAFE_ENV_KEYS},
+        "values": {k: env.get(k, settings_schema.FACTORY_DEFAULTS[k])
+                   for k in SAFE_ENV_KEYS},
+        # G8: factory default + key nào đang GHIM trong .env (để chấm khác-mặc-định
+        # và nút ↺ unset — reset là XOÁ key, không phải ghi lại default hiện tại)
+        "factory": settings_schema.FACTORY_DEFAULTS,
+        "pinned": [k for k in SAFE_ENV_KEYS if k in env],
         "api_key_set": bool(env.get("ANTHROPIC_API_KEY") or config.ANTHROPIC_API_KEY),
         # khóa bí mật: chỉ báo đã đặt hay chưa, KHÔNG trả giá trị
         "telegram_token_set": bool(env.get("TELEGRAM_BOT_TOKEN") or config.TELEGRAM_BOT_TOKEN),
@@ -1161,49 +1149,232 @@ def get_config() -> dict:
         "elevenlabs_key_set": bool(env.get("ELEVENLABS_API_KEY") or config.ELEVENLABS_API_KEY),
         "vbee_token_set": bool(env.get("VBEE_TOKEN") or config.VBEE_TOKEN),
         "fpt_key_set": bool(env.get("FPT_TTS_API_KEY") or config.FPT_TTS_API_KEY),
+        "youtube_api_key_set": bool(env.get("YOUTUBE_API_KEY") or config.YOUTUBE_API_KEY),
         "youtube_ready": _youtube_ready(),
         "music_files": brand.list_music(),
         "logo_files": brand.list_logo(),
         "clip_files": brand.list_clips(),
+        "frame_files": frames.list_png(),   # G-B: khung mặc định toàn kênh (FRAME)
     }
-
-
-# rỗng = giá trị hợp lệ (cho phép XÓA), không phải "bỏ qua giữ giá trị cũ"
-_EMPTY_OK = {"VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU", "TRANSLATE_STYLE_EXTRA",
-             "SUBSCRIBE_TEXT", "TELEGRAM_CHAT_ID", "YOUTUBE_CLIENT_SECRETS"}
 
 
 @app.post("/api/config")
 def set_config(body: dict) -> dict:
+    """Lưu cấu hình vào .env. Body: {KEY: value, ..., "_unset": [KEY,...]}.
+    G16: validate theo settings_schema (options/độ dài/xuống dòng), ghi qua
+    envfile.write_env (quote/escape chuẩn — hết bug giá trị chứa #/quote);
+    "_unset" XOÁ key khỏi .env → quay về factory default (kể cả khi app đổi
+    default ở phiên bản sau)."""
+    unset_req = body.pop("_unset", []) or []
+    if not isinstance(unset_req, list):
+        raise HTTPException(400, "_unset phải là danh sách khóa")
+    unset = {str(k) for k in unset_req
+             if str(k) in SAFE_ENV_KEYS or str(k) in SECRET_ENV_KEYS}
     updates = {}
     for k, v in body.items():
         if k not in SAFE_ENV_KEYS and k not in SECRET_ENV_KEYS:
             continue
         v = str(v).strip()
-        if not v and k not in _EMPTY_OK:
-            continue  # bỏ qua rỗng cho khóa không cho rỗng (giữ giá trị cũ, gồm cả secret)
-        if "\n" in v or len(v) > 500:
-            raise HTTPException(400, f"Giá trị không hợp lệ cho {k}")
-        updates[k] = v
-    if not updates:
+        if not v and (k in SECRET_ENV_KEYS or k not in settings_schema.EMPTY_OK):
+            continue  # rỗng cho khóa không-cho-rỗng/secret = giữ giá trị cũ
+        try:
+            updates[k] = settings_schema.validate(k, v)
+        except ValueError as e:
+            raise HTTPException(400, f"Giá trị không hợp lệ: {e}")
+    updates = {k: v for k, v in updates.items() if k not in unset}
+    if not updates and not unset:
         raise HTTPException(400, "Không có khóa hợp lệ nào để lưu")
+    envfile.write_env(updates, unset)
+    # review đối kháng F3: vừa lưu key mới mà /api/capabilities còn cache 60s thì
+    # cảnh báo engine vẫn báo "chưa nhập key" mâu thuẫn với "✓ Đã có key" cùng màn
+    global _caps_cache
+    _caps_cache = None
+    return {"saved": sorted(updates), "unset": sorted(unset),
+            "note": "Áp dụng cho job chạy mới"}
 
-    lines = ENV_PATH.read_text(encoding="utf-8").splitlines() if ENV_PATH.exists() else []
-    seen = set()
-    for i, line in enumerate(lines):
-        m = re.match(r"^([A-Z_]+)=", line.strip())
-        if m and m.group(1) in updates:
-            lines[i] = f"{m.group(1)}={updates[m.group(1)]}"
-            seen.add(m.group(1))
-    for k in updates:
-        if k not in seen:
-            lines.append(f"{k}={updates[k]}")
-    # ghi nguyên tử (tmp + replace) — .env là single source, ghi dở giữa lúc worker
-    # con load_dotenv sẽ mất key; cùng pattern với state.json/series.json
-    tmp = ENV_PATH.with_name(f".env.{uuid.uuid4().hex}.tmp")
-    tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    os.replace(tmp, ENV_PATH)
-    return {"saved": sorted(updates), "note": "Áp dụng cho job chạy mới"}
+
+# ---------- G7: năng lực máy — card "Trạng thái máy" đầu tab Cấu hình ----------
+# Probe RẺ (không nạp model — CẤM vixtts.is_available vì nó nạp model lên GPU),
+# cache 60s vì nvidia-smi/ffmpeg-probe tốn vài trăm ms. Tên endpoint theo Codex:
+# /api/capabilities (health = liveness server, sai nghĩa).
+_caps_cache: tuple[float, dict] | None = None
+
+
+def _probe_capabilities() -> dict:
+    import importlib.util
+    import shutil as _sh
+
+    out: dict = {"cpu": {"logical_cores": os.cpu_count() or 0}}
+    # GPU: nvidia-smi (timeout ngắn — máy không NVIDIA thì fail nhanh)
+    gpu = {"status": "unknown"}
+    try:
+        r = subprocess.run(["nvidia-smi", "--query-gpu=name,memory.total,driver_version",
+                            "--format=csv,noheader"], capture_output=True, text=True,
+                           timeout=3)
+        line = (r.stdout or "").strip().splitlines()
+        if r.returncode == 0 and line:
+            name, mem, drv = [x.strip() for x in line[0].split(",")]
+            gpu = {"status": "available", "name": name, "vram_total": mem, "driver": drv}
+        else:
+            gpu = {"status": "none"}
+    except Exception:
+        gpu = {"status": "none"}
+    out["gpu"] = gpu
+    # ffmpeg + encoder H.264 THẬT SỰ chạy được (h264_args đã probe bằng encode thử)
+    ff = {"available": bool(_sh.which("ffmpeg"))}
+    if ff["available"]:
+        try:
+            r = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True,
+                               timeout=3)
+            ff["version"] = (r.stdout or "").splitlines()[0].replace("ffmpeg version ", "")[:40]
+        except Exception:
+            pass
+        try:
+            from core import ffmpeg as _ff
+            ff["h264_encoder"] = _ff.h264_args()[1]   # ("-c:v", "<tên encoder>", ...)
+        except Exception:
+            ff["h264_encoder"] = "unknown"
+    out["ffmpeg"] = ff
+    # package tuỳ chọn: find_spec (KHÔNG import — torch/TTS import mất nhiều giây).
+    # "installed" ≠ "sẵn sàng" (pyannote còn cần accept model HF; demucs còn cần
+    # checkpoint) — trả trạng thái thô, client ghi chú trung thực.
+    def _has_pkg(mod: str) -> bool:
+        try:   # tên chấm (pyannote.audio) phải import ĐƯỢC package cha —
+            return importlib.util.find_spec(mod) is not None   # cha thiếu là raise
+        except (ModuleNotFoundError, ValueError):
+            return False
+    out["packages"] = {name: ("installed" if _has_pkg(mod) else "missing")
+                       for name, mod in (("faster_whisper", "faster_whisper"),
+                                         ("vixtts_stack", "TTS"),
+                                         ("demucs", "demucs"),
+                                         ("pyannote", "pyannote.audio"),
+                                         ("rapidocr", "rapidocr_onnxruntime"))}
+    vix_missing = [f for f in ("config.json", "model.pth", "vocab.json")
+                   if not (config.VIXTTS_DIR / f).is_file()]
+    out["models"] = {"vixtts": {"status": "files_present" if not vix_missing else "partial",
+                                "missing": vix_missing}}
+    env = _read_env()
+    from webui.common import engine_caps
+    out["engines"] = engine_caps(env)
+    out["keys"] = {k.lower(): bool(env.get(k) or getattr(config, k, ""))
+                   for k in sorted(SECRET_ENV_KEYS)}
+    try:
+        out["disk_free_gb"] = round(_sh.disk_usage(config.DATA_DIR).free / 1e9, 1)
+    except OSError:
+        pass
+    return out
+
+
+# ---------- G12: nghe mẫu VOICE_FX ngay tab Cấu hình ----------
+# voice_samples/_lbl_*.mp3 được sinh bằng ĐÚNG chuỗi filter của core/voice_fx.py
+# ("nghe sao render vậy") — phát file tĩnh, không tốn synth. "off" = bản gốc
+# không filter để user so sánh.
+_FX_SAMPLES = {"canbang": "_lbl_1_canbang.mp3", "amday": "_lbl_2_amday.mp3",
+               "rosang": "_lbl_3_rosang.mp3", "dienanh": "_lbl_4_dienanh.mp3",
+               "toithieu": "_lbl_5_toithieu.mp3", "off": "_lbl_goc.mp3"}
+
+
+@app.get("/api/fx-sample/{fx}")
+def fx_sample(fx: str) -> FileResponse:
+    name = _FX_SAMPLES.get(fx)
+    p = config.BASE_DIR / "voice_samples" / (name or "")
+    if not name or not p.is_file():
+        raise HTTPException(404, "Chưa có file mẫu cho kiểu này")
+    return FileResponse(p, media_type="audio/mpeg", headers={"Cache-Control": "no-store"})
+
+
+# ---------- G11: profile cấu hình có tên (data/profiles/*.json, không commit) ----------
+_PROFILES_DIR = config.DATA_DIR / "profiles"
+
+
+def _profile_path(pid: str) -> Path:
+    if not re.fullmatch(r"[0-9a-f]{32}", pid):
+        raise HTTPException(404, "Không có profile này")
+    return _PROFILES_DIR / f"{pid}.json"
+
+
+@app.get("/api/profiles")
+def list_profiles() -> list[dict]:
+    out = []
+    if _PROFILES_DIR.exists():
+        for p in sorted(_PROFILES_DIR.glob("*.json")):
+            try:
+                d = json.loads(p.read_text(encoding="utf-8"))
+                out.append({"id": p.stem, "name": d.get("name", p.stem),
+                            "created_at": d.get("created_at", "")})
+            except (json.JSONDecodeError, OSError):
+                continue
+    return out
+
+
+@app.get("/api/profiles/{pid}")
+def get_profile(pid: str) -> dict:
+    p = _profile_path(pid)
+    if not p.is_file():
+        raise HTTPException(404, "Không có profile này")
+    return json.loads(p.read_text(encoding="utf-8"))
+
+
+class ProfileBody(BaseModel):
+    name: str
+    values: dict | None = None   # None = chụp cấu hình hiệu lực hiện tại (snapshot)
+
+
+@app.post("/api/profiles")
+def save_profile(body: ProfileBody) -> dict:
+    """Lưu profile: snapshot cấu hình hiện tại (values=None) hoặc NHẬP từ file
+    (values=dict — đường import). Chỉ nhận khóa trong PROFILE_KEYS của schema
+    (allowlist — Codex: không lọc theo hậu tố tên, dễ lọt path/máy-local);
+    giá trị validate từng cái, khóa lạ bỏ qua + trả warning."""
+    name = (body.name or "").strip()[:80]
+    if not name:
+        raise HTTPException(400, "Thiếu tên profile")
+    env = _read_env()
+    skipped: list[str] = []
+    if body.values is None:
+        values = {k: env.get(k, settings_schema.FACTORY_DEFAULTS[k])
+                  for k in settings_schema.PROFILE_KEYS}
+    else:
+        values = {}
+        for k, v in body.values.items():
+            if k not in settings_schema.PROFILE_KEYS:
+                skipped.append(str(k))
+                continue
+            try:
+                values[k] = settings_schema.validate(k, str(v))
+            except ValueError:
+                skipped.append(str(k))
+    if not values:
+        raise HTTPException(400, "Profile không có khóa hợp lệ nào")
+    pid = uuid.uuid4().hex
+    _PROFILES_DIR.mkdir(parents=True, exist_ok=True)
+    data = {"schema_version": 1, "id": pid, "name": name,
+            "created_at": time.strftime("%Y-%m-%d %H:%M:%S"), "values": values}
+    tmp = _PROFILES_DIR / f".{pid}.tmp"
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(tmp, _profile_path(pid))
+    return {"id": pid, "name": name, "skipped": sorted(set(skipped))}
+
+
+@app.delete("/api/profiles/{pid}")
+def delete_profile(pid: str) -> dict:
+    p = _profile_path(pid)
+    if not p.is_file():
+        raise HTTPException(404, "Không có profile này")
+    p.unlink()
+    return {"deleted": pid}
+
+
+@app.get("/api/capabilities")
+def capabilities(refresh: bool = False) -> dict:
+    global _caps_cache
+    now = time.time()
+    if not refresh and _caps_cache and now - _caps_cache[0] < 60:
+        return _caps_cache[1]
+    data = _probe_capabilities()
+    data["generated_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    _caps_cache = (now, data)
+    return data
 
 
 # #17 tách monolith: CSS/JS cắt từ index.html thành file riêng trong static/.

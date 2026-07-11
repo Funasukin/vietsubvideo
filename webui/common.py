@@ -16,6 +16,33 @@ from webui.worker import _active, _lock
 _JOB_ID_RE = re.compile(r"^\d{8}_\d{6}_[0-9a-f]{6}$")
 
 
+def engine_caps(env: dict) -> dict:
+    """Trạng thái sẵn sàng từng engine (U7/G10) — tính từ SNAPSHOT env TƯƠI
+    (Codex bắt lỗi bản cũ đọc config lúc server start: user vừa lưu key mới mà
+    capability vẫn báo thiếu tới khi restart). KHÔNG lộ secret, chỉ ready+lý do.
+    viXTTS kiểm nhẹ ĐỦ BỘ file model — is_available() nạp model lên GPU, quá đắt."""
+    def has(key: str) -> bool:
+        return bool(env.get(key) or getattr(config, key, ""))
+
+    caps = {"edge": {"ready": True, "reason": ""}}
+    vix_missing = [f for f in ("config.json", "model.pth", "vocab.json")
+                   if not (config.VIXTTS_DIR / f).is_file()]
+    caps["vixtts"] = ({"ready": True, "reason": ""} if not vix_missing
+                      else {"ready": False,
+                            "reason": "Thiếu file model viXTTS: " + ", ".join(vix_missing)})
+    caps["elevenlabs"] = ({"ready": True, "reason": ""} if has("ELEVENLABS_API_KEY")
+                          else {"ready": False,
+                                "reason": "Chưa nhập ELEVENLABS_API_KEY (tab Cấu hình)"})
+    caps["vbee"] = ({"ready": True, "reason": ""}
+                    if has("VBEE_TOKEN") and has("VBEE_APP_ID")
+                    else {"ready": False,
+                          "reason": "Chưa nhập VBEE_TOKEN + VBEE_APP_ID (tab Cấu hình)"})
+    caps["fpt"] = ({"ready": True, "reason": ""} if has("FPT_TTS_API_KEY")
+                   else {"ready": False,
+                         "reason": "Chưa nhập FPT_TTS_API_KEY (tab Cấu hình)"})
+    return caps
+
+
 def _check_job_id(job_id: str) -> None:
     """Chặn path traversal: job_id phải đúng định dạng Job.create sinh ra
     (vd 20260614_014525_56d6d6) — loại bỏ '..', '/', '\\', đường dẫn tuyệt đối."""

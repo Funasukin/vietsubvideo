@@ -32,17 +32,23 @@ load_dotenv(BASE_DIR / ".env", override=True)
 # "1" → "0". Máy đã dùng từ trước mà .env CHƯA có 2 key này thì đang chạy theo
 # default cũ ("1") — ghi tường minh giá trị cũ vào .env để đổi default không âm
 # thầm đổi giọng + kích re-TTS hàng loạt (sig chứa nhãn prosody/emotion). Cài mới
-# tinh (.env chưa tồn tại) thì hưởng default mới. Idempotent: có key là thôi.
+# tinh (.env chưa tồn tại) thì hưởng default mới.
+# Đợt G (review đối kháng F2): idempotent bằng DÒNG MARKER chứ không phải "thiếu
+# key thì thêm" — từ khi có nút ↺ unset, user xoá key để về default 0 mà migration
+# cứ thấy thiếu lại tự mọc PROSODY=1/EMOTION=1 thì unset vô nghĩa. Marker là
+# comment nên write_env giữ nguyên qua mọi lần lưu.
+_MIG_MARKER = "# flowapp-migrated: prosody-emotion-default-2026-07-10"
 _envp = BASE_DIR / ".env"
 if _envp.exists():
     try:
         _txt = _envp.read_text(encoding="utf-8")
-        _add = [f"{_k}=1" for _k in ("PROSODY", "EMOTION")
-                if not any(ln.strip().startswith(_k + "=")
-                           for ln in _txt.splitlines())]
-        if _add:
-            _envp.write_text(_txt.rstrip("\n") + "\n" + "\n".join(_add) + "\n",
-                             encoding="utf-8")
+        if _MIG_MARKER not in _txt:
+            _add = [f"{_k}=1" for _k in ("PROSODY", "EMOTION")
+                    if not any(ln.strip().startswith(_k + "=")
+                               for ln in _txt.splitlines())]
+            _envp.write_text(_txt.rstrip("\n") + "\n"
+                             + "".join(_kv + "\n" for _kv in _add)
+                             + _MIG_MARKER + "\n", encoding="utf-8")
             for _kv in _add:
                 _k, _v = _kv.split("=", 1)
                 os.environ.setdefault(_k, _v)
@@ -107,7 +113,14 @@ OCR_FPS = float(os.getenv("OCR_FPS", "2.0"))   # frame lấy mẫu/giây (giảm
 # ngang ở ~0.85 — 1 con số cứng bỏ sót). Hoặc đặt số 0..1 (vd 0.70 = từ 70% xuống đáy).
 OCR_CROP_TOP = os.getenv("OCR_CROP_TOP", "auto").strip().lower()
 OCR_MIN_CONF = 0.55    # bỏ kết quả OCR dưới ngưỡng tin cậy này
-OCR_WORKERS = int(os.getenv("OCR_WORKERS", "6"))  # số tiến trình OCR song song (mỗi cái 2 luồng)
+# G-B: "auto" (mặc định) = cpu_count//2 kẹp [2,6] — mỗi worker RapidOCR ăn 2 luồng,
+# đặt bằng số nhân logic là oversubscribe gấp đôi (phản biện Codex). Lưu "auto" vào
+# .env (không ghi cứng số của máy này) → profile/máy khác tự thích nghi.
+_OCR_W_RAW = os.getenv("OCR_WORKERS", "auto").strip().lower()
+try:
+    OCR_WORKERS = max(1, int(_OCR_W_RAW))
+except ValueError:
+    OCR_WORKERS = min(6, max(2, (os.cpu_count() or 8) // 2))
 # auto mode: video DÀI hơn ngưỡng này (phút) thì bỏ OCR, dùng thẳng Whisper —
 # OCR 2fps quá chậm với phim dài (1 giờ ≈ 7200 frame → hàng giờ trên CPU).
 # Video ngắn hơn vẫn OCR để giữ độ chính xác hardsub. "ocr" thuần thì luôn OCR.

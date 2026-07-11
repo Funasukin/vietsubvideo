@@ -6,6 +6,106 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (8) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt G: làm lại tab ⚙️ Cấu hình trên nền settings schema (G-A→G-D một mạch)
+
+Theo DEXUAT_CAUHINH_TAB_TONGHOP.md (đồng thuận 3 agent + user chốt "làm 1 mạch",
+FRAME phương án A, expose hết knob mới kể cả cookies kèm cảnh báo riêng tư).
+
+**G-A backend (nền):**
+- MỚI `webui/settings_schema.py` — nguồn sự thật DUY NHẤT cho mọi khóa .env
+  (81 khóa: 73 safe + 8 secret; default/options/secret/allow_empty/profile/
+  max_len + `validate()`). Server sinh SAFE/SECRET/FACTORY_DEFAULTS/
+  PROFILE_KEYS/EMPTY_OK từ đây — hết lệch 3 nơi (bug ELEVENLABS_MODEL không UI).
+- `webui/envfile.py` viết lại: quote/escape chuẩn dotenv (fix bug Codex: giá trị
+  chứa #/quote ghi thô sẽ parse sai lần đọc sau) + `write_env(updates, unset)`
+  nguyên tử; **unset = XOÁ key khỏi .env** → về factory default (app đổi default
+  phiên bản sau vẫn ăn theo).
+- `POST /api/config` validate theo schema (400 kèm lý do), nhận `"_unset"`;
+  `GET /api/config` trả thêm `factory` + `pinned` + `frame_files` +
+  `youtube_api_key_set`. `GET /api/capabilities` MỚI (probe rẻ: GPU nvidia-smi,
+  ffmpeg + encoder H.264 thật, find_spec 5 package, đủ bộ file viXTTS, engines
+  theo env tươi, disk; cache 60s + `?refresh`). Fix find_spec("pyannote.audio")
+  raise ModuleNotFoundError khi thiếu package cha — bọc try.
+- `common.engine_caps(env)` dùng chung server + routes_editor (bỏ bản cục bộ).
+- config.py: OCR_WORKERS nhận "auto" (≈ nửa số nhân, trần 6).
+
+**G-B/G-C frontend:** MỚI `webui/static/app-config.js` (~620 dòng, nạp giữa
+app-core và app-jobs-extra) — cắt loadConfig/saveConfig/CFG_FIELDS/applyEngineUI/
+applyProviderUI/applySingleVoiceUI/reloadConfig khỏi app-core.js (940→530 dòng),
+CFG_FIELDS chết hẳn (saveConfig mới quét DOM):
+- Bố cục mới: card **Trạng thái máy** (chip GPU/ffmpeg/whisper/viXTTS/demucs/
+  pyannote/OCR/đĩa + nút ↻) + ô **tìm kiếm** + cụm **profile** trên đầu; 7 nhóm
+  theo pipeline (⭐ Dịch / Nhận dạng / Lồng tiếng & âm thanh / Xuất bản / Shorts /
+  Hệ thống / 🔑 Tích hợp cuối trang có tiểu mục); mỗi nhóm có `<details>` Nâng
+  cao nhớ trạng thái mở (localStorage); banner first-run khi chưa có khóa dịch.
+- ⭐ Chất lượng dịch = núm gộp đặt CẶP model 2 provider (2 chiều: đổi model lẻ
+  → nhảy «Tùy chỉnh»); nhãn Model chính/dự phòng đổi theo provider (sửa tooltip
+  dối "fallback Haiku"); PROSODY/EMOTION nhãn khớp default 0 (sửa nhãn dối
+  "Bật (khuyên dùng)" trong khi default đã tắt).
+- Núm **Thiết bị Whisper** (Tự động/CPU/GPU) ghi cặp WHISPER_DEVICE+COMPUTE,
+  Tự động = unset cả 2; option GPU disable khi máy không có GPU.
+- Knob mới expose: REVIEW_TRANSLATION, GLOSSARY_AUTO, WHISPER_LANGUAGE,
+  OCR_MAX_MINUTES, OCR_WORKERS=auto, ELEVENLABS_MODEL, FFMPEG_SHARED_BIN,
+  FRAME + FRAME_COLOR/COLOR2 (input color)/WIDTH/PAD (khung mặc định toàn kênh,
+  dropdown gồm PNG trong frames/), METADATA_MODEL, BATCH_LIMIT, AUTO_RETRY→Hệ
+  thống, YTDLP_COOKIES_FILE/BROWSER (kèm cảnh báo cookies=phiên đăng nhập),
+  YOUTUBE_API_KEY (hết phải sửa .env tay cho tab Phim hot).
+- G8: chấm ● cạnh knob khác mặc định gốc + nút ↺ per-row (Lưu sẽ XOÁ key khỏi
+  .env — không đếm 55 key ghim-bằng-factory di sản saveConfig cũ, chỉ 10 khác
+  thật); G9 tìm kiếm lọc row + tự mở nhóm/Nâng cao, clear khôi phục; G10 cảnh
+  báo engine thiếu key ngay dưới dropdown + nút "→ Nhập key" scroll+flash, gõ
+  key vào form là cảnh báo đổi "bấm Lưu là sẵn sàng"; G15 đếm thay đổi thật
+  trên nút Lưu (💾 Lưu (3)), chỉ gửi key ĐỔI (hết ghim cả 60 key mỗi lần lưu),
+  beforeunload chặn đóng trang khi chưa lưu, disable nút khi đang lưu.
+- Bug tự bắt khi verify: scheduleCfgDiff dùng requestAnimationFrame → tab nền
+  không vẽ = diff đứng im; đổi setTimeout 60ms.
+
+**G-D:**
+- Profile cấu hình: `GET/POST/DELETE /api/profiles` (+GET /{id}) — snapshot 62
+  khóa NỘI DUNG (PROFILE_KEYS allowlist: không secret, không khóa máy-local như
+  WHISPER_DEVICE/FFMPEG_SHARED_BIN/COOKIES/VBEE_APP_ID), ghi nguyên tử
+  data/profiles/{uuid}.json; UI: 💾 lưu / ▶ áp (confirm kèm danh sách diff,
+  POST /api/config chỉ key đổi) / ⬇ xuất / ⬆ nhập (validate từng khóa, bỏ khóa
+  lạ + báo skipped — test: chặn ANTHROPIC_API_KEY, HACKER_KEY, MAX_SPEEDUP=9.9) /
+  🗑 xóa.
+- `GET /api/fx-sample/{fx}` phát mẫu VOICE_FX tĩnh (voice_samples/_lbl_*.mp3,
+  đủ 6 kiểu kể cả off=bản gốc, allowlist dict — traversal 404); nút 🔊 cạnh
+  dropdown Xử lý giọng.
+- `/api/tts-preview` nhận `settings` (allowlist 7 khóa TTS) → nút 🔊 cạnh ô
+  giọng edge/viXTTS nghe thử ĐÚNG BẢN NHÁP đang chỉnh chưa cần Lưu; engine trả
+  phí hỏi xác nhận tốn phí trước khi gọi.
+
+**Review đối kháng (agent riêng, cả diff) — 5 phát hiện, sửa cả 5:**
+- F1 nghiêm trọng: `allow_empty` mặc định True cho CẢ 73 khóa → profile import
+  xấu/ô text xoá trống ghi được `MAX_SPEEDUP=""` vào .env → `float("")` chết
+  MỌI job + server ngay lúc import config. Sửa: đảo mặc định False, chỉ 10 khóa
+  thật sự rỗng-hợp-lệ (WHISPER_LANGUAGE, VIXTTS_VOICE_*, cookies…).
+- F2 nghiêm trọng: block migration PROSODY/EMOTION (2026-07-10) thấy .env thiếu
+  key là tự mọc lại `=1` → nút ↺ unset 2 khóa này VÔ NGHĨA, máy cài mới cũng bị
+  bật nhầm. Sửa: idempotent bằng dòng marker comment (write_env giữ comment) —
+  test 3 ca trên .env giả trong scratchpad.
+- F3: lưu key xong cảnh báo engine vẫn "chưa nhập key" tới 60s (cache
+  capabilities) → set_config invalidate `_caps_cache`.
+- F4: nghe thử draft BỎ giá trị rỗng → chọn "(giọng mặc định model)" vẫn nghe
+  clip cũ → draft giữ cả rỗng, thắng .env.
+- F5: tìm kiếm trúng row trong block đang ẩn (engine khác/ô nữ) → "section bung
+  mà trống" → bỏ row có tổ tiên display:none khỏi kết quả.
+- (tự phát hiện thêm) áp profile gửi giá trị thô từ .env di sản ("True"/"-20.0")
+  sẽ 400 validate → client chuẩn hoá `_cfgNorm` trước khi gửi.
+
+**Verify (server thật + browser):** roundtrip .env set→ghim/unset→xoá/validate
+400/quote giữ nguyên `#"` — .env sau toàn bộ test giống backup TỪNG BYTE;
+capabilities trả RTX 3070 + h264_nvenc + 4/5 package; profiles CRUD + import
+lọc; UI test có kịch bản: quality 2 chiều, dirty 0↔1↔0, ↺ + unset qua nút Lưu
+thật, search "khung" → 3 nhóm/8 row, engine warn elevenlabs + typed-key, tts-
+preview draft 200 audio/mpeg. Console 0 lỗi. node --check + scan ký tự điều
+khiển sạch. LƯU Ý anh em máy kia: job thật 20260711_101200_9b69d9 đang ⏸ chờ
+xem thử — đừng đụng.
+
+---
+
 ## 2026-07-11 (7) — Desktop (F:\MyProject\vietsubvideo)
 
 ### #17: tách index.html (3.750 dòng → 208 dòng markup + 6 file static)
