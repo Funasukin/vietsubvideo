@@ -6,6 +6,26 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (9) — Desktop (F:\MyProject\vietsubvideo)
+
+### CLAUDE.md — hồ sơ bàn giao đa máy (agent máy mới đọc là làm việc tiếp được)
+
+Tạo `CLAUDE.md` ở gốc repo (Claude Code TỰ NẠP mỗi phiên): app là gì, cách chạy
++ checklist thứ KHÔNG đi theo git phải copy tay (.env, models/viXTTS, voices/,
+music/, logo/, clips/, voice_samples/), bản đồ kiến trúc, 8 quy ước làm việc
+với chủ dự án (hỏi-chỉ-trả-lời/confirm-mới-làm, tự chạy lại test rồi báo "vào
+test", CHANGELOG 2 máy, cấm commit secrets, không đụng job thật, workflow 3
+agent, review đối kháng, scan ký tự điều khiển), gotchas Windows (khoá file
+media, Norton TLS, uvicorn không --reload, port mồ côi), thiết kế đã chốt
+(trọng tài thời lượng, voicesig, casting thắng 1-giọng, schema/unset/marker
+migration, OCR crop auto), license TTS cho monetize (kể cả kết luận research
+CapCut/BytePlus/MiniMax 2 phiên gần đây), trạng thái + việc đang mở chờ chốt.
+
+Nguồn: chưng cất từ memory per-máy của Claude Code (thứ KHÔNG đi theo git) —
+từ giờ kiến thức bàn giao nằm trong repo, máy nào clone về cũng đủ ngữ cảnh.
+
+---
+
 ## 2026-07-11 (8) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt G: làm lại tab ⚙️ Cấu hình trên nền settings schema (G-A→G-D một mạch)
