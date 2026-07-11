@@ -1206,6 +1206,23 @@ def set_config(body: dict) -> dict:
     return {"saved": sorted(updates), "note": "Áp dụng cho job chạy mới"}
 
 
+# #17 tách monolith: CSS/JS cắt từ index.html thành file riêng trong static/.
+# Route tự viết thay vì StaticFiles mount: allowlist đuôi + basename (chặn traversal)
+# và Cache-Control no-cache — file đổi sau mỗi lần sửa code là trình duyệt lấy bản
+# mới ngay (local server, revalidate miễn phí), khỏi dính JS cũ sau khi update.
+_STATIC_EXTS = {".js", ".css"}
+
+
+@app.get("/static/{filename}")
+def static_file(filename: str) -> FileResponse:
+    safe = os.path.basename(filename)
+    p = Path(__file__).parent / "static" / safe
+    if Path(safe).suffix.lower() not in _STATIC_EXTS or not p.is_file():
+        raise HTTPException(404, "Không có file này")
+    media = "text/css" if safe.endswith(".css") else "application/javascript"
+    return FileResponse(p, media_type=media, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 def index() -> HTMLResponse:
     html = (Path(__file__).parent / "static" / "index.html").read_text(encoding="utf-8")

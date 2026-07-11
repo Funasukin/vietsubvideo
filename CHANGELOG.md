@@ -6,6 +6,33 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-11 (7) — Desktop (F:\MyProject\vietsubvideo)
+
+### #17: tách index.html (3.750 dòng → 208 dòng markup + 6 file static)
+
+Mảnh monolith cuối. Cắt NGUYÊN VĂN bằng splice có kiểm chứng biên, giữ ĐÚNG THỨ
+TỰ nạp (classic script tuần tự = cùng global scope — hành vi không đổi, không
+phải ES module):
+- `static/style.css` (306 dòng) + 5 file js: `app-core.js` (940 — helpers/tab/
+  jobs/Cấu hình), `app-jobs-extra.js` (575 — queue/series/QC/log/glossary/
+  YouTube/cắt video), `app-trending.js` (305 — Phim hot + PHẦN ĐẦU editor:
+  fmtT/edVoiceSel/edFitChip/openEditor, do file gốc xen kẽ), `app-editor.js`
+  (954 — editor + panel ⚙️/🎨 + nghe thử), `app-visual.js` (465 — tab Chỉnh
+  giao diện + khởi động app). Header mỗi file ghi rõ nội dung thật.
+- index.html còn 208 dòng markup + link/script src.
+- Server: route mới `GET /static/{filename}` — allowlist đuôi .js/.css +
+  basename (chặn traversal, đã test `..%2F` → 404), `Cache-Control: no-cache`
+  (đổi code là trình duyệt lấy bản mới ngay, khỏi dính JS cũ).
+- Verify trên trang thật: 7 asset đều 200; 17/17 hàm cross-file gọi được; tab
+  Cấu hình render 63 control; editor mở job test đủ 19 câu + 12 chip cảnh báo
+  + panel ⚙️/⭐ Chất lượng dịch/👂 nghe 10s/🎛 fx; console 0 lỗi.
+
+Toàn bộ #16+#17 (tách monolith) đến đây HOÀN TẤT: server.py 2306→~1225,
+index.html 3750→208. Các mạch lớn còn lại: W-2 model host (chờ telemetry),
+tab phối/test giọng (chờ duyệt thiết kế).
+
+---
+
 ## 2026-07-11 (6) — Desktop (F:\MyProject\vietsubvideo)
 
 ### #16 giai đoạn 2: tách cụm route EDITOR khỏi server.py
