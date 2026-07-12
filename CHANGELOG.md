@@ -6,6 +6,50 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-13 (2) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt O: vá VÙNG CHẾT OCR — dải crop quá dẹt làm RapidOCR mù chữ
+
+User báo job 20260713_005950_64fd4e (video 剪映 7 phút) "quá nhiều câu không
+được dịch/lồng tiếng" kèm 3 ảnh sub bị sót. Điều tra (sau một kết luận SAI ban
+đầu bị user phản bác đúng): auto-crop trả 0.80 (chạm trần) → dải 1280×144 tỉ
+lệ ~9:1 rơi vùng chết của det model rapidocr 1.2.3 (limit_type=min scale cạnh
+ngắn lên 736 → tensor cực rộng vỡ detector; Codex đọc tận source xác nhận).
+Đo: 0.75 đọc hoàn hảo, 0.78/0.80 RỖNG; phóng to giữ tỉ lệ vô ích, THÊM chiều
+cao là sống → thủ phạm là tỉ lệ khung. Hồ sơ 3 agent: DEXUAT_OCR_VUNGCHET*.md
+(Codex 6/6 claim verify đúng + bắt thêm bug lệch :.2f; bác 3 ý Gemini bằng số).
+
+Sửa `core/ocr_subs.py` (user chốt O-1+O-2, hoãn F-B/F-C):
+- `_pad_for_detection`: dải w/h > 5:1 → đệm ĐEN phía TRÊN về 5:1
+  (copyMakeBorder; trigger theo TỈ LỆ — video dọc không pad oan; KHÔNG
+  replicate mép — sọc dọc giả).
+- `_frame_lines(pad_top=...)`: trừ offset Ở PIXEL trước khi chuẩn hoá, loại
+  box có tâm trong vùng đệm, kẹp [0, h gốc] — contract "nbox theo crop gốc"
+  giữ nguyên, S8 che mờ không cần biết padding tồn tại.
+- Fix lệch chính xác (Codex): crop_top round 2 chữ số dùng CHUNG cho ffmpeg
+  lẫn map box (trước: cắt theo 0.74, map theo 0.743 → lệch vài px).
+- O-2: kiểm NHẤT QUÁN probe-vs-production — probe toàn khung thấy chữ ở ≥3
+  frame mà biến đổi production (crop→2×→pad) mù ở >2/3 số đó → CANH BAO
+  (ASCII) trong run.log; KHÔNG tự retry. + telemetry cuối extract (frame có
+  chữ %, câu/phút, khoảng trống dài nhất). Ngưỡng mật độ cố định đã chứng
+  minh vô dụng (job hỏng đạt 4.4 câu/phút vẫn lọt gate duration/30).
+
+**Verify** (unit + integration trên clone aaa007, chỉ chạy OCR — không đụng
+job thật, không tốn API credit):
+- Unit: ratio 4.9 không pad (trả nguyên tham chiếu), 5.1/8/12 pad đúng target;
+  2 frame thật vùng chết 0.78/0.80 → đọc ĐÚNG TEXT (我叫姬弃仁/客官桌子坏了要赔);
+  map y về khung đầy đủ 0.906 (~0.93 kỳ vọng); video dọc không pad.
+- Integration video thật: **31 → 103 câu (×3.3)**, frame có chữ 9%→34%,
+  2/3 câu user chụp cứu được (好嘞 mất vì sub <0.5s trượt nhịp 2fps — giới
+  hạn tần số quét, KHÔNG phải crop; ngoài phạm vi), lỗi chữ hệ thống sạch
+  (东四→东西), khoảng trống >6s 14→9, box overlay khít glyph từng pixel
+  (đã soi ảnh). Các vùng trống còn lại = thoại KHÔNG sub → địa bàn "chế độ
+  lai OCR+Whisper" (vòng sau, chưa làm).
+- Job thật 64fd4e user tự chạy lại sau khi nạp credit API (đã hướng dẫn nạp
+  đúng ví console.anthropic.com — user từng nạp nhầm ví Claude app).
+
+---
+
 ## 2026-07-13 (1) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt T (T-1→T-3): TTS_BASE_SPEED — nền tốc độ đọc đồng đều cho mọi câu
