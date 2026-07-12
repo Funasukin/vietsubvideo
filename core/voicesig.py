@@ -33,6 +33,12 @@ def fit_budget(max_speedup: float) -> int:
     return max(0, min(EDGE_RATE_MAX, round((max_speedup - 1) * 100)))
 
 
+def base_tag(base_speed: float) -> str:
+    """Tag nền tốc độ đọc (đợt T) cho .sig — RỖNG khi 1.0 để mp3 của job cũ
+    (sinh trước tính năng) không bị coi là lệch giọng và re-TTS oan."""
+    return f":b{base_speed:g}" if base_speed > 1.001 else ""
+
+
 def _truthy(v: str, default: bool) -> bool:
     s = str(v).strip().lower()
     if not s:
@@ -55,6 +61,7 @@ class TtsSettings:
     budget: int               # fit_budget(MAX_SPEEDUP)
     pt: str                   # ":pt1" | "" (PROSODY_TRANSFER)
     emotion_on: bool
+    base_speed: float = 1.0   # TTS_BASE_SPEED — nền gu đọc (đợt T)
 
     @property
     def is_vi(self) -> bool:
@@ -89,6 +96,10 @@ class TtsSettings:
             ms = float(g("MAX_SPEEDUP", "1.4") or "1.4")
         except ValueError:
             ms = 1.4
+        try:   # clamp Y HỆT config.py — sig phải khớp pipeline thật từng byte
+            bs = min(1.5, max(1.0, float(g("TTS_BASE_SPEED", "1.0") or "1.0")))
+        except ValueError:
+            bs = 1.0
         return cls(
             engine=eng, lang=lang,
             single_voice=_truthy(g("TTS_SINGLE_VOICE"), True),
@@ -98,6 +109,7 @@ class TtsSettings:
             budget=fit_budget(ms),
             pt=":pt1" if _truthy(g("PROSODY_TRANSFER"), False) else "",
             emotion_on=_truthy(g("EMOTION"), False),
+            base_speed=bs,
         )
 
 
@@ -123,6 +135,9 @@ def voice_signature(seg: dict, st: TtsSettings) -> str:
     ra .sig (parity test trong đợt U-2). Đổi logic ở đây nhớ đổi cả chỗ S5 ghi
     sig edge trực tiếp trong _tts_one."""
     nu = seg.get("voice") == "nu" and not st.single_voice
+    # base_tag CHỈ gắn nhánh EDGE (đợt T): engine nào honor nền tốc độ thì sig
+    # mới mang tag — vix/paid chưa áp (T-4/T-5), gắn sớm là đổi knob re-TTS
+    # (paid = tốn tiền thật) mà âm thanh không đổi.
     if st.is_vi and seg.get("voice_ref"):
         return "vix:ref:" + seg["voice_ref"] + f":f{st.budget}" + st.pt
     if st.engine in PAID_ENGINES and not (st.engine in VI_ONLY and not st.is_vi):
@@ -132,4 +147,4 @@ def voice_signature(seg: dict, st: TtsSettings) -> str:
                 + _emotion_tag(seg, st) + f":f{st.budget}" + st.pt)
     return ("edge:" + (st.edge_nu if nu else st.edge_nam)
             + _prosody_tag(seg, st) + _emotion_tag(seg, st)
-            + f":f{st.budget}" + st.pt)
+            + f":f{st.budget}" + st.pt + base_tag(st.base_speed))

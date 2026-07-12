@@ -45,7 +45,7 @@ _VOICE_GAIN_CLAMP = 6.0      # chỉnh tối đa ±6dB — không thổi phồng
 
 
 def render_voice(job_dir, seg: dict, rate: int, slot: int, espeed: float,
-                 stretch_short: bool, sped_path=None):
+                 stretch_short: bool, sped_path=None, style: float = 1.0):
     """Xử lý audio 1 câu ĐÚNG NHƯ lúc trộn thật: nạp (trim) → atempo trong ngân
     sách còn lại (tích ≤ MAX_SPEEDUP) → kéo giãn nhẹ (nếu bật) → chuẩn hoá RMS →
     fade-cắt tại biên slot. → (voice (n,2) int16, detail dict).
@@ -67,8 +67,9 @@ def render_voice(job_dir, seg: dict, rate: int, slot: int, espeed: float,
         sped_path = job_dir / "tts" / f"seg_{seg['id']:04d}_sped.wav"
 
     if len(voice) > limit * duration.TOL:
-        # ngân sách CÒN LẠI sau phần engine đã nén ở S5 — tích ≤ MAX_SPEEDUP
-        allowed = duration.budget_left(espeed)
+        # ngân sách CÒN LẠI sau phần engine đã nén ở S5 — tích ≤ MAX_SPEEDUP;
+        # style = nền THỰC của câu (fit_report), câu vix/paid không mang nền
+        allowed = duration.budget_left(espeed, style)
         factor = min(allowed, len(voice) / limit)
         if factor > 1.004:
             # LUÔN tạo lại: factor phụ thuộc slot + mp3 hiện tại — bản _sped của lần
@@ -99,14 +100,22 @@ def render_voice(job_dir, seg: dict, rate: int, slot: int, espeed: float,
         clipped_ms = _ms(len(voice) - slot)
         voice = _fade_cut(voice, slot, rate)
 
+    # style = nền THỰC của CHÍNH câu này, truyền từ fit_report (style_native —
+    # chỉ câu edge được áp nền đợt T). Không đọc config toàn cục: câu vix/paid
+    # không mang nền, gắn nhãn theo config là số ảo (review đối kháng T#2/#3);
+    # mix-preview đọc cùng fit_report trên đĩa → nhãn + ngân sách khớp render.
+    style = max(1.0, style)
     detail = {
         "id": seg["id"],
         "trimmed_ms": trimmed_ms,                              # bản đọc (đã cắt lặng)
         "target_ms": int((seg["end"] - seg["start"]) * 1000),  # miệng nhân vật
         "slot_ms": _ms(slot),                                  # tới câu kế
-        "engine_speed": round(espeed, 3),                      # S5 đã nén (edge/viXTTS)
+        "engine_speed": round(espeed, 3),                      # S5 đã nén VÌ FIT (không gồm nền)
         "post_atempo": round(factor, 3),                       # S7 nén thêm
-        "total_speed": round(espeed * factor, 3),              # tích — ≤ MAX_SPEEDUP
+        "total_speed": round(espeed * factor, 3),              # tích NÉN — ≤ MAX_SPEEDUP
+        **({"style_speed": round(style, 3),                    # nền gu đọc (đợt T)
+            "audible_total": round(style * espeed * factor, 3)  # nghe thật ≤ ABS_AUDIBLE_MAX
+            } if style > 1.001 else {}),
         "final_ms": _ms(len(voice)),
         "gap_ms": max(0, _ms(slot - len(voice))),
         "clipped_ms": clipped_ms,
@@ -162,12 +171,14 @@ def run(job: Job) -> None:
         start = int(seg["start"] * rate)
         next_start = next_bound.get(seg["id"], total)
         slot = max(int(0.3 * rate), next_start - start)
-        espeed = float(fit.get(str(seg["id"]), {}).get("engine_speed") or 1.0)
+        _f = fit.get(str(seg["id"]), {})
+        espeed = float(_f.get("engine_speed") or 1.0)
+        style = float(_f.get("style_native") or 1.0)   # nền THỰC của câu (đợt T)
 
         # toàn bộ xử lý per-câu (atempo/giãn/norm/fade-cắt) ở render_voice —
         # dùng CHUNG với /mix-preview
         voice, row = render_voice(job.dir, seg, rate, slot, espeed,
-                                  config.STRETCH_SHORT)
+                                  config.STRETCH_SHORT, style=style)
         if row["clipped_ms"] > 0:
             warnings.append({
                 "id": seg["id"],

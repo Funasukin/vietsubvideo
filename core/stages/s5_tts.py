@@ -56,6 +56,7 @@ def _tts_settings():
         "MAX_SPEEDUP": str(config.MAX_SPEEDUP),
         "PROSODY_TRANSFER": config.PROSODY_TRANSFER,
         "EMOTION": config.EMOTION,
+        "TTS_BASE_SPEED": str(config.TTS_BASE_SPEED),
     })
 
 
@@ -93,6 +94,25 @@ def _fit_budget() -> int:
     return voicesig.fit_budget(config.MAX_SPEEDUP)
 
 
+def _base_tag() -> str:
+    """Tag nền tốc độ cho .sig — PARITY với voicesig.base_tag (2 nơi ghi sig)."""
+    from core import voicesig
+    return voicesig.base_tag(config.TTS_BASE_SPEED)
+
+
+def _edge_kwargs(seg: dict) -> dict:
+    """kwargs edge = diễn cảm (emotion/prosody) ⊗ NỀN TTS_BASE_SPEED (đợt T).
+    Nền là gu đọc áp MỌI câu — nhân chéo vào rate bằng đúng công thức trọng tài
+    (edge_total_rate) rồi kẹp trần an toàn giọng. Dùng ở CẢ synth đầu lẫn
+    _fit_slot để 'base' của tầng nén đã bao gồm nền (nén chỉ tiêu phần fit)."""
+    kw = emotion.edge_kwargs(seg)
+    b = config.TTS_BASE_SPEED
+    if b > 1.001:
+        cur = int(kw.get("rate", "+0%").rstrip("%"))
+        kw["rate"] = f"{min(duration.EDGE_RATE_MAX, duration.edge_total_rate(cur, b)):+d}%"
+    return kw
+
+
 async def _fit_slot(seg: dict, voice: str, out, fit_log: dict) -> None:
     """Chống tràn thoại — bản TRỌNG TÀI (đợt B audit giọng): bản đọc DÀI hơn limit
     (slot − fade guard) → đọc lại MỘT lần với rate tính bằng CÔNG THỨC CHÉO
@@ -101,6 +121,10 @@ async def _fit_slot(seg: dict, voice: str, out, fit_log: dict) -> None:
     để S7 chỉ atempo trong ngân sách CÒN LẠI (tích ≤ MAX_SPEEDUP).
     Lỗi ở bước này → giữ bản gốc (S7 lo), không chết job."""
     entry: dict = {"engine_speed": 1.0}
+    if config.TTS_BASE_SPEED > 1.001:
+        # nền gu đọc đã áp ở synth đầu — ghi TÁCH BIỆT khỏi engine_speed (nén):
+        # report/dashboard đọc "nhịp nền × nén thêm", không trộn 2 nghĩa (Codex)
+        entry["style_native"] = config.TTS_BASE_SPEED
     fit_log[str(seg["id"])] = entry
     dur = duration.trimmed_dur_s(out)
     if dur:
@@ -111,8 +135,12 @@ async def _fit_slot(seg: dict, voice: str, out, fit_log: dict) -> None:
     k = duration.fit_speed(dur, slot)         # 1.0 = đã lọt limit (deadzone)
     if k <= 1.0:
         return
-    k = min(k, config.MAX_SPEEDUP)            # ngân sách TỔNG của user
-    kw = emotion.edge_kwargs(seg)
+    # ngân sách TỔNG của user + trần chất lượng nghe thật (nền × nén ≤ ABS)
+    k = min(k, config.MAX_SPEEDUP,
+            duration.ABS_AUDIBLE_MAX / max(1.0, config.TTS_BASE_SPEED))
+    if k <= 1.0:
+        return
+    kw = _edge_kwargs(seg)                    # rate hiện tại ĐÃ gồm nền (đợt T)
     base = int(kw.get("rate", "+0%").rstrip("%"))
     # base (prosody/cảm xúc) là diễn cảm — giữ nguyên; rate mới = base ⊗ k (có số
     # hạng chéo), kẹp trần an toàn giọng +50% (nhanh hơn nghe máy móc).
@@ -154,7 +182,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict, fit_log: dict) -
             out.unlink(missing_ok=True)
             try:
                 communicate = edge_tts.Communicate(seg["text_vi"], voice,
-                                                   **emotion.edge_kwargs(seg))
+                                                   **_edge_kwargs(seg))
                 await asyncio.wait_for(
                     communicate.save(str(out)), timeout=config.TTS_TIMEOUT_S
                 )
@@ -171,7 +199,7 @@ async def _tts_one(sem: asyncio.Semaphore, job: Job, seg: dict, fit_log: dict) -
                 # _voice_sig để thử lại
                 _write_sig(job, seg, "edge:" + voice + prosody.sig_tag(seg)
                            + emotion.sig_tag(seg) + f":f{_fit_budget()}"
-                           + prosody_transfer.sig_tag())
+                           + prosody_transfer.sig_tag() + _base_tag())
                 return
             if attempt == RETRIES:
                 raise RuntimeError(

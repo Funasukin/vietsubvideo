@@ -146,8 +146,9 @@ const ED_OV_FIELDS = [
   // nhóm TRỘN — đổi xong chỉ dựng nền + trộn + render (NHANH, không đọc lại giọng)
   ["MAX_SPEEDUP", "⏩ Đồng bộ khớp thoại", [["1.0", "1.0× — không tăng tốc"], ["1.2", "1.2×"], ["1.4", "1.4× — cân bằng"], ["1.6", "1.6×"], ["1.8", "1.8×"], ["2.0", "2.0× — khớp gắt"]], "tts",
     "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine × atempo ≤ mức này); hết ngân sách thì fade + cắt ở biên, KHÔNG đè câu kế. <b>1.0× = KHÔNG ép nhanh</b> — tự nhiên nhất, câu dài bị cắt sớm; <b>2.0×</b> = bám hình gắt nhưng đọc dồn rõ. Đổi núm sẽ ĐỌC LẠI các câu bị ảnh hưởng (ngân sách nằm trong giọng đã đọc)."],
-  ["STRETCH_SHORT", "🐢 Kéo giãn câu đọc xong sớm", [["0", "Tắt"], ["1", "Bật — chậm nhẹ ≤8%"]], "mix",
-    "Câu đọc xong quá sớm so với miệng → kéo chậm nhẹ (0.92–1.0×, giữ cao độ). Chỉ kéo về độ dài MIỆNG, không lấp khoảng lặng tự nhiên."],
+  // (đợt T: STRETCH_SHORT đã gỡ — kéo giãn câu ngắn trái triết lý nhịp đồng đều)
+  ["TTS_BASE_SPEED", "🚀 Nhịp đọc nền", [["1.0", "Mặc định (chậm rãi)"], ["1.1", "+10%"], ["1.2", "+20%"], ["1.3", "+30% — nhanh tự nhiên"], ["1.4", "+40%"], ["1.5", "+50% — dồn dập"]], "tts",
+    "Nền tốc độ đọc cho MỌI câu của video này (gu đọc kênh) — câu ngắn hết rề rà, nhịp đều giữa các câu. KHÔNG tính vào ngân sách khớp thoại: câu vượt khung vẫn được nén thêm trong trần ⏩ rồi mới cắt. Hiện áp engine edge; viXTTS/trả phí sẽ theo sau. Đổi núm sẽ ĐỌC LẠI các câu edge."],
   ["KEEP_BGM", "🎵 Nhạc/SFX gốc", [["0", "Hạ KHI CÓ thoại"], ["flat", "Hạ ĐỀU suốt video"], ["1", "Tách giọng demucs (GPU)"]], "mix",
     "Xử lý audio gốc dưới giọng đọc. <b>Khi có thoại</b>: nền to–nhỏ theo thoại (có người thấy 'bơm' khó chịu). <b>Đều suốt video</b>: âm gốc nhỏ ổn định, dễ nghe. <b>demucs</b>: tách hẳn giọng nói gốc (GPU, chậm) — nền giữ trọn vẹn nhất."],
   // nhóm GIỌNG — đọc lại các câu bị ảnh hưởng (vài phút với edge)
@@ -250,13 +251,13 @@ function edOverridePanel(data) {
   const COMMON = new Set(["KEEP_BGM", "TTS_ENGINE", "TTS_SINGLE_VOICE"]);
   const fmap = Object.fromEntries(ED_OV_FIELDS.map(f => [f[0], f]));
   const presetRow = `<div class="ov-field">
-      <span class="ov-label">🎯 Preset khớp thoại${ovHint("Đặt nhanh 2 núm Đồng bộ khớp thoại + Kéo giãn (chi tiết trong Nâng cao — cùng bộ preset với tab Cấu hình). <b>Chặt</b>: bám khẩu hình sát nhất (2.0× + kéo giãn). <b>Tự nhiên</b>: giọng đều, ưu tiên nghe êm (1.2×). Vẫn phải bấm Áp dụng/Lưu.")}</span>
+      <span class="ov-label">🎯 Preset khớp thoại${ovHint("Đặt nhanh núm Đồng bộ khớp thoại (chi tiết trong Nâng cao — cùng bộ preset với tab Cấu hình). <b>Chặt</b>: nén tối đa 2.0×, bám khẩu hình sát nhất. <b>Tự nhiên</b>: nén tối đa 1.2×, ưu tiên nghe êm. Vẫn phải bấm Áp dụng/Lưu.")}</span>
       <span style="display:flex;gap:6px;min-width:0">
         <button class="ghost" type="button" onclick="edOvPreset('tight')">🎯 Chặt</button>
         <button class="ghost" type="button" onclick="edOvPreset('natural')">🌿 Tự nhiên</button>
       </span></div>`;
   const mixPrevRow = `<div class="ov-field">
-      <span class="ov-label">👂 Nghe thử 10s${ovHint("Trộn nhanh ~10 giây quanh câu đang chọn với Âm nền / Nhạc SFX / Kéo giãn ĐANG chỉnh (chưa cần Lưu) — dựng bằng đúng bộ trộn của render thật. Đổi engine/giọng/tốc độ cần ĐỌC LẠI giọng nên không nằm trong nghe thử này; demucs chưa tách sẵn thì nền tạm dùng audio gốc.")}</span>
+      <span class="ov-label">👂 Nghe thử 10s${ovHint("Trộn nhanh ~10 giây quanh câu đang chọn với Âm nền / Nhạc SFX ĐANG chỉnh (chưa cần Lưu) — dựng bằng đúng bộ trộn của render thật. Đổi engine/giọng/nhịp đọc cần ĐỌC LẠI giọng nên không nằm trong nghe thử này; demucs chưa tách sẵn thì nền tạm dùng audio gốc.")}</span>
       <button class="ghost" type="button" id="edmixprevbtn" onclick="edMixPreview()">▶ Nghe quanh câu đang chọn</button></div>`;
   const qOv = qualityFromOv(ov);
   const qualityRow = `<div class="ov-field" id="ovf-QUALITY">
@@ -317,7 +318,8 @@ async function edMixPreview() {
   const body = {
     t: Math.max(0, (seg.start || 0) - 2), duration_s: 10,
     keep_bgm: edOvEff("KEEP_BGM") || "",
-    stretch_short: edOvEff("STRETCH_SHORT") || "",
+    // STRETCH_SHORT đã gỡ (đợt T) — server bỏ qua field này, gửi "0" cho tương thích
+    stretch_short: "0",
     ...(bedSel && bedSel.value !== "" ? { bed_gain_db: parseFloat(bedSel.value) } : {}),
   };
   const btn = document.getElementById("edmixprevbtn");

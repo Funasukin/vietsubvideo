@@ -121,9 +121,10 @@ function markCfgDirty() {
 }
 // V12/U5: MỘT nguồn mapping preset khớp thoại — tab Cấu hình (cfg-*) và panel ⚙️
 // per-job (ov-*) cùng dùng, khỏi lệch nhau về sau (điểm Codex).
+// đợt T: STRETCH_SHORT đã gỡ khỏi app (nhịp đồng đều) — preset chỉ còn MAX_SPEEDUP
 const SYNC_PRESETS = {
-  tight: { MAX_SPEEDUP: "2.0", STRETCH_SHORT: "1" },
-  natural: { MAX_SPEEDUP: "1.2", STRETCH_SHORT: "0" },
+  tight: { MAX_SPEEDUP: "2.0" },
+  natural: { MAX_SPEEDUP: "1.2" },
 };
 function applySyncPreset(kind, prefix) {
   const p = SYNC_PRESETS[kind] || {};
@@ -131,8 +132,8 @@ function applySyncPreset(kind, prefix) {
     const el = document.getElementById(prefix + k);
     if (el) el.value = v;
   }
-  toast(kind === "tight" ? "Preset: khớp môi chặt (2.0× + kéo giãn câu ngắn)"
-                         : "Preset: tự nhiên (1.2×, không kéo giãn)");
+  toast(kind === "tight" ? "Preset: khớp môi chặt (nén tối đa 2.0×)"
+                         : "Preset: tự nhiên (nén tối đa 1.2×)");
 }
 function cfgPreset(kind) { applySyncPreset(kind, "cfg-"); markCfgDirty(); }
 function edOvPreset(kind) { applySyncPreset(kind, "ov-"); applyOvDeps(); }

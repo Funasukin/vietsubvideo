@@ -293,8 +293,10 @@ _OV_TTS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TTS_VOICE", "TTS_VOICE_NU",
            "PROSODY", "EMOTION", "PROSODY_TRANSFER",
            # đợt B audit giọng: ngân sách fit nướng vào giọng đã đọc (sig :f cả edge
            # lẫn viXTTS) — đổi núm phải ĐỌC LẠI, xếp nhóm mix là knob nửa tác dụng
-           "MAX_SPEEDUP"}
-_OV_MIX = {"KEEP_BGM", "STRETCH_SHORT"}
+           "MAX_SPEEDUP",
+           # đợt T: nền tốc độ đọc — nướng vào giọng (sig :b) → depth TTS
+           "TTS_BASE_SPEED"}
+_OV_MIX = {"KEEP_BGM"}   # STRETCH_SHORT đã gỡ (đợt T — nhịp đồng đều)
 # U16: DENOISE đụng S2 (audio_16k.wav cho Whisper) — depth RIÊNG sâu hơn transcript
 # (Codex: nhét vào nhóm transcript là knob nửa tác dụng vì audio cũ vẫn còn)
 _OV_EXTRACT = {"DENOISE"}
@@ -641,8 +643,9 @@ def mix_preview(job_id: str, body: MixPreviewBody):
         except ValueError:
             gain_db = config.DUCK_GAIN_DB
     gain_db = max(-40.0, min(0.0, float(gain_db)))
-    stretch = (body.stretch_short if body.stretch_short in ("0", "1")
-               else eff("STRETCH_SHORT", "0")) == "1"
+    # STRETCH_SHORT đã gỡ (đợt T) — preview khớp render: không bao giờ kéo giãn.
+    # body.stretch_short còn nhận 1 phiên bản để client cũ không 422, nhưng bỏ qua.
+    stretch = False
 
     # nền: demucs chỉ dùng khi ĐÃ tách sẵn (tách mới mất nhiều phút — không phải preview)
     src = job_dir / "audio_full.wav"
@@ -683,12 +686,14 @@ def mix_preview(job_id: str, body: MixPreviewBody):
             if not (job_dir / "tts" / f"seg_{seg['id']:04d}.mp3").exists():
                 continue
             slot = max(int(0.3 * rate), int(slot_s * rate))
-            espeed = float(fit.get(str(seg["id"]), {}).get("engine_speed") or 1.0)
+            _f = fit.get(str(seg["id"]), {})
+            espeed = float(_f.get("engine_speed") or 1.0)
+            _style = float(_f.get("style_native") or 1.0)   # nền THỰC per-câu (đợt T)
             sped = config.DATA_DIR / f"_mixprev_{tmp_tag}_{seg['id']:04d}.wav"
             tmps.append(sped)
             try:
                 voice, _row = s7_mix.render_voice(job_dir, seg, rate, slot, espeed,
-                                                  stretch, sped_path=sped)
+                                                  stretch, sped_path=sped, style=_style)
             except Exception:
                 continue   # 1 câu hỏng không được làm chết preview
             rel = int((seg["start"] - t0) * rate)
@@ -732,7 +737,8 @@ class TtsPreviewBody(BaseModel):
 # allowlist khóa draft được phép ảnh hưởng nghe thử — không cho client đẩy khóa tuỳ ý
 _PREVIEW_TTS_KEYS = {"TTS_ENGINE", "TTS_SINGLE_VOICE", "TARGET_LANG",
                      "TTS_VOICE", "TTS_VOICE_NU",
-                     "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU"}
+                     "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU",
+                     "TTS_BASE_SPEED"}   # đợt T: nghe đúng nhịp nền đang chọn
 
 
 def _resolve_voice_ref(name: str) -> str | None:
@@ -874,6 +880,15 @@ def tts_preview(body: TtsPreviewBody):
     voice = _nu if nu else _nam
     # nhãn cảm xúc như lúc render (prosody đo audio thì bỏ — nghe thử lẻ không có audio)
     emo_kw = emo.edge_kwargs({"voice": body.voice, "emotion": body.emotion})
+    # đợt T: nền tốc độ đọc — nghe thử ĐÚNG nhịp sẽ render (job override/draft thắng)
+    try:
+        _bs = min(1.5, max(1.0, float(_ov("TTS_BASE_SPEED", str(config.TTS_BASE_SPEED)))))
+    except ValueError:
+        _bs = config.TTS_BASE_SPEED
+    if _bs > 1.001:
+        from core import duration as _dur
+        _cur = int(emo_kw.get("rate", "+0%").rstrip("%"))
+        emo_kw["rate"] = f"{min(_dur.EDGE_RATE_MAX, _dur.edge_total_rate(_cur, _bs)):+d}%"
 
     import asyncio
     import uuid

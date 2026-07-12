@@ -182,6 +182,9 @@ def _worker() -> None:
         child_env = None
         try:
             _ov = Job.load(job_id).env_overrides or {}
+            # STRETCH_SHORT đã gỡ khỏi app (đợt T) — job cũ còn override thì lọc
+            # bỏ tại đây cho tự sạch, khỏi kích cảnh báo config.py mỗi lần chạy
+            _ov.pop("STRETCH_SHORT", None)
             if _ov:
                 child_env = dict(os.environ)
                 child_env["FLOWAPP_JOB_OVERRIDES"] = json.dumps(_ov)

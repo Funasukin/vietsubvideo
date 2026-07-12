@@ -6,6 +6,79 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-13 (1) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đợt T (T-1→T-3): TTS_BASE_SPEED — nền tốc độ đọc đồng đều cho mọi câu
+
+Theo DEXUAT_TOCDO_GIONGDOC_TONGHOP.md (user chốt cả 4 số; Codex phản hồi
+đồng thuận kèm 3 lưu ý — đã làm đủ cả 3).
+
+**T-1 nền:**
+- Khóa mới `TTS_BASE_SPEED` (schema options 1.0–1.5, factory 1.0 — KHÔNG đổi
+  default để không lệch voicesig install cũ; UI khuyên 1.3): hệ số nhân "gu đọc
+  kênh" áp MỌI câu TRƯỚC trọng tài chống tràn, KHÔNG tiêu ngân sách MAX_SPEEDUP.
+- `duration.ABS_AUDIBLE_MAX = 2.0`: trần chất lượng NGHE THẬT — nền × nén-engine
+  × atempo ≤ 2.0 (budget_left giờ min(MAX_SPEEDUP/e, ABS/(B×e)); B=1.0 → hành vi
+  y cũ, unit test xác nhận). Xóa hằng chết `SYL_TARGET_PER_S` (Codex phát hiện);
+  `SYL_MAX_PER_S` CHƯA scale theo nền (đổi 1 biến/lần — quyết định TONGHOP).
+- voicesig: `TtsSettings.base_speed` (clamp y hệt config) + `base_tag()` — tag
+  `:b1.3` CHỈ khi ≠1.0 (job cũ không re-TTS oan) và CHỈ nhánh EDGE (viXTTS/paid
+  chưa honor — T-4/T-5; gắn sớm là đổi knob re-TTS paid tốn tiền thật mà âm
+  thanh không đổi). Parity 2 nơi (voicesig + sig inline S5) giữ đúng.
+- STRETCH_SHORT GỠ khỏi schema; config.py ép False + cảnh báo khi .env/override
+  cũ còn =1 (Codex: knob ẩn không được âm thầm kéo chậm); code s7 giữ 1 phiên bản.
+
+**T-2 edge end-to-end + số liệu:**
+- S5 `_edge_kwargs`: seed nền vào rate (cross-term edge_total_rate, cap +50%)
+  cho CẢ synth đầu lẫn _fit_slot — tầng nén đo trên nền mới, engine_speed vẫn
+  là hệ số THUẦN FIT; fit_log thêm `style_native`; mix detail thêm
+  `style_speed`/`audible_total` (tách nền khỏi nén trong report — Codex).
+- MỚI `scripts/bench_speech_rate.py`: corpus 16 câu × 4 nhóm (ngắn/vừa/dài/
+  số-tên) × 5 mức × 2 giọng (160 synth đo trên thước cắt-lặng):
+  NamMinh 1.0→4.03 âm/s, 1.3→5.20, 1.4→5.58; HoaiMy 1.0→3.79, 1.3→4.89,
+  1.4→5.25 (giọng "hoạt ngôn" tham chiếu ~5.4 → mức 1.3–1.4 là vùng đúng);
+  câu ngắn không lệch bất thường. `--samples` sinh bộ NGHE MÙ A/B/C
+  (1.2/1.3/1.4 xáo trộn) vào voice_samples/nghe_mu/ + _dapan.txt.
+- Job test `20260712_000003_aaa006` (clone job Đấu La, override
+  TTS_BASE_SPEED=1.3, đọc lại từ TTS — giữ nguyên bản dịch): tốc độ thật
+  median 3.90→4.91 âm/s (×1.26), cả 8 câu tăng đều, 0 nén, 0 vượt ABS, sig
+  parity 8/8 với env hiệu lực. Job fail ở s9 metadata vì HẾT CREDIT Anthropic
+  API (không liên quan đợt T — final.mp4 vẫn có, nghe được). ⚠ USER CẦN NẠP
+  CREDIT trước khi chạy job dịch mới.
+
+**T-3 UI:**
+- Tab Cấu hình: row 🚀 Nhịp đọc nền (nhãn % + "khuyên dùng" + nút 🔊 nghe theo
+  bản nháp — _PREVIEW_TTS_KEYS thêm khóa); gỡ row Kéo giãn; preset 🎯/🌿 chỉ
+  còn MAX_SPEEDUP; tooltip MAX_SPEEDUP nói rõ "không gồm nhịp nền".
+- Panel ⚙️ per-job: row 🚀 (depth tts, _OV_TTS) — verify sống: knob phản ánh
+  override 1.3, /override-impact báo đúng 8/8 câu đọc lại khi bỏ override.
+- tts-preview áp nền từ job override/draft (đo thật: file 1.3 ngắn hơn 1.0).
+
+**Review đối kháng (agent riêng) — 4 phát hiện, sửa cả 4:**
+- T#1 NGHIÊM TRỌNG (reviewer tái hiện thật): cảnh báo STRETCH_SHORT trong
+  config.py chứa ⚠ + tiếng Việt có dấu, in lúc import — job subprocess redirect
+  stdout ra run.log (cp1252, cli.py reconfigure UTF-8 SAU import) →
+  UnicodeEncodeError → job chết vĩnh viễn ĐÚNG với máy mà cảnh báo nhắm tới.
+  Sửa: message ASCII + try/except; worker lọc STRETCH_SHORT khỏi
+  FLOWAPP_JOB_OVERRIDES để job cũ tự sạch. Đã tái hiện lại → exit 0.
+- T#2: budget_left đọc config.TTS_BASE_SPEED TOÀN CỤC → đánh thuế trần ABS cả
+  câu viXTTS/paid (kể cả casting voice_ref) không hề mang nền (B=1.3, vix
+  espeed=1.25: ngân sách 1.6 tụt còn 1.23 → cắt oan) + nhãn style/audible ảo.
+  Sửa: style per-segment từ fit_report (style_native — chỉ câu edge có),
+  budget_left(engine_speed, base_speed=1.0), render_voice thêm param style,
+  cả run() lẫn mix-preview truyền theo. Unit: câu vix giữ nguyên 1.6 ✓.
+- T#3: comment "style chỉ là nhãn report" sai (budget cũng dùng) — hết vấn đề
+  sau T#2 vì S7 không còn đọc config, mix-preview đọc cùng fit_report trên đĩa.
+- T#4: 2 tooltip stale ở editor (preset + nghe thử 10s còn nhắc "Kéo giãn").
+Verify sau sửa: budget unit mới, crash-scenario exit 0, mix-preview 200 qua
+chữ ký render_voice mới, knob cfg/ov sống sau restart.
+
+CHƯA làm: T-4 viXTTS (native ≤1.25 + residual atempo), T-5 paid engines
+(EL voice_settings.speed 0.7–1.2, VBee speed_rate, FPT −3..+3 đo duration) —
+chờ user nghe bộ mẫu chốt mức kênh trước.
+
+---
+
 ## 2026-07-12 (1) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Bậc 1 lộ trình "giọng đọc tự nhiên": BỎ SÀN độn chữ ở S4 (giữ trần)

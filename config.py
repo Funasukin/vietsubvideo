@@ -262,10 +262,28 @@ DUCK_ALL = _KEEP_BGM_RAW == "flat"
 # khớp timeline (atempo GIỮ NGUYÊN cao độ). Đây là mức tăng tốc TỐI ĐA cho phép:
 # cao = khớp timing sát hơn nhưng giọng dồn nhanh; 1.0 = KHÔNG tăng tốc (chấp nhận tràn).
 MAX_SPEEDUP = float(os.getenv("MAX_SPEEDUP", "1.4"))
-# V9 audit giọng: câu đọc xong QUÁ SỚM so với miệng nhân vật → kéo CHẬM nhẹ (atempo
-# 0.92–1.0, giữ cao độ) cho đỡ hụt. Mặc định TẮT — tính năng từng bị revert theo yêu
-# cầu user (30e285c), chỉ bật khi chủ động muốn thử; bật/tắt chỉ cần chạy lại từ trộn.
-STRETCH_SHORT = os.getenv("STRETCH_SHORT", "0").strip().lower() in ("1", "true")
+# Đợt T (2026-07-12): NỀN tốc độ đọc "gu kênh" — hệ số nhân áp cho MỌI câu trước
+# khi trọng tài chống tràn làm việc (câu ngắn hết rề rà, nhịp đều giữa các câu).
+# KHÁC MAX_SPEEDUP: đây là phong cách, không phải nén — không tiêu ngân sách fit.
+# Đợt này mới engine EDGE honor; viXTTS (T-4) và trả phí (T-5) sẽ theo sau.
+try:
+    TTS_BASE_SPEED = min(1.5, max(1.0, float(os.getenv("TTS_BASE_SPEED", "1.0"))))
+except ValueError:
+    TTS_BASE_SPEED = 1.0
+# V9 STRETCH_SHORT (kéo giãn câu đọc xong sớm) đã GỠ (đợt T): trái triết lý mới
+# "nhịp đồng đều, đọc xong sớm là mong muốn" (user chốt 2026-07-12). LUÔN tắt —
+# còn đọc key 1 phiên bản để cảnh báo .env/job cũ đang bật, tránh knob ẩn âm
+# thầm kéo chậm; sẽ xóa hẳn ở phiên bản sau.
+if os.getenv("STRETCH_SHORT", "0").strip().lower() in ("1", "true"):
+    try:   # ASCII + nuốt lỗi: print này chạy TRƯỚC khi cli.py reconfigure stdout
+        # sang UTF-8 — stdout redirect ra run.log là cp1252, ký tự ⚠/có dấu sẽ
+        # UnicodeEncodeError → import config chết → job không bao giờ chạy
+        # (review đối kháng đợt T tái hiện thật). Cảnh báo không được giết job.
+        print("CANH BAO: STRETCH_SHORT=1 da bi GO khoi app (nhip doc dong deu)"
+              " - bo qua, coi nhu TAT. Xoa key nay khoi .env de het canh bao.")
+    except Exception:
+        pass
+STRETCH_SHORT = False
 
 # Nhịp phụ đề (S8): 1 = câu gộp (cho giọng đọc) được TÁCH hiển thị lại theo đúng
 # mốc thời gian từng dòng sub gốc — nhịp như bản gốc | 0 = hiện cả câu gộp.

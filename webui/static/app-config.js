@@ -11,7 +11,7 @@ let _cfgInitialWhisper = "auto"; // giá trị núm Whisper lúc nạp (pseudo, 
 let _cfgProfiles = [];
 
 // ---- chuẩn hoá giá trị để SO SÁNH (bool "True"→"1", "-20.0"→"-20", màu về thường) ----
-const _CFG_BOOLISH = ["DENOISE", "TTS_SINGLE_VOICE", "STRETCH_SHORT", "DIARIZE", "MASTER",
+const _CFG_BOOLISH = ["DENOISE", "TTS_SINGLE_VOICE", "DIARIZE", "MASTER",
   "SUB_SPLIT", "PROSODY", "EMOTION", "PROSODY_TRANSFER", "REVIEW_TRANSLATION",
   "GLOSSARY_AUTO", "FRAME_PAD"];
 const _CFG_INTISH = ["DUCK_GAIN_DB", "SHORTS_LEN", "GEMINI_MIN_INTERVAL"];
@@ -227,18 +227,20 @@ async function loadConfig(keepScroll) {
       {"-14": "-14dB — nền còn rõ (dễ át thoại)", "-17": "-17dB",
        "-20": "-20dB — thoại nổi rõ (khuyên dùng)", "-23": "-23dB", "-26": "-26dB — nền rất nhỏ"},
       "", "Hạ audio gốc (nhạc + giọng gốc) bao nhiêu khi có thoại. Đo thật: -14dB giọng chỉ nổi ~+6dB → bị át; -20dB nổi ~+12dB nghe rõ lời. Chỉnh riêng từng video: thanh 🎚 trong editor.")
+    + row("TTS_BASE_SPEED", "🚀 Nhịp đọc nền", ["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"],
+      {"1.0": "Mặc định (chậm rãi ~4 âm tiết/giây)", "1.1": "+10%", "1.2": "+20%",
+       "1.3": "+30% — nhanh tự nhiên (khuyên dùng)", "1.4": "+40%", "1.5": "+50% — dồn dập"},
+      "", "Nền tốc độ đọc cho MỌI câu — gu đọc của kênh (đợt T). Câu ngắn hết rề rà, nhịp đều giữa các câu; đo thật: mức +30% ≈ 4.9–5.2 âm tiết/giây (giọng review phim phổ biến ~5.4). KHÔNG tính vào ngân sách khớp thoại — câu vượt khung vẫn nén thêm trong trần rồi mới cắt. Hiện áp engine <b>edge</b>; viXTTS/trả phí theo sau. Đổi xong bấm 🔊 cạnh ô giọng để nghe nhịp mới; job đang có sẽ đọc lại các câu edge khi render lại.",
+      `<button class="ghost" type="button" onclick="cfgVoicePreview('nam', this)" title="Nghe thử nhịp đang chọn (giọng chính, theo bản nháp)">🔊</button>`)
     + `<div class="frow"><label>Preset nhanh</label><span>
-        <button class="ghost" type="button" onclick="cfgPreset('tight')" title="MAX_SPEEDUP 2.0 + kéo giãn câu ngắn — bám khẩu hình sát nhất">🎯 Khớp môi chặt</button>
-        <button class="ghost" type="button" onclick="cfgPreset('natural')" title="MAX_SPEEDUP 1.2, không kéo giãn — giọng đều, ưu tiên nghe tự nhiên">🌿 Tự nhiên</button>
-        <span class="meta">đặt sẵn 2 núm trong Nâng cao — bấm xong nhớ Lưu</span></span></div>`
+        <button class="ghost" type="button" onclick="cfgPreset('tight')" title="Nén khớp thoại tối đa 2.0× — bám khẩu hình sát nhất">🎯 Khớp môi chặt</button>
+        <button class="ghost" type="button" onclick="cfgPreset('natural')" title="Nén khớp thoại tối đa 1.2× — ưu tiên nghe tự nhiên">🌿 Tự nhiên</button>
+        <span class="meta">đặt sẵn núm trong Nâng cao — bấm xong nhớ Lưu</span></span></div>`
     + adv("tts",
       row("MAX_SPEEDUP", "Đồng bộ khớp thoại", ["1.0", "1.2", "1.4", "1.6", "1.8", "2.0"],
         {"1.0": "1.0× — KHÔNG tăng tốc (chấp nhận tràn)", "1.2": "1.2× — nhẹ nhàng",
          "1.4": "1.4× — cân bằng (khuyên dùng)", "1.6": "1.6×", "1.8": "1.8×", "2.0": "2.0× — khớp gắt"},
-        "", "Trần NHÂN tổng của mọi lớp tăng tốc vì khớp thoại (engine đọc nhanh × atempo hậu kỳ ≤ mức này). Câu hết ngân sách mà vẫn dài thì fade + cắt ở biên slot, KHÔNG đè sang câu kế.")
-      + row("STRETCH_SHORT", "Kéo giãn câu đọc xong sớm", ["0", "1"],
-        {"0": "Tắt (mặc định)", "1": "Bật — chậm lại nhẹ tối đa 8%"},
-        "", "Câu đọc xong QUÁ SỚM so với miệng nhân vật → kéo chậm nhẹ (0.92–1.0×, giữ cao độ). Chỉ kéo về độ dài MIỆNG, không lấp khoảng lặng tự nhiên của phim.")
+        "", "Trần NHÂN tổng của mọi lớp tăng tốc VÌ KHỚP THOẠI (engine đọc nhanh × atempo hậu kỳ ≤ mức này — không gồm 🚀 Nhịp đọc nền). Câu hết ngân sách mà vẫn dài thì fade + cắt ở biên slot, KHÔNG đè sang câu kế.")
       + row("PROSODY", "Tông giọng theo audio gốc", ["1", "0"],
         {"1": "Bật — đọc theo tông câu gốc", "0": "Tắt (mặc định) — giọng đọc trung tính"},
         "", "Đo cao độ / tốc độ / độ to từng câu GỐC so với mức nền của người nói → chỉnh giọng đọc theo (câu quát → đọc dồn cao giọng). Đo bảo thủ: mơ hồ (nhạc nền lấn) thì giữ trung tính. Mặc định TẮT — bật rồi chạy thử 1 job để nghe thẩm định.")
@@ -853,7 +855,8 @@ async function cfgVoicePreview(which, btn) {
   const draft = collectCfgDraft();
   const st = {};
   for (const k of ["TTS_ENGINE", "TTS_SINGLE_VOICE", "TARGET_LANG",
-                   "TTS_VOICE", "TTS_VOICE_NU", "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU"])
+                   "TTS_VOICE", "TTS_VOICE_NU", "VIXTTS_VOICE_NAM", "VIXTTS_VOICE_NU",
+                   "TTS_BASE_SPEED"])
     if (draft[k] != null) st[k] = draft[k];
   const eng = st.TTS_ENGINE || "edge";
   if (["elevenlabs", "vbee", "fpt"].includes(eng)

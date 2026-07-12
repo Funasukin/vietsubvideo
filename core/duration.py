@@ -30,9 +30,17 @@ MIN_SLOT_S = 0.3         # sàn slot (đồng bộ S5/S7 — trước đây S4 d
 
 # Ngân sách CHỮ cho tầng dịch (đợt C audit giọng): giọng đọc tiếng Việt tự nhiên
 # ~4 âm tiết/giây; quá 4.5/giây-limit là chắc chắn phải nén máy móc.
+# (SYL_TARGET_PER_S 4.0 đã xóa đợt T — hằng số chết sau khi bậc 1 bỏ target_s;
+#  Codex xác nhận không còn nơi dùng. SYL_MAX giữ nguyên, CHƯA scale theo nền
+#  TTS_BASE_SPEED — quyết định TONGHOP: đổi 1 biến/lần, đo 20-30 job rồi tính.)
 BREATH_S = 0.25          # đệm thở trừ khỏi slot khi cấp ngân sách cho bản dịch
-SYL_TARGET_PER_S = 4.0   # nhắm ~4 âm tiết/giây thoại gốc (khớp miệng)
 SYL_MAX_PER_S = 4.5      # trần cứng cho validator — vượt là dịch lại cho ngắn
+
+# Đợt T: trần CHẤT LƯỢNG tuyệt đối cho tốc độ NGHE THẬT của một câu —
+# nền(TTS_BASE_SPEED) × nén-engine × atempo ≤ mức này. Nền không tiêu ngân sách
+# MAX_SPEEDUP (nó là gu đọc, không phải nén) nhưng tai người thì nghe TÍCH tổng:
+# nền 1.5 × nén 2.0 = 3.0× là cháo. Hằng số kỹ thuật, không thêm knob (Codex).
+ABS_AUDIBLE_MAX = 2.0
 
 
 def slots(segments: list[dict]) -> dict:
@@ -106,10 +114,17 @@ def edge_total_rate(base_pct: int, k: float) -> int:
     return math.ceil(round(((1 + base_pct / 100) * k - 1) * 100, 6))
 
 
-def budget_left(engine_speed: float) -> float:
+def budget_left(engine_speed: float, base_speed: float = 1.0) -> float:
     """Ngân sách nén CÒN LẠI cho S7 sau khi engine đã tiêu engine_speed.
-    Trần TÍCH: engine_speed × post_atempo ≤ MAX_SPEEDUP."""
-    return max(1.0, config.MAX_SPEEDUP / max(1.0, engine_speed))
+    Hai trần TÍCH (đợt T): engine_speed × post_atempo ≤ MAX_SPEEDUP (lời hứa cũ,
+    nền KHÔNG tính vào) VÀ nền × engine × atempo ≤ ABS_AUDIBLE_MAX (trần chất
+    lượng nghe thật). base_speed là nền THỰC của CHÍNH câu này (style_native
+    trong fit_report — chỉ câu edge được áp nền đợt này; review đối kháng T#2:
+    đọc config toàn cục là đánh thuế oan câu viXTTS/paid không hề mang nền).
+    Với nền 1.0 hai trần trùng nhau → hành vi y như trước."""
+    e = max(1.0, engine_speed)
+    b = max(1.0, base_speed)
+    return max(1.0, min(config.MAX_SPEEDUP / e, ABS_AUDIBLE_MAX / (b * e)))
 
 
 def load_report(job_dir: Path) -> dict:

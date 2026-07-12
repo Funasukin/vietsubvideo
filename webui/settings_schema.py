@@ -82,7 +82,13 @@ SETTINGS: dict[str, Setting] = {
     "EMOTION": S("0", ("1", "0")),
     "PROSODY_TRANSFER": S("0", ("0", "1")),
     "MAX_SPEEDUP": S("1.4", ("1.0", "1.2", "1.4", "1.6", "1.8", "2.0")),
-    "STRETCH_SHORT": S("0", ("0", "1")),
+    # Đợt T (2026-07-12): nền tốc độ đọc "gu kênh" — áp MỌI câu TRƯỚC khi trọng
+    # tài chống tràn làm việc; KHÔNG tính vào ngân sách MAX_SPEEDUP. Factory 1.0
+    # (đổi default = voicesig lệch → re-TTS toàn bộ install cũ, bài học PROSODY).
+    "TTS_BASE_SPEED": S("1.0", ("1.0", "1.1", "1.2", "1.3", "1.4", "1.5")),
+    # STRETCH_SHORT đã GỠ khỏi schema (đợt T): kéo giãn câu ngắn trái triết lý
+    # "nhịp đồng đều, đọc xong sớm là mong muốn" — config.py còn đọc key 1 phiên
+    # bản để cảnh báo .env cũ, nhưng luôn coi như tắt.
     "FFMPEG_SHARED_BIN": S(r"C:\ffmpeg-shared\ffmpeg-7.1-full_build-shared\bin",
                            allow_empty=True, profile=False, max_len=500),   # đường dẫn máy local
     # ---- Xuất bản / thương hiệu (render) ----
