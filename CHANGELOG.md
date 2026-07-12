@@ -6,6 +6,44 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-12 (1) — Desktop (F:\MyProject\vietsubvideo)
+
+### Bậc 1 lộ trình "giọng đọc tự nhiên": BỎ SÀN độn chữ ở S4 (giữ trần)
+
+User phàn nàn câu dài + phân cảnh dài bị đọc lê thê. Điều tra: audio KHÔNG hề bị
+giãn (PROSODY/EMOTION/STRETCH đều tắt, chỉ có tầng nén) — thủ phạm là NGÂN SÁCH
+DỊCH: sàn "đừng ngắn hơn target_s" (đợt C) + target_s = end−start của segment,
+mà với OCR đó là thời gian SUB HIỂN THỊ chứ không phải miệng nói → cảnh dài là
+Claude ĐỘN CHỮ lấp cho đủ, câu bị pha loãng. User chốt: bỏ sàn, dịch tự nhiên
+ngắn gọn, chấp nhận khoảng lặng + giọng gốc rỉ qua mức nhỏ (KEEP_BGM=flat).
+
+Sửa `core/stages/s4_translate.py` (1 file, ~20 dòng): quy tắc ĐỘ DÀI ở cả 3
+system prompt (SYSTEM/GENERAL/_lang_system) đổi thành "dịch NGẮN GỌN — đủ ý là
+DỪNG, TUYỆT ĐỐI KHÔNG kéo dài cho khớp thời lượng cảnh, đọc xong sớm là bình
+thường"; payload `_b()` bỏ hẳn target_s, CHỈ còn trần max_s + max_syll (trần và
+validator/vòng dịch lại/review giữ nguyên — tầng nén S5/S7 không đổi).
+
+**Test trước/sau trên job test** (clone aaa003 — video 19 câu/101.5s, cùng video
+với job thật của user nhưng là bản clone riêng, KHÔNG đụng job thật):
+- aaa004 (code mới): tổng âm tiết 218→207 (−5%), câu slot dài hết độn (id3:
+  25→19 âm tiết; id16 bỏ đuôi lặp "vị đại nhân kia"), câu bị nén 2→1, 0 sót
+  ký tự Trung. Chạy trọn pipeline tới final.mp4.
+- aaa005 (chạy lần 2 xác minh dao động): 193 âm tiết (−11%) — hiệu ứng bỏ sàn
+  ỔN ĐỊNH qua 2 lần chạy.
+- **Phát hiện quan trọng cho bậc 3**: xưng hô DAO ĐỘNG giữa các lần chạy
+  (baseline: ta/ngươi cổ trang; aaa004: loạn mình/tôi/con-cháu dù review pass đã
+  sửa 3 câu; aaa005: hiện đại tương đối nhất quán) — video cổ trang nhưng
+  CONTENT_STYLE=general nên model tự đoán mỗi lần một kiểu. KHÔNG phải do bỏ sàn
+  (rule xưng hô không đổi) — là bằng chứng thực nghiệm cho đề xuất "hồ sơ phim +
+  bảng xưng hô" (bậc 3, chưa làm, chờ user chốt sau khi nghe bậc 1).
+
+Lộ trình đã thống nhất với user: bậc 1 (này) → đo tỉ lệ câu vượt slot thật →
+bậc 2 vòng rút gọn câu vượt (nếu còn đáng kể) → bậc 3 hồ sơ phim (thiết kế
+phòng thủ: confidence-gating, fail-open). Câu hỏi còn treo với user: van xả
+cuối cho câu không rút được nữa — tăng tốc nhẹ ≤1.2× hay tuyệt đối không.
+
+---
+
 ## 2026-07-11 (9) — Desktop (F:\MyProject\vietsubvideo)
 
 ### CLAUDE.md — hồ sơ bàn giao đa máy (agent máy mới đọc là làm việc tiếp được)

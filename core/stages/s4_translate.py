@@ -29,7 +29,7 @@ SYSTEM = """Bạn là dịch giả chuyên nghiệp chuyên dịch phim/truyện
 
 Quy tắc:
 - Dịch tự nhiên như lời nói, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ được đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — NHẮM đọc xong quanh ≈4×target_s âm tiết), "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa). Bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp); cũng đừng ngắn hơn hẳn mục tiêu (đọc xong quá sớm nghe hụt so với môi). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
+- ĐỘ DÀI: dịch NGẮN GỌN tự nhiên — đủ ý câu gốc là DỪNG, TUYỆT ĐỐI KHÔNG thêm từ đệm/diễn giải vòng vo để kéo dài câu cho "khớp thời lượng cảnh" (giọng đọc xong sớm là BÌNH THƯỜNG, phần dư đã có nhạc nền lấp). Mỗi segment có "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa): bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp). Cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - XƯNG HÔ: bối cảnh cổ trang/tu tiên dùng nhất quán "ngươi/ta" (ngang hàng), "ngài/tại hạ" (kính trọng), "huynh/đệ/muội". TUYỆT ĐỐI không dùng "bạn/tôi/anh ấy" trong bối cảnh cổ trang.
 - Tên riêng Trung Quốc chuyển sang âm Hán-Việt (叶凡 → Diệp Phàm, 萧炎 → Tiêu Viêm, 萧公子 → Tiêu công tử).
 - Tên phiên âm pinyin trong sub tiếng Anh cũng chuyển về Hán-Việt quen thuộc: Wukong → Ngộ Không, Tang Monk/Tang Seng → Đường Tăng, Bajie → Bát Giới, Wujing → Ngộ Tĩnh, Nezha → Na Tra, Erlang → Nhị Lang.
@@ -44,7 +44,7 @@ GENERAL_SYSTEM = """Bạn là dịch giả chuyên nghiệp, dịch phụ đề/
 
 Quy tắc:
 - Dịch TỰ NHIÊN như lời nói người Việt, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — NHẮM đọc xong quanh ≈4×target_s âm tiết), "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa). Bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp); cũng đừng ngắn hơn hẳn mục tiêu (đọc xong quá sớm nghe hụt so với môi). Câu gốc ngắn → dịch ngắn tương xứng; cần cắt thì LƯỢC từ đệm, giữ trọn ý.
+- ĐỘ DÀI: dịch NGẮN GỌN tự nhiên — đủ ý câu gốc là DỪNG, TUYỆT ĐỐI KHÔNG thêm từ đệm/diễn giải vòng vo để kéo dài câu cho "khớp thời lượng cảnh" (giọng đọc xong sớm là BÌNH THƯỜNG, phần dư đã có nhạc nền lấp). Mỗi segment có "max_s" (trần cứng — chạm câu kế) và "max_syll" (số ÂM TIẾT tối đa): bản dịch TUYỆT ĐỐI ≤ max_syll âm tiết (vượt là giọng bị ép nhanh nghe gấp gáp). Cần cắt thì LƯỢC từ đệm, giữ trọn ý.
 - Xưng hô HIỆN ĐẠI, phù hợp ngữ cảnh (tôi/bạn/anh/chị/em/ông/bà/mình/cậu...), suy từ quan hệ nhân vật. Chỉ dùng lối cổ trang/kiếm hiệp nếu nội dung RÕ RÀNG là cổ trang.
 - Tên riêng, thương hiệu, địa danh, thuật ngữ nước ngoài: giữ NGUYÊN gốc hoặc phiên âm quen thuộc với người Việt; KHÔNG ép sang Hán-Việt.
 - Dịch đúng nghĩa thuật ngữ chuyên ngành; giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -60,7 +60,7 @@ def _lang_system(lang_name: str) -> str:
 Quy tắc:
 - TOÀN BỘ trường "text_vi" phải là {lang_name} (tên trường giữ nguyên vì lý do kỹ thuật).
 - Dịch TỰ NHIÊN như lời nói bản xứ, KHÔNG dịch word-by-word. Câu ngắn gọn vì sẽ đọc bằng TTS theo timing gốc.
-- ĐỘ DÀI: mỗi segment có "target_s" (số giây nhân vật mở miệng — nhắm đọc xong quanh chừng đó ở tốc độ tự nhiên) và "max_s" (trần cứng — chạm câu kế): bản dịch phải đọc xong TRƯỚC max_s giây, cũng đừng ngắn hơn hẳn target_s (đọc xong quá sớm nghe hụt). Cần cắt thì lược từ đệm, giữ trọn ý.
+- ĐỘ DÀI: dịch NGẮN GỌN tự nhiên — đủ ý là dừng, KHÔNG thêm từ đệm/kéo dài câu cho khớp thời lượng cảnh (đọc xong sớm là bình thường). Mỗi segment có "max_s" (trần cứng — chạm câu kế): bản dịch phải đọc xong TRƯỚC max_s giây. Cần cắt thì lược từ đệm, giữ trọn ý.
 - Xưng hô/văn phong phù hợp ngữ cảnh và văn hóa của {lang_name}.
 - Tên riêng, thương hiệu, địa danh: dùng dạng quen thuộc trong {lang_name} (tên quốc tế thường giữ nguyên).
 - Giữ nguyên số, đơn vị, mã/cấp bậc dạng chữ-số.
@@ -148,19 +148,21 @@ def _translate_batch(client: anthropic.Anthropic, batch: list[dict],
         ctx = "\n".join(f"- {src} → {vi}" for src, vi in context)
         parts.append(f"Ngữ cảnh (các câu ngay trước, đã dịch):\n{ctx}\n")
     # kèm nhãn người nói (nếu diarize gán được) — Claude gán character/voice nhất quán.
-    # Ngân sách KÉP (đợt C audit giọng): target_s = miệng nhân vật (end−start, nhắm
-    # đọc xong quanh đó), max_s = trần cứng tới câu KẾ (slot − đệm thở — CÙNG định
-    # nghĩa với tầng nén S5/S7, hết cảnh dịch theo thước này nén theo thước khác),
-    # max_syll = trần âm tiết validator sẽ ENFORCE sau dịch.
+    # Ngân sách TRẦN (bậc 1 "giọng tự nhiên" 2026-07-12): CHỈ gửi trần — max_s =
+    # trần cứng tới câu KẾ (slot − đệm thở, CÙNG định nghĩa với tầng nén S5/S7),
+    # max_syll = trần âm tiết validator ENFORCE sau dịch. KHÔNG gửi target_s nữa:
+    # cái sàn "đừng ngắn hơn miệng" (đợt C) khiến Claude ĐỘN CHỮ lấp cảnh dài —
+    # với OCR, end−start là thời gian SUB HIỂN THỊ chứ không phải miệng nói, cảnh
+    # dài là câu bị pha loãng lê thê. Đọc xong sớm là hành vi MONG MUỐN (thuyết
+    # minh nói xong thì im, nhạc nền/audio gốc lấp phần dư — user chốt 2026-07-12).
     def _b(s: dict) -> dict:
         if budget and s["id"] in budget:
-            tgt, lim, msyl = budget[s["id"]]
+            _tgt, lim, msyl = budget[s["id"]]   # _tgt giữ chỗ tuple, không gửi nữa
             # max_syll chỉ có nghĩa với đích tiếng Việt (msyl=None với đích khác —
             # 4.5 âm tiết Việt/giây gửi cho đích ja/en là trần sai đơn vị)
-            return {"target_s": tgt, "max_s": lim,
+            return {"max_s": lim,
                     **({"max_syll": msyl} if msyl is not None else {})}
-        return {"target_s": round(max(0.4, s["end"] - s["start"]), 1),
-                "max_s": round(max(0.5, s["end"] - s["start"]), 1)}
+        return {"max_s": round(max(0.5, s["end"] - s["start"]), 1)}
     payload = [{"id": s["id"], "text": s["text"], **_b(s),
                 **({"speaker": s["speaker"]} if s.get("speaker") else {})}
                for s in batch]
