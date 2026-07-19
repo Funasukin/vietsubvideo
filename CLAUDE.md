@@ -168,8 +168,12 @@ scripts/bench_models.py # benchmark model load (JSONL)
   giọng (A/B/C/D), panel ⚙️ per-job (U-1→U-4), tách monolith (#16 worker +
   routes_editor, #17 static), **đợt G làm lại tab Cấu hình trên settings
   schema** (commit e7b01ec).
-- **Đang MỞ, chờ user chốt**: (a) thêm engine TTS mới cho giọng "hoạt ngôn"
-  monetize — ứng viên MiniMax hoặc BytePlus hoặc pipeline voice-conversion
-  local (RVC/OpenVoice); (b) W-2 worker/model-host thường trú (HOÃN — chỉ làm
-  khi telemetry đủ bằng chứng); (c) tab phối/test giọng (mới bàn ý tưởng).
+- **Đang MỞ, chờ user chốt**: (a) tối ưu source V-1/V-2/V-3 — danh sách ở
+  DEXUAT_TOIUU_SOURCE.md, THI CÔNG THEO HUONGDAN_TOIUU_CHITIET.md (playbook
+  từng bước cho mọi model, có parity test + bản đồ rủi ro RM-1..17);
+  (b) user bật TTS_BASE_SPEED (đang 1.0 — DEXUAT_TANGTOC_GIONGDOC.md) + T-6
+  mở trần nếu 1.5 chưa đủ; (c) T-4 viXTTS/T-5 paid honor nhịp nền; (d) chế độ
+  lai OCR+Whisper cho thoại không sub; (e) engine TTS "hoạt ngôn" monetize
+  (MiniMax/BytePlus/RVC); (f) W-2 model-host thường trú (HOÃN); (g) tab
+  phối/test giọng (ý tưởng).
 - Chi tiết từng đợt + quyết định thiết kế: đọc CHANGELOG.md từ trên xuống.

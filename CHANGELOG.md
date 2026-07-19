@@ -6,6 +6,32 @@ Bài học: danh sách đề xuất #1–#18 từng bị mất vì chỉ nằm t
 
 ---
 
+## 2026-07-13 (3) — Desktop (F:\MyProject\vietsubvideo)
+
+### Đề xuất tăng tốc giọng + Audit tối ưu source + Playbook thi công (CHƯA code)
+
+1. **DEXUAT_TANGTOC_GIONGDOC.md** (2be1976): user vẫn thấy giọng chậm — chẩn
+   đoán: knob TTS_BASE_SPEED đợt T CHƯA ĐƯỢC BẬT (.env không có key, fit_report
+   job vừa nghe style=1.0). Giải pháp bậc 0 KHÔNG code: bật knob +40% (hướng
+   dẫn cả đường per-job "Lưu & render lại" cho job đang paused); T-6 mở trần
+   (EDGE_RATE_MAX 50→70 hoặc style-atempo residual) CHỜ user nghe 1.4/1.5 đã.
+2. **DEXUAT_TOIUU_SOURCE.md** (fab2924): audit ruff+vulture+5 agent+bench.
+   Nền sạch (0 dead code Python, 0 hàm JS mồ côi). PHÁT HIỆN LỚN: OCR
+   ProcessPool scaling ÂM trên desktop (bench: 1w=447-465ms/frame, 4w=542-817,
+   6w=855 + 20-27s spawn; production 848 frame mất 1334-1580s) → V-2 nhánh
+   tuần tự kỳ vọng tiết kiệm 15-20 phút/video. 3 đợt V-1 (9 quick-wins) /
+   V-2 (OCR + stats cache) / V-3 (env_bool hợp nhất — tìm ra 1 lệch parity
+   thật TTS_SINGLE_VOICE rỗng; probe_duration + timeout; drift-check). Kiểm
+   chứng đối kháng đã BÁC: gộp UI editor/visual, ES modules, micro-opt. Kèm
+   bản đồ rủi ro RM-1..17 (17/17 verify).
+3. **HUONGDAN_TOIUU_CHITIET.md** (9acb3ec): playbook thi công viết cho MỌI
+   model (kể cả yếu hơn) làm theo máy móc — từng bước: lệnh định vị, code
+   nguyên văn, verify + output kỳ vọng, đường lui khi fail; parity test cho
+   sẵn; mục "cấm sáng kiến". User CHƯA chốt đợt nào — máy nào nhận việc thì
+   đọc HUONGDAN + chờ user chốt V-1/V-2/V-3 rồi làm đúng thứ tự V-2→V-1→V-3.
+
+---
+
 ## 2026-07-13 (2) — Desktop (F:\MyProject\vietsubvideo)
 
 ### Đợt O: vá VÙNG CHẾT OCR — dải crop quá dẹt làm RapidOCR mù chữ
